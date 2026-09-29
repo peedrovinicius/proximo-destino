@@ -33,7 +33,7 @@ const adminMetrics = [
 ]
 
 export function AdminDashboard({ onLogout }: AdminDashboardProps) {
-  const birthdays = getUpcomingBirthdays(clientBirthdays, new Date('2026-09-29T12:00:00'), 30)
+  const birthdays = getUpcomingBirthdays(clientBirthdays, new Date(), 30)
 
   return (
     <div className="admin-shell">
