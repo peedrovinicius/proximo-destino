@@ -12,16 +12,17 @@ import {
 } from 'lucide-react'
 import { Brand } from '../../components/Brand'
 import { WhatsAppButton } from '../../components/WhatsAppButton'
+import { birthdayLabel, getUpcomingBirthdays } from '../../lib/birthdays'
 import { openWhatsApp } from '../../lib/whatsapp'
 
 type AdminDashboardProps = {
   onLogout: () => void
 }
 
-const birthdays = [
-  { name: 'Marina Albuquerque', date: 'Hoje', phone: '85 99999-0001' },
-  { name: 'Carlos Henrique', date: 'Amanhã', phone: '85 99999-0002' },
-  { name: 'Beatriz Monteiro', date: '03 out', phone: '85 99999-0003' },
+const clientBirthdays = [
+  { id: 'cli-001', name: 'Marina Albuquerque', birthDate: '1994-09-29', phone: '85 99999-0001' },
+  { id: 'cli-002', name: 'Carlos Henrique', birthDate: '1988-09-30', phone: '85 99999-0002' },
+  { id: 'cli-003', name: 'Beatriz Monteiro', birthDate: '1992-10-03', phone: '85 99999-0003' },
 ]
 
 const adminMetrics = [
@@ -32,6 +33,8 @@ const adminMetrics = [
 ]
 
 export function AdminDashboard({ onLogout }: AdminDashboardProps) {
+  const birthdays = getUpcomingBirthdays(clientBirthdays, new Date('2026-09-29T12:00:00'), 30)
+
   return (
     <div className="admin-shell">
       <header className="admin-topbar">
@@ -85,15 +88,15 @@ export function AdminDashboard({ onLogout }: AdminDashboardProps) {
               <CalendarHeart size={21} />
             </div>
 
-            <p className="panel-description">Lembretes automáticos para a equipe não perder datas importantes.</p>
+            <p className="panel-description">Lembretes calculados a partir da data de nascimento cadastrada no cliente.</p>
 
             <div className="birthday-list">
-              {birthdays.map((birthday, index) => (
-                <div className="birthday-row" key={birthday.name}>
+              {birthdays.map((birthday) => (
+                <div className="birthday-row" key={birthday.id}>
                   <span className="birthday-avatar"><Gift size={16} /></span>
                   <div>
                     <strong>{birthday.name}</strong>
-                    <span>{birthday.date} · {birthday.phone}</span>
+                    <span>{birthdayLabel(birthday.daysUntil, birthday.nextBirthday)} · {birthday.phone}</span>
                   </div>
                   <button
                     type="button"
@@ -101,7 +104,7 @@ export function AdminDashboard({ onLogout }: AdminDashboardProps) {
                   >
                     Enviar mensagem
                   </button>
-                  {index === 0 && <em>Hoje</em>}
+                  {birthday.daysUntil === 0 && <em>Hoje</em>}
                 </div>
               ))}
             </div>
