@@ -35,7 +35,7 @@ function App() {
   return (
     <div className="orbit-shell">
       <header className="orbit-topbar">
-        <Brand />
+        <Brand compact />
 
         <nav className="orbit-nav" aria-label="Navegação principal">
           {modules.map(({ label, icon: Icon }) => (
