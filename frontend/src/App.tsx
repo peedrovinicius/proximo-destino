@@ -3,29 +3,37 @@ import { AdminDashboard } from './features/admin/AdminDashboard'
 import { AdminLogin } from './features/admin/AdminLogin'
 import { ClientLogin } from './features/client/ClientLogin'
 import { ClientPortal } from './features/client/ClientPortal'
+import { HomePage } from './features/home/HomePage'
 
-type Screen = 'client-login' | 'client' | 'admin-login' | 'admin'
+type Screen = 'home' | 'client-login' | 'client' | 'admin-login' | 'admin'
 
 function App() {
-  const [screen, setScreen] = useState<Screen>('client-login')
+  const [screen, setScreen] = useState<Screen>('home')
+
+  if (screen === 'home') {
+    return (
+      <HomePage
+        onClientAccess={() => setScreen('client-login')}
+        onAdminAccess={() => setScreen('admin-login')}
+      />
+    )
+  }
 
   if (screen === 'admin-login') {
     return (
       <AdminLogin
         onSubmit={() => setScreen('admin')}
-        onBack={() => setScreen('client-login')}
+        onBack={() => setScreen('home')}
       />
     )
   }
 
   if (screen === 'admin') {
-    return <AdminDashboard onLogout={() => setScreen('admin-login')} />
+    return <AdminDashboard onLogout={() => setScreen('home')} />
   }
 
   if (screen === 'client') {
-    return (
-      <ClientPortal onLogout={() => setScreen('client-login')} />
-    )
+    return <ClientPortal onLogout={() => setScreen('home')} />
   }
 
   return (
