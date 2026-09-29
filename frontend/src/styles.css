@@ -1515,34 +1515,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
   }
 }
 
-/* Logo oficial Próximo Destino */
-.brand-mascot {
-  display: block;
-  width: 56px;
-  height: 56px;
-  flex: 0 0 56px;
-  border-radius: 50%;
-  object-fit: cover;
-  object-position: center;
-  background: transparent;
-  filter: drop-shadow(0 8px 18px rgba(38, 119, 217, .16));
-}
 
-.brand--compact .brand-mascot {
-  width: 56px;
-  height: 56px;
-}
-
-@media (max-width: 620px) {
-  .brand-mascot,
-  .brand--compact .brand-mascot {
-    width: 50px;
-    height: 50px;
-    flex-basis: 50px;
-  }
-}
-
-/* Marca oficial: preserva o mascote inteiro, sem recorte */
+/* Logo Próximo Destino */
 .brand {
   display: inline-flex;
   align-items: center;
@@ -1552,99 +1526,56 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
 
 .brand-badge {
   display: grid;
-  width: 64px;
-  height: 64px;
-  flex: 0 0 64px;
+  width: 76px;
+  height: 76px;
+  flex: 0 0 76px;
   place-items: center;
-  border: 1px solid rgba(23, 77, 132, .10);
+  overflow: hidden;
+  border: 0;
   border-radius: 50%;
-  background: rgba(255, 255, 255, .96);
-  box-shadow: 0 10px 26px rgba(23, 77, 132, .12);
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(18, 59, 96, .12);
 }
 
 .brand-mascot {
   display: block;
-  width: 58px;
-  height: 58px;
+  width: 72px;
+  height: 72px;
   max-width: none;
-  border-radius: 0;
+  border-radius: 50%;
   object-fit: contain;
   object-position: center;
-  background: transparent;
+  background: #fff;
   filter: none;
 }
 
 .brand--compact .brand-badge {
-  width: 58px;
-  height: 58px;
-  flex-basis: 58px;
+  width: 68px;
+  height: 68px;
+  flex-basis: 68px;
 }
 
 .brand--compact .brand-mascot {
-  width: 54px;
-  height: 54px;
+  width: 64px;
+  height: 64px;
 }
 
 @media (max-width: 620px) {
-  .brand-badge,
-  .brand--compact .brand-badge {
-    width: 52px;
-    height: 52px;
-    flex-basis: 52px;
-  }
-
-  .brand-mascot,
-  .brand--compact .brand-mascot {
-    width: 48px;
-    height: 48px;
-  }
-}
-
-/* Logo escolhida pelo proprietário - aplicação mobile/desktop */
-.brand,
-.brand--compact {
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  line-height: 0 !important;
-}
-.brand-badge,
-.brand--compact .brand-badge {
-  display: grid !important;
-  width: 76px !important;
-  height: 76px !important;
-  flex: 0 0 76px !important;
-  place-items: center !important;
-  overflow: hidden !important;
-  border: 2px solid #ffffff !important;
-  border-radius: 50% !important;
-  background: #ffffff !important;
-  box-shadow: 0 10px 28px rgba(23,77,132,.14) !important;
-}
-.brand-mascot,
-.brand--compact .brand-mascot {
-  width: 70px !important;
-  height: 70px !important;
-  max-width: none !important;
-  border-radius: 50% !important;
-  object-fit: cover !important;
-  object-position: center !important;
-  background: #ffffff !important;
-  filter: none !important;
-}
-@media (max-width: 620px) {
-  .brand-badge,
-  .brand--compact .brand-badge {
-    width: 72px !important;
-    height: 72px !important;
-    flex-basis: 72px !important;
-  }
-  .brand-mascot,
-  .brand--compact .brand-mascot {
-    width: 66px !important;
-    height: 66px !important;
-  }
   .public-header {
-    min-height: 88px !important;
+    min-height: 86px;
+    gap: 14px;
+  }
+
+  .brand-badge,
+  .brand--compact .brand-badge {
+    width: 66px;
+    height: 66px;
+    flex-basis: 66px;
+  }
+
+  .brand-mascot,
+  .brand--compact .brand-mascot {
+    width: 62px;
+    height: 62px;
   }
 }
