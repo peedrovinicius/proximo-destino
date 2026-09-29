@@ -10,8 +10,10 @@ export function Brand({ compact = false }: BrandProps) {
     >
       <img
         className="brand-mascot"
-        src="/proximo-destino-mascote.webp"
+        src="/proximo-destino-mascote.png?v=2"
         alt="Próximo Destino"
+        width="256"
+        height="256"
       />
     </div>
   )
