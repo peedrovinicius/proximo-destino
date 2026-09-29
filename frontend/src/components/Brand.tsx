@@ -1,3 +1,5 @@
+import { Plane } from 'lucide-react'
+
 type BrandProps = {
   compact?: boolean
 }
@@ -5,8 +7,9 @@ type BrandProps = {
 export function Brand({ compact = false }: BrandProps) {
   return (
     <div className={`brand ${compact ? 'brand--compact' : ''}`}>
-      <div className="brand-symbol" aria-hidden="true">
-        <span>PD</span>
+      <div className="brand-symbol" aria-label="Próximo Destino">
+        <span className="brand-orbit" />
+        <Plane size={20} strokeWidth={2.2} />
       </div>
       {!compact && (
         <div className="brand-text">
