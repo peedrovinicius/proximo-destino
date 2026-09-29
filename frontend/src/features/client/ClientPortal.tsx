@@ -18,7 +18,6 @@ import { WhatsAppButton } from '../../components/WhatsAppButton'
 import { createPaymentCheckout } from '../../lib/payments'
 
 type ClientPortalProps = {
-  onAdminAccess: () => void
   onLogout: () => void
 }
 
@@ -28,7 +27,7 @@ const installments = [
   { id: '03', due: '10 dez', value: 'R$ 1.280,00', status: 'Em aberto' },
 ]
 
-export function ClientPortal({ onAdminAccess, onLogout }: ClientPortalProps) {
+export function ClientPortal({ onLogout }: ClientPortalProps) {
   const [paymentStatus, setPaymentStatus] = useState('')
 
   async function handlePayment() {
@@ -71,7 +70,6 @@ export function ClientPortal({ onAdminAccess, onLogout }: ClientPortalProps) {
         </nav>
 
         <div className="client-top-actions">
-          <button className="text-button" type="button" onClick={onAdminAccess}>Acesso administrativo</button>
           <button className="client-avatar" type="button" onClick={onLogout}>MO</button>
         </div>
       </header>
