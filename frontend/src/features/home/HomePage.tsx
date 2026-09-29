@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { type FormEvent, useMemo, useState } from 'react'
 import {
   ArrowRight,
   CalendarDays,
@@ -51,7 +51,7 @@ export function HomePage({ onClientAccess, onAdminAccess }: HomePageProps) {
     setSearched(false)
   }
 
-  function handleSearch(event: React.FormEvent) {
+  function handleSearch(event: FormEvent) {
     event.preventDefault()
     setSearched(true)
   }
