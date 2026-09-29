@@ -11,7 +11,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       <div className="portal-grid" />
 
       <header className="portal-header">
-        <Brand />
+        <Brand compact />
         <div className="portal-secure">
           <ShieldCheck size={15} />
           <span>Acesso seguro</span>
