@@ -8,13 +8,13 @@ export function Brand({ compact = false }: BrandProps) {
       className={`brand ${compact ? 'brand--compact' : ''}`}
       aria-label="Próximo Destino"
     >
-      <img
-        className="brand-mascot"
-        src="/proximo-destino-mascote.png?v=2"
-        alt="Próximo Destino"
-        width="256"
-        height="256"
-      />
+      <span className="brand-badge">
+        <img
+          className="brand-mascot"
+          src="/proximo-destino-mascote-exato.webp?v=4"
+          alt="Próximo Destino"
+        />
+      </span>
     </div>
   )
 }

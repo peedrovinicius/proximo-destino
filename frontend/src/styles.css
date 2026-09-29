@@ -1541,3 +1541,61 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
     flex-basis: 50px;
   }
 }
+
+/* Marca oficial: preserva o mascote inteiro, sem recorte */
+.brand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.brand-badge {
+  display: grid;
+  width: 64px;
+  height: 64px;
+  flex: 0 0 64px;
+  place-items: center;
+  border: 1px solid rgba(23, 77, 132, .10);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .96);
+  box-shadow: 0 10px 26px rgba(23, 77, 132, .12);
+}
+
+.brand-mascot {
+  display: block;
+  width: 58px;
+  height: 58px;
+  max-width: none;
+  border-radius: 0;
+  object-fit: contain;
+  object-position: center;
+  background: transparent;
+  filter: none;
+}
+
+.brand--compact .brand-badge {
+  width: 58px;
+  height: 58px;
+  flex-basis: 58px;
+}
+
+.brand--compact .brand-mascot {
+  width: 54px;
+  height: 54px;
+}
+
+@media (max-width: 620px) {
+  .brand-badge,
+  .brand--compact .brand-badge {
+    width: 52px;
+    height: 52px;
+    flex-basis: 52px;
+  }
+
+  .brand-mascot,
+  .brand--compact .brand-mascot {
+    width: 48px;
+    height: 48px;
+  }
+}
