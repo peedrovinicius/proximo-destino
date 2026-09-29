@@ -24,10 +24,7 @@ function App() {
 
   if (screen === 'client') {
     return (
-      <ClientPortal
-        onAdminAccess={() => setScreen('admin-login')}
-        onLogout={() => setScreen('client-login')}
-      />
+      <ClientPortal onLogout={() => setScreen('client-login')} />
     )
   }
 
