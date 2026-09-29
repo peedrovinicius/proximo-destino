@@ -1599,3 +1599,52 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
     height: 48px;
   }
 }
+
+/* Logo escolhida pelo proprietário - aplicação mobile/desktop */
+.brand,
+.brand--compact {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  line-height: 0 !important;
+}
+.brand-badge,
+.brand--compact .brand-badge {
+  display: grid !important;
+  width: 76px !important;
+  height: 76px !important;
+  flex: 0 0 76px !important;
+  place-items: center !important;
+  overflow: hidden !important;
+  border: 2px solid #ffffff !important;
+  border-radius: 50% !important;
+  background: #ffffff !important;
+  box-shadow: 0 10px 28px rgba(23,77,132,.14) !important;
+}
+.brand-mascot,
+.brand--compact .brand-mascot {
+  width: 70px !important;
+  height: 70px !important;
+  max-width: none !important;
+  border-radius: 50% !important;
+  object-fit: cover !important;
+  object-position: center !important;
+  background: #ffffff !important;
+  filter: none !important;
+}
+@media (max-width: 620px) {
+  .brand-badge,
+  .brand--compact .brand-badge {
+    width: 72px !important;
+    height: 72px !important;
+    flex-basis: 72px !important;
+  }
+  .brand-mascot,
+  .brand--compact .brand-mascot {
+    width: 66px !important;
+    height: 66px !important;
+  }
+  .public-header {
+    min-height: 88px !important;
+  }
+}
