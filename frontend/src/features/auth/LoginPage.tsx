@@ -1,4 +1,4 @@
-import { ArrowRight, LockKeyhole, ShieldCheck } from 'lucide-react'
+import { ArrowRight, Compass, PlaneTakeoff, ShieldCheck, Sparkles } from 'lucide-react'
 import { Brand } from '../../components/Brand'
 
 type LoginPageProps = {
@@ -7,63 +7,85 @@ type LoginPageProps = {
 
 export function LoginPage({ onLogin }: LoginPageProps) {
   return (
-    <main className="login-shell">
-      <section className="login-visual">
-        <div className="login-visual-content">
-          <Brand />
-          <div>
-            <span className="eyebrow eyebrow--light">Gestão para turismo</span>
-            <h1>Da primeira conversa ao embarque.</h1>
-            <p>
-              Clientes, cotações, reservas, financeiro e operação de viagens
-              organizados em um único fluxo.
-            </p>
-          </div>
-          <div className="login-visual-foot">
-            <ShieldCheck size={18} />
-            <span>Ambiente administrativo protegido</span>
+    <main className="portal-login">
+      <div className="portal-grid" />
+
+      <header className="portal-header">
+        <Brand />
+        <div className="portal-secure">
+          <ShieldCheck size={15} />
+          <span>Acesso seguro</span>
+        </div>
+      </header>
+
+      <section className="portal-stage">
+        <div className="portal-copy">
+          <span className="stage-kicker">Sistema operacional de viagens</span>
+          <h1>
+            Toda viagem começa
+            <span> antes do embarque.</span>
+          </h1>
+          <p>
+            Organize intenção, cotação, reserva, pagamento e experiência do
+            viajante em uma única jornada operacional.
+          </p>
+
+          <div className="portal-signals">
+            <div>
+              <PlaneTakeoff size={17} />
+              <span>Operação em tempo real</span>
+            </div>
+            <div>
+              <Compass size={17} />
+              <span>Radar de destinos</span>
+            </div>
+            <div>
+              <Sparkles size={17} />
+              <span>Inteligência assistida</span>
+            </div>
           </div>
         </div>
-      </section>
 
-      <section className="login-panel">
-        <div className="login-card">
-          <div className="login-mobile-brand">
-            <Brand />
-          </div>
-          <span className="eyebrow">Acesso administrativo</span>
-          <h2>Bem-vindo de volta</h2>
-          <p>Entre para acompanhar a operação da agência.</p>
+        <div className="portal-entry">
+          <div className="portal-entry-ring portal-entry-ring--one" />
+          <div className="portal-entry-ring portal-entry-ring--two" />
 
-          <form onSubmit={(event) => { event.preventDefault(); onLogin() }}>
+          <form
+            className="portal-card"
+            onSubmit={(event) => {
+              event.preventDefault()
+              onLogin()
+            }}
+          >
+            <span className="stage-kicker">Entrada operacional</span>
+            <h2>Acesse o command center</h2>
+            <p>Use as credenciais demonstrativas para entrar.</p>
+
             <label>
-              E-mail
+              <span>E-mail</span>
               <input type="email" defaultValue="admin@proximodestino.com.br" />
             </label>
 
             <label>
-              Senha
-              <div className="password-field">
-                <LockKeyhole size={17} />
-                <input type="password" defaultValue="proximodestino" />
-              </div>
+              <span>Senha</span>
+              <input type="password" defaultValue="proximodestino" />
             </label>
 
-            <div className="login-options">
-              <label className="checkbox-row">
+            <div className="portal-options">
+              <label className="portal-check">
                 <input type="checkbox" defaultChecked />
                 <span>Manter acesso</span>
               </label>
-              <button type="button">Esqueci minha senha</button>
+              <button type="button">Recuperar acesso</button>
             </div>
 
-            <button className="login-submit" type="submit">
-              Entrar no painel
+            <button className="portal-submit" type="submit">
+              Entrar no sistema
               <ArrowRight size={17} />
             </button>
-          </form>
 
-          <small className="login-demo-note">Ambiente demonstrativo do projeto.</small>
+            <small>Ambiente demonstrativo do projeto.</small>
+          </form>
         </div>
       </section>
     </main>
