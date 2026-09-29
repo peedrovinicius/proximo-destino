@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   CalendarDays,
   CheckCircle2,
@@ -14,6 +15,7 @@ import {
 } from 'lucide-react'
 import { Brand } from '../../components/Brand'
 import { WhatsAppButton } from '../../components/WhatsAppButton'
+import { createPaymentCheckout } from '../../lib/payments'
 
 type ClientPortalProps = {
   onAdminAccess: () => void
@@ -27,6 +29,35 @@ const installments = [
 ]
 
 export function ClientPortal({ onAdminAccess, onLogout }: ClientPortalProps) {
+  const [paymentStatus, setPaymentStatus] = useState('')
+
+  async function handlePayment() {
+    setPaymentStatus('Preparando ambiente seguro...')
+
+    try {
+      const checkout = await createPaymentCheckout({
+        tripId: 'trip-demo-buenos-aires',
+        installmentId: '02',
+        method: 'pix',
+      })
+
+      if (checkout.checkoutUrl) {
+        window.location.assign(checkout.checkoutUrl)
+        return
+      }
+
+      if (checkout.pixCopyPaste) {
+        await navigator.clipboard.writeText(checkout.pixCopyPaste)
+        setPaymentStatus('Código PIX copiado.')
+        return
+      }
+
+      setPaymentStatus('Cobrança criada com sucesso.')
+    } catch (error) {
+      setPaymentStatus(error instanceof Error ? error.message : 'Pagamento indisponível.')
+    }
+  }
+
   return (
     <div className="client-shell">
       <header className="client-topbar">
@@ -180,11 +211,12 @@ export function ClientPortal({ onAdminAccess, onLogout }: ClientPortalProps) {
               ))}
             </div>
 
-            <button className="pay-button" type="button">
+            <button className="pay-button" type="button" onClick={handlePayment}>
               <Smartphone size={17} />
               Pagar próxima parcela
             </button>
             <small className="payment-note">PIX, cartão e boleto serão processados pelo provedor de pagamento no ambiente seguro.</small>
+            {paymentStatus && <div className="payment-feedback" role="status">{paymentStatus}</div>}
           </article>
 
           <article className="light-panel support-panel">
