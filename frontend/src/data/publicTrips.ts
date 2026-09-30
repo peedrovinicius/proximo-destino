@@ -141,10 +141,11 @@ export function availableDestinations(origin?: string) {
   ].sort()
 }
 
-export function findTrips(origin: string, destination: string) {
+export function findTrips(origin: string, destination: string, departureDate = '') {
   return searchableTrips().filter(
     (trip) =>
       (!origin || trip.origin === origin) &&
-      (!destination || trip.destination === destination),
+      (!destination || trip.destination === destination) &&
+      (!departureDate || trip.departureDate === departureDate),
   )
 }
