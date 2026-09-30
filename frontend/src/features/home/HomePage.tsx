@@ -5,6 +5,7 @@ import {
   ChevronRight,
   MapPin,
   MessageCircle,
+  Instagram,
   Plane,
   Search,
   ShieldCheck,
@@ -344,8 +345,23 @@ export function HomePage({ onClientAccess, onAdminAccess }: HomePageProps) {
       </main>
 
       <footer className="public-footer">
-        <Brand compact />
-        <span>Próximo Destino · Turismo e viagens</span>
+        <div className="public-footer-brand">
+          <Brand compact />
+          <div>
+            <strong>Próximo Destino</strong>
+            <span>Turismo e viagens</span>
+          </div>
+        </div>
+
+        <div className="public-footer-legal" aria-label="Dados institucionais">
+          <span><strong>CNPJ</strong> 12.750.321/0001-92</span>
+          <span><strong>Cadastur</strong> 12.750.321/0001-92</span>
+          <span className="public-footer-instagram">
+            <Instagram size={15} />
+            <strong>Instagram</strong>
+          </span>
+        </div>
+
         <button type="button" onClick={onAdminAccess}>Área administrativa</button>
       </footer>
 
