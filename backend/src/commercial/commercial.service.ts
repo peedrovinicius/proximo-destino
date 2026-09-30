@@ -10,6 +10,7 @@ import {
   ReservationServiceStatus,
 } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
+import { buildInstallmentSchedule } from './finance-math'
 import {
   AddQuoteItemDto,
   CreateFinancePlanDto,
@@ -324,36 +325,12 @@ export class CommercialService {
       throw new BadRequestException('A entrada deve ser menor que o valor total')
     }
 
-    const remaining = quote.totalCents - downPaymentCents
-    const baseAmount = Math.floor(remaining / data.installmentCount)
-    let remainder = remaining % data.installmentCount
-    const installments: Array<{
-      sequence: number
-      dueDate: Date
-      amountCents: number
-    }> = []
-
-    if (downPaymentCents > 0) {
-      installments.push({
-        sequence: 0,
-        dueDate: new Date(),
-        amountCents: downPaymentCents,
-      })
-    }
-
-    for (let index = 0; index < data.installmentCount; index += 1) {
-      const dueDate = new Date(data.firstDueDate)
-      dueDate.setUTCMonth(dueDate.getUTCMonth() + index)
-
-      const extraCent = remainder > 0 ? 1 : 0
-      if (remainder > 0) remainder -= 1
-
-      installments.push({
-        sequence: index + 1,
-        dueDate,
-        amountCents: baseAmount + extraCent,
-      })
-    }
+    const installments = buildInstallmentSchedule(
+      quote.totalCents,
+      downPaymentCents,
+      data.installmentCount,
+      data.firstDueDate,
+    )
 
     return this.prisma.financePlan.create({
       data: {
