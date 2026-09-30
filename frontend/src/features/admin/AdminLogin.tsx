@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import { ArrowRight, KeyRound, ShieldCheck } from 'lucide-react'
 import { Brand } from '../../components/Brand'
 import { loginAdmin } from '../../lib/adminAuth'
@@ -14,7 +14,7 @@ export function AdminLogin({ onSubmit, onBack }: AdminLoginProps) {
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError('')
     setSubmitting(true)
