@@ -11,6 +11,7 @@ import { applySecurityHeaders } from './security/security-headers'
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule)
+  app.enableShutdownHooks()
   const config = app.get(ConfigService)
   const production = config.get<string>('NODE_ENV') === 'production'
   const frontendOrigin = config.getOrThrow<string>('FRONTEND_ORIGIN')
