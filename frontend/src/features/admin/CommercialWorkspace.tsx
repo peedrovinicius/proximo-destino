@@ -378,7 +378,7 @@ export function QuotesWorkspace({
               <strong>{money.format(service.amountCents / 100)}</strong>
               <select
                 value={service.status}
-                onChange={(e) => void updateServiceStatus(e.target.value ? service.id : service.id, e.target.value as ReservationService['status'])}
+                onChange={(e) => void updateServiceStatus(service.id, e.target.value as ReservationService['status'])}
               >
                 <option value="PENDING">Pendente</option>
                 <option value="CONFIRMED">Confirmado</option>
