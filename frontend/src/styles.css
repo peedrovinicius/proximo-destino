@@ -1634,3 +1634,24 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
     height: 60px;
   }
 }
+
+/* Ajustes de usabilidade mobile da home pública */
+@media (max-width: 700px) {
+  .public-home .whatsapp-float {
+    right: 16px;
+    bottom: calc(92px + env(safe-area-inset-bottom));
+    width: 46px;
+    height: 46px;
+    padding: 0;
+    justify-content: center;
+    border-radius: 50%;
+  }
+
+  .public-home .whatsapp-float span {
+    display: none;
+  }
+
+  .public-contact button {
+    width: 100%;
+  }
+}
