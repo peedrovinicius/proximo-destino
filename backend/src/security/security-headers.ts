@@ -1,6 +1,6 @@
 import type { INestApplication } from '@nestjs/common'
 import type { ConfigService } from '@nestjs/config'
-import helmet from 'helmet'
+import helmet = require('helmet')
 
 export function applySecurityHeaders(
   app: INestApplication,
