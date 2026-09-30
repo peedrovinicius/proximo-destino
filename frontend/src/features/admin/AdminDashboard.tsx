@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Brand } from '../../components/Brand'
+import { FinanceWorkspace, QuotesWorkspace } from './CommercialWorkspace'
 import {
   adminApi,
   type AdminClient,
@@ -26,7 +27,7 @@ type AdminDashboardProps = {
   onLogout: () => void
 }
 
-type Tab = 'overview' | 'clients' | 'trips' | 'reservations'
+type Tab = 'overview' | 'clients' | 'trips' | 'reservations' | 'quotes' | 'finance'
 
 const money = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -102,6 +103,8 @@ export function AdminDashboard({ accessToken, onLogout }: AdminDashboardProps) {
           <button className={tab === 'clients' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => setTab('clients')} type="button">Clientes</button>
           <button className={tab === 'trips' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => setTab('trips')} type="button">Viagens</button>
           <button className={tab === 'reservations' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => setTab('reservations')} type="button">Reservas</button>
+          <button className={tab === 'quotes' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => setTab('quotes')} type="button">Cotações</button>
+          <button className={tab === 'finance' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => setTab('finance')} type="button">Financeiro</button>
         </nav>
 
         <div className="admin-actions">
@@ -223,6 +226,14 @@ export function AdminDashboard({ accessToken, onLogout }: AdminDashboardProps) {
             reservations={reservations}
             onChanged={reload}
           />
+        ) : null}
+
+        {tab === 'quotes' ? (
+          <QuotesWorkspace accessToken={accessToken} reservations={reservations} />
+        ) : null}
+
+        {tab === 'finance' ? (
+          <FinanceWorkspace accessToken={accessToken} />
         ) : null}
       </main>
     </div>
