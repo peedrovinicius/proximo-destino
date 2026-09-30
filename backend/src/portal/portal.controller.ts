@@ -4,6 +4,7 @@ import {
   Get,
   Post,
   Req,
+  Param,
   UseGuards,
 } from '@nestjs/common'
 import { Throttle } from '@nestjs/throttler'
@@ -33,6 +34,34 @@ export class PortalController {
     return this.portal.getPortal(
       request.portal.clientId,
       request.portal.reservationId,
+    )
+  }
+
+  @Post('client/quotes/:id/approve')
+  @UseGuards(ClientPortalGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  approveQuote(
+    @Param('id') id: string,
+    @Req() request: ClientPortalRequest,
+  ) {
+    return this.portal.approveQuote(
+      request.portal.clientId,
+      request.portal.reservationId,
+      id,
+    )
+  }
+
+  @Post('client/quotes/:id/reject')
+  @UseGuards(ClientPortalGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  rejectQuote(
+    @Param('id') id: string,
+    @Req() request: ClientPortalRequest,
+  ) {
+    return this.portal.rejectQuote(
+      request.portal.clientId,
+      request.portal.reservationId,
+      id,
     )
   }
 }
