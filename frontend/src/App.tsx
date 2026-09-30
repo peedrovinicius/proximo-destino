@@ -48,6 +48,7 @@ function App() {
 
     return (
       <AdminDashboard
+        accessToken={adminAccessToken}
         onLogout={() => {
           void logoutAdmin(adminAccessToken)
           setAdminAccessToken(null)
