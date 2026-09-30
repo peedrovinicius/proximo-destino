@@ -225,6 +225,16 @@ export class PortalService {
             },
           },
         },
+        documents: {
+          select: {
+            id: true,
+            type: true,
+            version: true,
+            documentNumber: true,
+            issuedAt: true,
+          },
+          orderBy: { issuedAt: 'desc' },
+        },
       },
     })
 
