@@ -22,6 +22,13 @@ enum TripStatus {
   CANCELLED
 }
 
+enum ReservationStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -42,11 +49,32 @@ model Client {
   phone       String?
   birthDate   DateTime?
   document    String?
+  notes       String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   user         User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  companions   Companion[]
   reservations Reservation[]
+
+  @@index([fullName])
+  @@index([birthDate])
+}
+
+model Companion {
+  id          String   @id @default(cuid())
+  clientId    String
+  fullName    String
+  document    String?
+  birthDate   DateTime?
+  relationship String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([birthDate])
 }
 
 model Trip {
@@ -59,6 +87,8 @@ model Trip {
   status        TripStatus @default(DRAFT)
   capacity      Int?
   priceCents    Int?
+  summary       String?
+  imageUrl      String?
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 
@@ -69,12 +99,12 @@ model Trip {
 }
 
 model Reservation {
-  id        String   @id @default(cuid())
+  id        String            @id @default(cuid())
   clientId  String
   tripId    String
-  status    String   @default("PENDING")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  status    ReservationStatus @default(PENDING)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Restrict)
   trip   Trip   @relation(fields: [tripId], references: [id], onDelete: Restrict)
