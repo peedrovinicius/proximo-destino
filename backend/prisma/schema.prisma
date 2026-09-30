@@ -1,0 +1,84 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  AGENT
+  FINANCE
+  CLIENT
+}
+
+enum TripStatus {
+  DRAFT
+  SCHEDULED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  role         UserRole
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  client Client?
+}
+
+model Client {
+  id          String   @id @default(cuid())
+  userId      String?  @unique
+  fullName    String
+  email       String?
+  phone       String?
+  birthDate   DateTime?
+  document    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user         User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  reservations Reservation[]
+}
+
+model Trip {
+  id            String     @id @default(cuid())
+  title         String
+  origin        String
+  destination   String
+  departureDate DateTime
+  returnDate    DateTime?
+  status        TripStatus @default(DRAFT)
+  capacity      Int?
+  priceCents    Int?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  reservations Reservation[]
+
+  @@index([origin, destination, departureDate])
+  @@index([status, departureDate])
+}
+
+model Reservation {
+  id        String   @id @default(cuid())
+  clientId  String
+  tripId    String
+  status    String   @default("PENDING")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  trip   Trip   @relation(fields: [tripId], references: [id], onDelete: Restrict)
+
+  @@unique([clientId, tripId])
+  @@index([tripId, status])
+}
