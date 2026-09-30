@@ -6,6 +6,7 @@ import { AppModule } from './app.module'
 import { HttpExceptionFilter } from './security/http-exception.filter'
 import { originProtection } from './security/origin-protection'
 import { requestIdMiddleware } from './security/request-id'
+import { requestLoggingMiddleware } from './security/request-logging'
 import { applySecurityHeaders } from './security/security-headers'
 
 async function bootstrap() {
@@ -20,6 +21,7 @@ async function bootstrap() {
   app.setGlobalPrefix('api/v1')
   applySecurityHeaders(app, config)
   app.use(requestIdMiddleware)
+  app.use(requestLoggingMiddleware)
   app.use(originProtection(frontendOrigin, production))
   app.enableCors({
     origin: frontendOrigin,
