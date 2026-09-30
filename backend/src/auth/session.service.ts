@@ -12,9 +12,15 @@ export class SessionService {
     private readonly config: ConfigService,
   ) {}
 
-  async create(userId: string, refreshToken: string, context: RequestContext) {
+  async create(
+    sessionId: string,
+    userId: string,
+    refreshToken: string,
+    context: RequestContext,
+  ) {
     return this.prisma.authSession.create({
       data: {
+        id: sessionId,
         userId,
         refreshTokenHash: await argon2.hash(refreshToken),
         userAgentHash: context.userAgent ? this.hash(context.userAgent) : null,
@@ -39,6 +45,18 @@ export class SessionService {
     }
 
     return session
+  }
+
+  async isActive(sessionId: string, userId: string) {
+    const count = await this.prisma.authSession.count({
+      where: {
+        id: sessionId,
+        userId,
+        revokedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+    })
+    return count === 1
   }
 
   async rotate(sessionId: string, refreshToken: string) {
