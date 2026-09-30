@@ -12,6 +12,7 @@ import {
   UseGuards,
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import { Throttle } from '@nestjs/throttler'
 import { UserRole } from '@prisma/client'
 import type { CookieOptions, Request, Response } from 'express'
 import { AuthService } from './auth.service'
@@ -32,6 +33,7 @@ export class AuthController {
   ) {}
 
   @Post('admin/login')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @HttpCode(200)
   async loginAdmin(
     @Body() body: LoginDto,
@@ -47,12 +49,14 @@ export class AuthController {
   }
 
   @Post('mfa/setup')
+  @Throttle({ default: { limit: 6, ttl: 60_000 } })
   @HttpCode(200)
   setupMfa(@Body() body: MfaChallengeDto) {
     return this.auth.beginMfaSetup(body.challengeToken)
   }
 
   @Post('mfa/setup/verify')
+  @Throttle({ default: { limit: 8, ttl: 60_000 } })
   @HttpCode(200)
   async verifyMfaSetup(
     @Body() body: MfaVerifyDto,
@@ -68,6 +72,7 @@ export class AuthController {
   }
 
   @Post('mfa/verify')
+  @Throttle({ default: { limit: 8, ttl: 60_000 } })
   @HttpCode(200)
   async verifyMfa(
     @Body() body: MfaVerifyDto,
@@ -83,6 +88,7 @@ export class AuthController {
   }
 
   @Post('refresh')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @HttpCode(200)
   async refresh(
     @Req() request: Request,

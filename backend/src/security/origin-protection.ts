@@ -1,5 +1,5 @@
-import { ForbiddenException } from '@nestjs/common'
 import type { NextFunction, Request, Response } from 'express'
+import type { RequestWithId } from './request-id'
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 
@@ -7,7 +7,13 @@ export function originProtection(
   allowedOrigin: string,
   production: boolean,
 ) {
-  return (request: Request, _response: Response, next: NextFunction) => {
+  const allowed = new URL(allowedOrigin).origin
+
+  return (
+    request: Request & RequestWithId,
+    response: Response,
+    next: NextFunction,
+  ) => {
     if (SAFE_METHODS.has(request.method)) {
       next()
       return
@@ -22,19 +28,28 @@ export function originProtection(
     }
 
     const source = origin ?? referer
-    if (!source) {
-      next(new ForbiddenException('Origem da requisição não permitida'))
-      return
-    }
 
     try {
-      const sourceOrigin = new URL(source).origin
-      if (sourceOrigin !== new URL(allowedOrigin).origin) {
-        next(new ForbiddenException('Origem da requisição não permitida'))
+      if (!source || new URL(source).origin !== allowed) {
+        response.status(403).json({
+          statusCode: 403,
+          error: 'Forbidden',
+          message: 'Origem da requisição não permitida',
+          requestId: request.requestId ?? null,
+          timestamp: new Date().toISOString(),
+          path: request.originalUrl,
+        })
         return
       }
     } catch {
-      next(new ForbiddenException('Origem da requisição não permitida'))
+      response.status(403).json({
+        statusCode: 403,
+        error: 'Forbidden',
+        message: 'Origem da requisição não permitida',
+        requestId: request.requestId ?? null,
+        timestamp: new Date().toISOString(),
+        path: request.originalUrl,
+      })
       return
     }
 
