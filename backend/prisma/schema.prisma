@@ -103,7 +103,7 @@ model Client {
   id          String   @id @default(cuid())
   userId      String?  @unique
   fullName    String
-  email       String?
+  email       String?  @unique
   phone       String?
   birthDate   DateTime?
   document    String?
@@ -160,8 +160,10 @@ model Reservation {
   id        String            @id @default(cuid())
   clientId  String
   tripId    String
-  status    ReservationStatus @default(PENDING)
-  createdAt DateTime          @default(now())
+  status         ReservationStatus @default(PENDING)
+  passengerCount Int               @default(1)
+  accessCodeHash String?
+  createdAt       DateTime          @default(now())
   updatedAt DateTime          @updatedAt
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Restrict)
