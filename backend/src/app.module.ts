@@ -7,6 +7,7 @@ import { ClientsModule } from './clients/clients.module'
 import { CommercialModule } from './commercial/commercial.module'
 import { DocumentsModule } from './documents/documents.module'
 import { PortalModule } from './portal/portal.module'
+import { PrivacyModule } from './privacy/privacy.module'
 import { PrismaModule } from './prisma/prisma.module'
 import { SecurityModule } from './security/security.module'
 import { TripsModule } from './trips/trips.module'
@@ -28,6 +29,7 @@ import { UsersModule } from './users/users.module'
     TripsModule,
     AdminModule,
     PortalModule,
+    PrivacyModule,
   ],
   controllers: [AppController],
 })
