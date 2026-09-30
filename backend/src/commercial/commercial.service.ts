@@ -1,0 +1,460 @@
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common'
+import {
+  InstallmentStatus,
+  QuoteStatus,
+  ReservationServiceStatus,
+} from '@prisma/client'
+import { PrismaService } from '../prisma/prisma.service'
+import {
+  AddQuoteItemDto,
+  CreateFinancePlanDto,
+  CreateQuoteDto,
+} from './dto/quote.dto'
+
+@Injectable()
+export class CommercialService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  listQuotes(reservationId?: string) {
+    return this.prisma.quote.findMany({
+      where: reservationId ? { reservationId } : undefined,
+      include: {
+        items: { orderBy: { createdAt: 'asc' } },
+        reservation: {
+          select: {
+            id: true,
+            status: true,
+            passengerCount: true,
+            client: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+                phone: true,
+              },
+            },
+            trip: {
+              select: {
+                id: true,
+                title: true,
+                origin: true,
+                destination: true,
+                departureDate: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: [{ createdAt: 'desc' }],
+      take: 100,
+    })
+  }
+
+  async createQuote(data: CreateQuoteDto) {
+    const reservation = await this.prisma.reservation.findUnique({
+      where: { id: data.reservationId },
+      select: { id: true },
+    })
+
+    if (!reservation) throw new NotFoundException('Reserva não encontrada')
+
+    const aggregate = await this.prisma.quote.aggregate({
+      where: { reservationId: data.reservationId },
+      _max: { revision: true },
+    })
+
+    return this.prisma.quote.create({
+      data: {
+        reservationId: data.reservationId,
+        revision: (aggregate._max.revision ?? 0) + 1,
+        title: data.title.trim(),
+        validUntil: data.validUntil,
+        notes: data.notes?.trim(),
+        discountCents: data.discountCents ?? 0,
+      },
+      include: {
+        items: true,
+        reservation: {
+          select: {
+            id: true,
+            client: { select: { fullName: true, email: true } },
+            trip: { select: { title: true, destination: true } },
+          },
+        },
+      },
+    })
+  }
+
+  async addQuoteItem(quoteId: string, data: AddQuoteItemDto) {
+    await this.assertDraftQuote(quoteId)
+
+    const totalCostCents = data.unitCostCents * data.quantity
+    const totalSaleCents = data.unitSaleCents * data.quantity
+
+    await this.prisma.quoteItem.create({
+      data: {
+        quoteId,
+        category: data.category,
+        description: data.description.trim(),
+        supplier: data.supplier?.trim(),
+        quantity: data.quantity,
+        unitCostCents: data.unitCostCents,
+        unitSaleCents: data.unitSaleCents,
+        totalCostCents,
+        totalSaleCents,
+      },
+    })
+
+    return this.recalculateQuote(quoteId)
+  }
+
+  async removeQuoteItem(quoteId: string, itemId: string) {
+    await this.assertDraftQuote(quoteId)
+
+    const item = await this.prisma.quoteItem.findFirst({
+      where: { id: itemId, quoteId },
+      select: { id: true },
+    })
+
+    if (!item) throw new NotFoundException('Item da cotação não encontrado')
+
+    await this.prisma.quoteItem.delete({ where: { id: itemId } })
+    return this.recalculateQuote(quoteId)
+  }
+
+  async sendQuote(quoteId: string) {
+    await this.recalculateQuote(quoteId)
+
+    const quote = await this.prisma.quote.findUnique({
+      where: { id: quoteId },
+      include: { items: true },
+    })
+
+    if (!quote) throw new NotFoundException('Cotação não encontrada')
+    if (quote.status !== QuoteStatus.DRAFT) {
+      throw new ConflictException('Somente cotações em rascunho podem ser enviadas')
+    }
+    if (!quote.items.length) {
+      throw new BadRequestException('Adicione pelo menos um serviço à cotação')
+    }
+    if (quote.totalCents <= 0) {
+      throw new BadRequestException('O valor final da cotação deve ser maior que zero')
+    }
+    if (quote.validUntil && quote.validUntil.getTime() < Date.now()) {
+      throw new BadRequestException('A validade da cotação já expirou')
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.quote.updateMany({
+        where: {
+          reservationId: quote.reservationId,
+          status: QuoteStatus.SENT,
+          id: { not: quote.id },
+        },
+        data: { status: QuoteStatus.EXPIRED },
+      })
+
+      return tx.quote.update({
+        where: { id: quoteId },
+        data: {
+          status: QuoteStatus.SENT,
+          sentAt: new Date(),
+        },
+        include: {
+          items: true,
+          reservation: {
+            select: {
+              client: { select: { fullName: true, email: true } },
+              trip: { select: { title: true, destination: true } },
+            },
+          },
+        },
+      })
+    })
+  }
+
+  async reviseQuote(quoteId: string) {
+    const source = await this.prisma.quote.findUnique({
+      where: { id: quoteId },
+      include: { items: true },
+    })
+
+    if (!source) throw new NotFoundException('Cotação não encontrada')
+    if (source.status === QuoteStatus.DRAFT) {
+      throw new ConflictException('A cotação já está em rascunho')
+    }
+    if (source.status === QuoteStatus.APPROVED) {
+      throw new ConflictException('Cotação aprovada não pode ser revisada')
+    }
+
+    const aggregate = await this.prisma.quote.aggregate({
+      where: { reservationId: source.reservationId },
+      _max: { revision: true },
+    })
+
+    return this.prisma.quote.create({
+      data: {
+        reservationId: source.reservationId,
+        revision: (aggregate._max.revision ?? source.revision) + 1,
+        title: source.title,
+        validUntil: source.validUntil,
+        notes: source.notes,
+        discountCents: source.discountCents,
+        subtotalCostCents: source.subtotalCostCents,
+        subtotalSaleCents: source.subtotalSaleCents,
+        totalCents: source.totalCents,
+        marginCents: source.marginCents,
+        items: {
+          create: source.items.map((item) => ({
+            category: item.category,
+            description: item.description,
+            supplier: item.supplier,
+            quantity: item.quantity,
+            unitCostCents: item.unitCostCents,
+            unitSaleCents: item.unitSaleCents,
+            totalCostCents: item.totalCostCents,
+            totalSaleCents: item.totalSaleCents,
+          })),
+        },
+      },
+      include: { items: true },
+    })
+  }
+
+  listServices(reservationId?: string) {
+    return this.prisma.reservationService.findMany({
+      where: reservationId ? { reservationId } : undefined,
+      select: {
+        id: true,
+        reservationId: true,
+        category: true,
+        description: true,
+        supplier: true,
+        amountCents: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        reservation: {
+          select: {
+            client: { select: { fullName: true } },
+            trip: { select: { title: true, destination: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    })
+  }
+
+  async updateServiceStatus(id: string, status: ReservationServiceStatus) {
+    const exists = await this.prisma.reservationService.count({ where: { id } })
+    if (!exists) throw new NotFoundException('Serviço não encontrado')
+
+    return this.prisma.reservationService.update({
+      where: { id },
+      data: { status },
+    })
+  }
+
+  listFinancePlans() {
+    return this.prisma.financePlan.findMany({
+      include: {
+        quote: {
+          select: {
+            id: true,
+            title: true,
+            revision: true,
+            status: true,
+          },
+        },
+        reservation: {
+          select: {
+            id: true,
+            status: true,
+            client: { select: { id: true, fullName: true, email: true } },
+            trip: {
+              select: {
+                id: true,
+                title: true,
+                destination: true,
+                departureDate: true,
+              },
+            },
+          },
+        },
+        installments: { orderBy: { sequence: 'asc' } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    })
+  }
+
+  async createFinancePlan(data: CreateFinancePlanDto) {
+    const existing = await this.prisma.financePlan.findUnique({
+      where: { reservationId: data.reservationId },
+      select: { id: true },
+    })
+    if (existing) {
+      throw new ConflictException('Esta reserva já possui um plano financeiro')
+    }
+
+    const quote = await this.prisma.quote.findFirst({
+      where: {
+        reservationId: data.reservationId,
+        status: QuoteStatus.APPROVED,
+      },
+      orderBy: { revision: 'desc' },
+      select: {
+        id: true,
+        totalCents: true,
+      },
+    })
+
+    if (!quote) {
+      throw new BadRequestException('A reserva precisa ter uma cotação aprovada')
+    }
+
+    const downPaymentCents = data.downPaymentCents ?? 0
+    if (downPaymentCents >= quote.totalCents) {
+      throw new BadRequestException('A entrada deve ser menor que o valor total')
+    }
+
+    const remaining = quote.totalCents - downPaymentCents
+    const baseAmount = Math.floor(remaining / data.installmentCount)
+    let remainder = remaining % data.installmentCount
+    const installments: Array<{
+      sequence: number
+      dueDate: Date
+      amountCents: number
+    }> = []
+
+    if (downPaymentCents > 0) {
+      installments.push({
+        sequence: 0,
+        dueDate: new Date(),
+        amountCents: downPaymentCents,
+      })
+    }
+
+    for (let index = 0; index < data.installmentCount; index += 1) {
+      const dueDate = new Date(data.firstDueDate)
+      dueDate.setUTCMonth(dueDate.getUTCMonth() + index)
+
+      const extraCent = remainder > 0 ? 1 : 0
+      if (remainder > 0) remainder -= 1
+
+      installments.push({
+        sequence: index + 1,
+        dueDate,
+        amountCents: baseAmount + extraCent,
+      })
+    }
+
+    return this.prisma.financePlan.create({
+      data: {
+        reservationId: data.reservationId,
+        quoteId: quote.id,
+        totalCents: quote.totalCents,
+        downPaymentCents,
+        installmentCount: data.installmentCount,
+        installments: { create: installments },
+      },
+      include: {
+        quote: true,
+        reservation: {
+          select: {
+            client: { select: { fullName: true, email: true } },
+            trip: { select: { title: true, destination: true } },
+          },
+        },
+        installments: { orderBy: { sequence: 'asc' } },
+      },
+    })
+  }
+
+  async updateInstallment(
+    id: string,
+    status: InstallmentStatus,
+    paymentMethod?: string,
+  ) {
+    const installment = await this.prisma.installment.findUnique({
+      where: { id },
+      select: { id: true },
+    })
+
+    if (!installment) throw new NotFoundException('Parcela não encontrada')
+
+    return this.prisma.installment.update({
+      where: { id },
+      data: {
+        status,
+        paidAt: status === InstallmentStatus.PAID ? new Date() : null,
+        paymentMethod:
+          status === InstallmentStatus.PAID
+            ? paymentMethod?.trim() || 'manual'
+            : null,
+      },
+    })
+  }
+
+  private async assertDraftQuote(quoteId: string) {
+    const quote = await this.prisma.quote.findUnique({
+      where: { id: quoteId },
+      select: { id: true, status: true },
+    })
+
+    if (!quote) throw new NotFoundException('Cotação não encontrada')
+    if (quote.status !== QuoteStatus.DRAFT) {
+      throw new ConflictException('Cotação enviada é imutável. Crie uma nova revisão.')
+    }
+  }
+
+  private async recalculateQuote(quoteId: string) {
+    const quote = await this.prisma.quote.findUnique({
+      where: { id: quoteId },
+      include: { items: true },
+    })
+
+    if (!quote) throw new NotFoundException('Cotação não encontrada')
+
+    const subtotalCostCents = quote.items.reduce(
+      (sum, item) => sum + item.totalCostCents,
+      0,
+    )
+    const subtotalSaleCents = quote.items.reduce(
+      (sum, item) => sum + item.totalSaleCents,
+      0,
+    )
+
+    if (quote.discountCents > subtotalSaleCents) {
+      throw new BadRequestException('O desconto não pode superar o valor da cotação')
+    }
+
+    const totalCents = subtotalSaleCents - quote.discountCents
+    const marginCents = totalCents - subtotalCostCents
+
+    return this.prisma.quote.update({
+      where: { id: quoteId },
+      data: {
+        subtotalCostCents,
+        subtotalSaleCents,
+        totalCents,
+        marginCents,
+      },
+      include: {
+        items: { orderBy: { createdAt: 'asc' } },
+        reservation: {
+          select: {
+            client: { select: { fullName: true, email: true } },
+            trip: { select: { title: true, destination: true } },
+          },
+        },
+      },
+    })
+  }
+}
