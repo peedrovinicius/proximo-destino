@@ -1,60 +1,80 @@
-import { useState } from 'react'
 import {
   CalendarDays,
   CheckCircle2,
-  ChevronRight,
   Clock3,
-  CreditCard,
-  FileText,
-  Hotel,
   MapPin,
   Plane,
   ShieldCheck,
-  Smartphone,
+  Users,
   WalletCards,
 } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { Brand } from '../../components/Brand'
 import { WhatsAppButton } from '../../components/WhatsAppButton'
-import { createPaymentCheckout } from '../../lib/payments'
+import { fetchClientPortal, type ClientPortalData } from '../../lib/clientPortal'
 
 type ClientPortalProps = {
+  accessToken: string
   onLogout: () => void
 }
 
-const installments = [
-  { id: '01', due: '10 out', value: 'R$ 1.280,00', status: 'Pago' },
-  { id: '02', due: '10 nov', value: 'R$ 1.280,00', status: 'Em aberto' },
-  { id: '03', due: '10 dez', value: 'R$ 1.280,00', status: 'Em aberto' },
-]
+const money = new Intl.NumberFormat('pt-BR', {
+  style: 'currency',
+  currency: 'BRL',
+})
 
-export function ClientPortal({ onLogout }: ClientPortalProps) {
-  const [paymentStatus, setPaymentStatus] = useState('')
+const date = new Intl.DateTimeFormat('pt-BR', {
+  dateStyle: 'long',
+})
 
-  async function handlePayment() {
-    setPaymentStatus('Preparando ambiente seguro...')
+const statusLabel: Record<ClientPortalData['status'], string> = {
+  PENDING: 'Aguardando confirmação',
+  CONFIRMED: 'Confirmada',
+  COMPLETED: 'Concluída',
+  CANCELLED: 'Cancelada',
+}
 
-    try {
-      const checkout = await createPaymentCheckout({
-        tripId: 'trip-demo-buenos-aires',
-        installmentId: '02',
-        method: 'pix',
+export function ClientPortal({ accessToken, onLogout }: ClientPortalProps) {
+  const [data, setData] = useState<ClientPortalData | null>(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let active = true
+
+    void fetchClientPortal(accessToken)
+      .then((result) => {
+        if (active) setData(result)
+      })
+      .catch((cause) => {
+        if (active) setError(cause instanceof Error ? cause.message : 'Não foi possível carregar sua viagem.')
       })
 
-      if (checkout.checkoutUrl) {
-        window.location.assign(checkout.checkoutUrl)
-        return
-      }
-
-      if (checkout.pixCopyPaste) {
-        await navigator.clipboard.writeText(checkout.pixCopyPaste)
-        setPaymentStatus('Código PIX copiado.')
-        return
-      }
-
-      setPaymentStatus('Cobrança criada com sucesso.')
-    } catch (error) {
-      setPaymentStatus(error instanceof Error ? error.message : 'Pagamento indisponível.')
+    return () => {
+      active = false
     }
+  }, [accessToken])
+
+  const daysUntil = useMemo(() => {
+    if (!data) return null
+    const departure = new Date(data.trip.departureDate).getTime()
+    return Math.max(0, Math.ceil((departure - Date.now()) / 86_400_000))
+  }, [data])
+
+  if (error) {
+    return (
+      <main className="client-login-panel">
+        <div className="client-login-card">
+          <Brand compact />
+          <h2>Não foi possível abrir sua viagem</h2>
+          <p>{error}</p>
+          <button className="client-login-submit" type="button" onClick={onLogout}>Voltar ao acesso</button>
+        </div>
+      </main>
+    )
+  }
+
+  if (!data) {
+    return <div className="admin-loading">Carregando sua viagem...</div>
   }
 
   return (
@@ -64,65 +84,66 @@ export function ClientPortal({ onLogout }: ClientPortalProps) {
 
         <nav className="client-nav" aria-label="Área do cliente">
           <button className="client-nav-item client-nav-item--active" type="button">Minha viagem</button>
-          <button className="client-nav-item" type="button">Documentos</button>
-          <button className="client-nav-item" type="button">Pagamentos</button>
-          <button className="client-nav-item" type="button">Ajuda</button>
         </nav>
 
         <div className="client-top-actions">
-          <button className="client-avatar" type="button" onClick={onLogout}>MO</button>
+          <button className="text-button" type="button" onClick={onLogout}>Sair</button>
+          <span className="client-avatar">{data.client.fullName.slice(0, 2).toUpperCase()}</span>
         </div>
       </header>
 
       <main className="client-main">
-        <section className="client-hero">
+        <section
+          className="client-hero"
+          style={data.trip.imageUrl ? { backgroundImage: `linear-gradient(90deg, rgba(248,252,255,.98), rgba(248,252,255,.86) 55%, rgba(248,252,255,.56)), url("${data.trip.imageUrl}")` } : undefined}
+        >
           <div className="client-hero-content">
             <span className="eyebrow">Sua próxima viagem</span>
-            <h1>Buenos Aires está chegando.</h1>
-            <p>Todos os detalhes importantes da sua viagem, em um só lugar.</p>
+            <h1>{data.trip.destination} está chegando.</h1>
+            <p>{data.trip.summary || 'Acompanhe aqui os dados confirmados da sua reserva.'}</p>
 
             <div className="trip-countdown">
-              <div><strong>03</strong><span>dias</span></div>
+              <div><strong>{String(daysUntil ?? 0).padStart(2, '0')}</strong><span>dias</span></div>
               <i />
-              <div><strong>07</strong><span>horas</span></div>
+              <div><strong>{data.passengerCount}</strong><span>viajantes</span></div>
               <i />
-              <div><strong>18</strong><span>min</span></div>
+              <div><strong>{statusLabel[data.status]}</strong><span>status</span></div>
             </div>
           </div>
 
           <div className="client-hero-badge">
             <Plane size={22} />
             <div>
-              <strong>Fortaleza → Buenos Aires</strong>
-              <span>03 out · 07:10</span>
+              <strong>{data.trip.origin} → {data.trip.destination}</strong>
+              <span>{date.format(new Date(data.trip.departureDate))}</span>
             </div>
           </div>
         </section>
 
         <section className="client-summary-grid">
           <article className="client-summary-card">
-            <div className="summary-icon"><Plane size={20} /></div>
-            <span>Voo</span>
-            <strong>G3 7684</strong>
-            <small>Check-in disponível</small>
+            <div className="summary-icon"><CalendarDays size={20} /></div>
+            <span>Embarque</span>
+            <strong>{date.format(new Date(data.trip.departureDate))}</strong>
+            <small>{data.trip.returnDate ? `Retorno: ${date.format(new Date(data.trip.returnDate))}` : 'Retorno a confirmar'}</small>
           </article>
           <article className="client-summary-card">
-            <div className="summary-icon"><Hotel size={20} /></div>
-            <span>Hospedagem</span>
-            <strong>CasaSur Palermo</strong>
-            <small>4 noites · café incluso</small>
+            <div className="summary-icon"><Users size={20} /></div>
+            <span>Passageiros</span>
+            <strong>{data.passengerCount}</strong>
+            <small>Vinculados a esta solicitação</small>
           </article>
           <article className="client-summary-card">
             <div className="summary-icon"><WalletCards size={20} /></div>
-            <span>Saldo restante</span>
-            <strong>R$ 2.560,00</strong>
-            <small>2 parcelas em aberto</small>
+            <span>Valor de referência</span>
+            <strong>{data.trip.priceCents == null ? 'A confirmar' : money.format(data.trip.priceCents / 100)}</strong>
+            <small>Por pessoa, conforme cadastro da viagem</small>
           </article>
           <article className="client-summary-card">
             <div className="summary-icon"><ShieldCheck size={20} /></div>
-            <span>Documentação</span>
-            <strong>Completa</strong>
-            <small>Nenhuma pendência</small>
+            <span>Reserva</span>
+            <strong>{statusLabel[data.status]}</strong>
+            <small>ID {data.id.slice(-8).toUpperCase()}</small>
           </article>
         </section>
 
@@ -130,36 +151,24 @@ export function ClientPortal({ onLogout }: ClientPortalProps) {
           <article className="light-panel itinerary-panel">
             <div className="light-panel-heading">
               <div>
-                <span className="eyebrow">Roteiro</span>
-                <h2>Seu primeiro dia</h2>
+                <span className="eyebrow">Viagem</span>
+                <h2>Resumo da operação</h2>
               </div>
-              <CalendarDays size={20} />
+              <Plane size={20} />
             </div>
 
             <div className="timeline">
               <div className="timeline-item">
-                <span className="timeline-time">07:10</span>
-                <i />
-                <div>
-                  <strong>Embarque em Fortaleza</strong>
-                  <span>Aeroporto Pinto Martins · Terminal 1</span>
-                </div>
+                <span className="timeline-time">01</span><i />
+                <div><strong>Solicitação registrada</strong><span>{date.format(new Date(data.createdAt))}</span></div>
               </div>
               <div className="timeline-item">
-                <span className="timeline-time">12:40</span>
-                <i />
-                <div>
-                  <strong>Chegada em Buenos Aires</strong>
-                  <span>Aeroporto Ezeiza · transfer confirmado</span>
-                </div>
+                <span className="timeline-time">02</span><i />
+                <div><strong>Análise da agência</strong><span>{data.status === 'PENDING' ? 'Aguardando confirmação da equipe' : statusLabel[data.status]}</span></div>
               </div>
               <div className="timeline-item">
-                <span className="timeline-time">15:00</span>
-                <i />
-                <div>
-                  <strong>Check-in no hotel</strong>
-                  <span>CasaSur Palermo</span>
-                </div>
+                <span className="timeline-time">03</span><i />
+                <div><strong>Embarque</strong><span>{data.trip.origin} → {data.trip.destination}</span></div>
               </div>
             </div>
           </article>
@@ -167,74 +176,43 @@ export function ClientPortal({ onLogout }: ClientPortalProps) {
           <article className="light-panel documents-panel">
             <div className="light-panel-heading">
               <div>
-                <span className="eyebrow">Documentos</span>
-                <h2>Prontos para viajar</h2>
+                <span className="eyebrow">Cadastro</span>
+                <h2>Seus dados</h2>
               </div>
-              <FileText size={20} />
+              <CheckCircle2 size={20} />
             </div>
-
-            <button className="document-row" type="button">
-              <span><CheckCircle2 size={17} /> Voucher do hotel</span>
-              <ChevronRight size={16} />
-            </button>
-            <button className="document-row" type="button">
-              <span><CheckCircle2 size={17} /> Bilhete aéreo</span>
-              <ChevronRight size={16} />
-            </button>
-            <button className="document-row" type="button">
-              <span><CheckCircle2 size={17} /> Seguro viagem</span>
-              <ChevronRight size={16} />
-            </button>
+            <div className="security-checklist">
+              <span><CheckCircle2 size={15} /> {data.client.fullName}</span>
+              <span><CheckCircle2 size={15} /> {data.client.email || 'E-mail não informado'}</span>
+              <span><CheckCircle2 size={15} /> {data.client.phone || 'Telefone não informado'}</span>
+            </div>
           </article>
 
-          <article className="light-panel payment-panel">
+          <article className="light-panel support-panel">
             <div className="light-panel-heading">
               <div>
-                <span className="eyebrow">Pagamentos</span>
-                <h2>Parcelas da viagem</h2>
+                <span className="eyebrow">Próximos passos</span>
+                <h2>A agência confirma os serviços</h2>
               </div>
-              <CreditCard size={20} />
+              <Clock3 size={20} />
             </div>
-
-            <div className="installment-list">
-              {installments.map((item) => (
-                <div className="installment-row" key={item.id}>
-                  <div>
-                    <strong>Parcela {item.id}</strong>
-                    <span>Vencimento {item.due}</span>
-                  </div>
-                  <strong>{item.value}</strong>
-                  <em className={item.status === 'Pago' ? 'paid' : ''}>{item.status}</em>
-                </div>
-              ))}
-            </div>
-
-            <button className="pay-button" type="button" onClick={handlePayment}>
-              <Smartphone size={17} />
-              Pagar próxima parcela
-            </button>
-            <small className="payment-note">PIX, cartão e boleto serão processados pelo provedor de pagamento no ambiente seguro.</small>
-            {paymentStatus && <div className="payment-feedback" role="status">{paymentStatus}</div>}
+            <p>Passagens, hospedagem, transfers, documentos e condições financeiras serão liberados conforme a reserva avançar. Nenhum item não confirmado é exibido como contratado.</p>
           </article>
 
           <article className="light-panel support-panel">
             <div className="light-panel-heading">
               <div>
                 <span className="eyebrow">Assistência</span>
-                <h2>Você não viaja sozinho</h2>
+                <h2>Fale com a Próximo Destino</h2>
               </div>
-              <Clock3 size={20} />
+              <MapPin size={20} />
             </div>
-            <p>Precisa alterar um serviço, confirmar um horário ou falar com a agência?</p>
-            <div className="support-info">
-              <span><MapPin size={16} /> Atendimento Próximo Destino</span>
-              <span><Clock3 size={16} /> Seg a sáb · 08h às 20h</span>
-            </div>
+            <p>Use o atendimento da agência para ajustes, dúvidas ou confirmação de serviços.</p>
           </article>
         </section>
       </main>
 
-      <WhatsAppButton />
+      <WhatsAppButton message={`Olá! Preciso de ajuda com minha reserva ${data.id.slice(-8).toUpperCase()}.`} />
     </div>
   )
 }
