@@ -1655,3 +1655,14 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
     width: 100%;
   }
 }
+
+.admin-login-error {
+  margin: 4px 0 0;
+  color: #b42318;
+  font-size: .88rem;
+  line-height: 1.45;
+}
+.admin-login-submit:disabled {
+  cursor: wait;
+  opacity: .65;
+}
