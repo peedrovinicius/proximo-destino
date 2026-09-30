@@ -209,6 +209,12 @@ export class MfaService {
         output += alphabet[(value >>> (bits - 5)) & 31]
         bits -= 5
       }
+
+      if (bits === 0) {
+        value = 0
+      } else {
+        value &= (1 << bits) - 1
+      }
     }
 
     if (bits > 0) output += alphabet[(value << (5 - bits)) & 31]
@@ -229,6 +235,12 @@ export class MfaService {
       if (bits >= 8) {
         bytes.push((value >>> (bits - 8)) & 255)
         bits -= 8
+
+        if (bits === 0) {
+          value = 0
+        } else {
+          value &= (1 << bits) - 1
+        }
       }
     }
 
