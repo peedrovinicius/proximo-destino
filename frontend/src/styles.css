@@ -2234,3 +2234,640 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
     font-size: 17px;
   }
 }
+
+.commercial-shell {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.commercial-create-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, .38fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.commercial-list-panel,
+.travel-builder,
+.finance-plan-card,
+.client-quote-panel,
+.client-commercial-section {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 7px 22px rgba(40,70,96,.035);
+}
+
+.commercial-list-panel,
+.travel-builder,
+.finance-plan-card,
+.client-quote-panel,
+.client-commercial-section {
+  padding: 22px;
+}
+
+.admin-form-panel textarea {
+  min-height: 92px;
+  resize: vertical;
+  border: 1px solid #dfe7ee;
+  border-radius: 10px;
+  padding: 11px;
+  color: #183044;
+  background: #fff;
+  font: inherit;
+  font-size: 9px;
+}
+
+.commercial-field {
+  display: grid;
+  gap: 6px;
+  color: #637789;
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.quote-selector-list {
+  display: grid;
+}
+
+.quote-selector {
+  display: flex;
+  width: 100%;
+  min-height: 58px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 12px;
+  border: 0;
+  border-top: 1px solid #edf1f4;
+  color: #183044;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.quote-selector:first-child {
+  border-top: 0;
+}
+
+.quote-selector--active {
+  border-radius: 10px;
+  background: #edf5fd;
+}
+
+.quote-selector strong,
+.quote-selector span {
+  display: block;
+}
+
+.quote-selector strong {
+  font-size: 9px;
+}
+
+.quote-selector span {
+  margin-top: 3px;
+  color: #7c8d9b;
+  font-size: 8px;
+}
+
+.quote-selector em,
+.quote-status-badge {
+  border-radius: 999px;
+  padding: 6px 9px;
+  color: #45647d;
+  background: #f1f5f8;
+  font-size: 7px;
+  font-style: normal;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.travel-builder-heading,
+.finance-plan-heading,
+.client-quote-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.travel-builder-heading h2,
+.finance-plan-heading h3,
+.client-quote-heading h2,
+.client-commercial-section h2 {
+  margin: 5px 0 0;
+  color: #183044;
+  font: 700 18px 'Manrope', sans-serif;
+  letter-spacing: -.03em;
+}
+
+.travel-builder-heading p,
+.finance-plan-heading p,
+.client-quote-heading p {
+  margin: 5px 0 0;
+  color: #778999;
+  font-size: 8px;
+}
+
+.quote-totals-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 9px;
+  margin-top: 18px;
+}
+
+.quote-totals-grid article {
+  padding: 14px;
+  border-radius: 12px;
+  background: #f7fafc;
+}
+
+.quote-totals-grid span,
+.quote-totals-grid strong,
+.quote-totals-grid small {
+  display: block;
+}
+
+.quote-totals-grid span {
+  color: #80909e;
+  font-size: 7px;
+  text-transform: uppercase;
+}
+
+.quote-totals-grid strong {
+  margin-top: 5px;
+  font: 700 14px 'Manrope', sans-serif;
+}
+
+.quote-totals-grid small {
+  margin-top: 2px;
+  color: var(--green);
+  font-size: 8px;
+}
+
+.builder-item-form {
+  display: grid;
+  grid-template-columns: 110px minmax(170px, 1.5fr) minmax(140px, 1fr) 70px 110px 110px auto;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.builder-item-form input,
+.builder-item-form select,
+.service-row select,
+.finance-installment-row select {
+  min-width: 0;
+  height: 40px;
+  border: 1px solid #dfe7ee;
+  border-radius: 9px;
+  padding: 0 10px;
+  color: #183044;
+  background: #fff;
+  font-size: 8px;
+}
+
+.builder-item-form button,
+.builder-actions button,
+.client-quote-actions button {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 9px;
+  padding: 0 14px;
+  color: #fff;
+  background: #2677d9;
+  font-size: 8px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.builder-item-form button:disabled,
+.builder-actions button:disabled,
+.client-quote-actions button:disabled {
+  opacity: .5;
+  cursor: wait;
+}
+
+.builder-items {
+  display: grid;
+  margin-top: 16px;
+}
+
+.builder-item-row {
+  display: grid;
+  min-height: 64px;
+  grid-template-columns: 34px minmax(0, 1fr) 110px 110px 34px;
+  align-items: center;
+  gap: 10px;
+  border-top: 1px solid #edf1f4;
+}
+
+.builder-item-row:first-child {
+  border-top: 0;
+}
+
+.builder-item-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 9px;
+  color: #2677d9;
+  background: #edf5fd;
+}
+
+.builder-item-row strong,
+.builder-item-row span,
+.builder-item-row small {
+  display: block;
+}
+
+.builder-item-row strong {
+  font-size: 9px;
+}
+
+.builder-item-row span,
+.builder-item-row small {
+  margin-top: 3px;
+  color: #81909d;
+  font-size: 7px;
+}
+
+.builder-item-row > button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  color: #9c5550;
+  background: #fff1f0;
+  cursor: pointer;
+}
+
+.builder-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.builder-actions .secondary,
+.client-quote-actions .secondary {
+  border: 1px solid #dbe5ec;
+  color: #536d82;
+  background: #fff;
+}
+
+.approved-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #1f805f;
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.services-panel {
+  margin-top: 0;
+}
+
+.service-row {
+  display: grid;
+  min-height: 62px;
+  grid-template-columns: minmax(0, 1fr) 130px 130px;
+  align-items: center;
+  gap: 12px;
+  border-top: 1px solid #edf1f4;
+}
+
+.service-row:first-child {
+  border-top: 0;
+}
+
+.service-row strong,
+.service-row span {
+  display: block;
+}
+
+.service-row strong {
+  font-size: 9px;
+}
+
+.service-row span {
+  margin-top: 3px;
+  color: #7c8c9a;
+  font-size: 8px;
+}
+
+.finance-plans-list {
+  display: grid;
+  gap: 12px;
+}
+
+.finance-plan-heading > div:last-child {
+  text-align: right;
+}
+
+.finance-plan-heading small,
+.finance-plan-heading strong {
+  display: block;
+}
+
+.finance-plan-heading > div:last-child small {
+  color: #84939f;
+  font-size: 7px;
+}
+
+.finance-plan-heading > div:last-child strong {
+  margin-top: 4px;
+  color: #174d84;
+  font: 700 21px 'Manrope', sans-serif;
+}
+
+.finance-plan-summary {
+  display: flex;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+.finance-plan-summary span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  color: #63798b;
+  background: #f7fafc;
+  font-size: 8px;
+}
+
+.finance-installments {
+  display: grid;
+  margin-top: 14px;
+}
+
+.finance-installment-row {
+  display: grid;
+  min-height: 58px;
+  grid-template-columns: minmax(0, 1fr) 130px 130px;
+  align-items: center;
+  gap: 12px;
+  border-top: 1px solid #edf1f4;
+}
+
+.finance-installment-row strong,
+.finance-installment-row span {
+  display: block;
+}
+
+.finance-installment-row strong {
+  font-size: 9px;
+}
+
+.finance-installment-row span {
+  margin-top: 3px;
+  color: #7f8f9c;
+  font-size: 8px;
+}
+
+.client-quote-panel {
+  margin-top: 12px;
+}
+
+.client-quote-status {
+  border-radius: 999px;
+  padding: 7px 10px;
+  color: #775f25;
+  background: #fff7dd;
+  font-size: 8px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.client-quote-status.approved {
+  color: #1f805f;
+  background: #eaf8f2;
+}
+
+.client-quote-items {
+  display: grid;
+  margin-top: 18px;
+}
+
+.client-quote-item {
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-top: 1px solid #edf1f4;
+}
+
+.client-quote-item:first-child {
+  border-top: 0;
+}
+
+.client-quote-item strong,
+.client-quote-item span {
+  display: block;
+}
+
+.client-quote-item strong {
+  font-size: 9px;
+}
+
+.client-quote-item span {
+  margin-top: 3px;
+  color: #83919d;
+  font-size: 8px;
+}
+
+.client-quote-total {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.client-quote-total > div {
+  padding: 13px;
+  border-radius: 11px;
+  background: #f7fafc;
+}
+
+.client-quote-total > div.final {
+  background: #edf5fd;
+}
+
+.client-quote-total span,
+.client-quote-total strong {
+  display: block;
+}
+
+.client-quote-total span {
+  color: #7b8c9b;
+  font-size: 7px;
+}
+
+.client-quote-total strong {
+  margin-top: 4px;
+  font: 700 15px 'Manrope', sans-serif;
+}
+
+.client-quote-notes {
+  margin: 14px 0 0;
+  color: #687d8f;
+  font-size: 9px;
+  line-height: 1.6;
+}
+
+.client-quote-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.client-quote-panel--empty {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.client-quote-panel--empty > svg {
+  color: #7f94a6;
+}
+
+.client-quote-panel--empty h2 {
+  margin: 5px 0 4px;
+}
+
+.client-quote-panel--empty p {
+  margin: 0;
+  color: #7a8b99;
+  font-size: 9px;
+}
+
+.client-commercial-section {
+  margin-top: 12px;
+}
+
+.client-service-list {
+  display: grid;
+}
+
+.client-service-row {
+  display: grid;
+  min-height: 58px;
+  grid-template-columns: minmax(0, 1fr) 140px 100px;
+  align-items: center;
+  gap: 12px;
+  border-top: 1px solid #edf1f4;
+}
+
+.client-service-row:first-child {
+  border-top: 0;
+}
+
+.client-service-row strong,
+.client-service-row span {
+  display: block;
+}
+
+.client-service-row strong {
+  font-size: 9px;
+}
+
+.client-service-row span {
+  margin-top: 3px;
+  color: #7e8f9c;
+  font-size: 8px;
+}
+
+.client-service-row em {
+  color: #63798b;
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.client-finance-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.client-finance-summary > div {
+  padding: 13px;
+  border-radius: 11px;
+  background: #f7fafc;
+}
+
+.client-finance-summary span,
+.client-finance-summary strong {
+  display: block;
+}
+
+.client-finance-summary span {
+  color: #82919e;
+  font-size: 7px;
+}
+
+.client-finance-summary strong {
+  margin-top: 4px;
+  font: 700 15px 'Manrope', sans-serif;
+}
+
+@media (max-width: 1180px) {
+  .builder-item-form {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .builder-item-form button {
+    grid-column: span 3;
+  }
+
+  .quote-totals-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 800px) {
+  .commercial-create-grid,
+  .quote-totals-grid,
+  .client-quote-total,
+  .client-finance-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .builder-item-form {
+    grid-template-columns: 1fr;
+  }
+
+  .builder-item-form button {
+    grid-column: auto;
+  }
+
+  .builder-item-row,
+  .service-row,
+  .finance-installment-row,
+  .client-service-row {
+    grid-template-columns: 1fr;
+    padding: 12px 0;
+  }
+
+  .travel-builder-heading,
+  .finance-plan-heading,
+  .client-quote-heading {
+    flex-direction: column;
+  }
+
+  .client-quote-actions,
+  .finance-plan-summary {
+    flex-direction: column;
+  }
+}
