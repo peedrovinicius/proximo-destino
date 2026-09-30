@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { Brand } from '../../components/Brand'
 import { WhatsAppButton } from '../../components/WhatsAppButton'
+import { openWhatsApp } from '../../lib/whatsapp'
 import {
   availableDestinations,
   availableOrigins,
@@ -41,8 +42,11 @@ export function HomePage({ onClientAccess, onAdminAccess }: HomePageProps) {
 
   const destinations = useMemo(() => availableDestinations(origin), [origin])
   const results = useMemo(
-    () => (searched ? findTrips(origin, destination) : searchableTrips().slice(0, 6)),
-    [destination, origin, searched],
+    () =>
+      searched
+        ? findTrips(origin, destination, departure)
+        : findTrips(origin, '', '').slice(0, 6),
+    [departure, destination, origin, searched],
   )
 
   function handleOriginChange(value: string) {
@@ -111,6 +115,7 @@ export function HomePage({ onClientAccess, onAdminAccess }: HomePageProps) {
                 type="date"
                 value={departure}
                 onChange={(event) => setDeparture(event.target.value)}
+                aria-label="Data de ida"
               />
             </label>
 
@@ -147,8 +152,10 @@ export function HomePage({ onClientAccess, onAdminAccess }: HomePageProps) {
               <h2>{searched ? 'Viagens encontradas' : 'Escolha seu próximo destino'}</h2>
               <p>
                 {searched
-                  ? `${results.length} opção(ões) disponível(is) para a sua busca.`
-                  : 'Viagens que já estão ativas ou programadas pela Próximo Destino.'}
+                  ? results.length === 1
+                    ? '1 viagem disponível para a sua busca.'
+                    : `${results.length} viagens disponíveis para a sua busca.`
+                  : `Viagens ativas ou programadas saindo de ${origin}.`}
               </p>
             </div>
             <button type="button" onClick={() => { setDestination(''); setSearched(false) }}>
@@ -231,7 +238,10 @@ export function HomePage({ onClientAccess, onAdminAccess }: HomePageProps) {
             <h2>Quer ajuda para escolher?</h2>
             <p>Converse com a agência e monte sua viagem com atendimento personalizado.</p>
           </div>
-          <button type="button">
+          <button
+            type="button"
+            onClick={() => openWhatsApp('Olá! Gostaria de ajuda para escolher uma viagem disponível.')}
+          >
             <MessageCircle size={18} />
             Falar com a Próximo Destino
           </button>
