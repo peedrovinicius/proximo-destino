@@ -64,7 +64,13 @@ export class ClientsService {
       include: {
         companions: true,
         reservations: {
-          include: { trip: true },
+          select: {
+            id: true,
+            status: true,
+            passengerCount: true,
+            createdAt: true,
+            trip: true,
+          },
           orderBy: { createdAt: 'desc' },
         },
       },
