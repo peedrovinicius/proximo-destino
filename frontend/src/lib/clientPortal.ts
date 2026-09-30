@@ -23,6 +23,51 @@ export type ClientPortalData = {
     imageUrl: string | null
     status: string
   }
+  quotes: Array<{
+    id: string
+    revision: number
+    status: 'SENT' | 'APPROVED'
+    title: string
+    validUntil: string | null
+    notes: string | null
+    subtotalSaleCents: number
+    discountCents: number
+    totalCents: number
+    sentAt: string | null
+    approvedAt: string | null
+    items: Array<{
+      id: string
+      category: 'FLIGHT' | 'HOTEL' | 'TRANSFER' | 'TOUR' | 'INSURANCE' | 'OTHER'
+      description: string
+      supplier: string | null
+      quantity: number
+      unitSaleCents: number
+      totalSaleCents: number
+    }>
+  }>
+  services: Array<{
+    id: string
+    category: 'FLIGHT' | 'HOTEL' | 'TRANSFER' | 'TOUR' | 'INSURANCE' | 'OTHER'
+    description: string
+    supplier: string | null
+    amountCents: number
+    status: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED'
+  }>
+  financePlan: {
+    id: string
+    totalCents: number
+    downPaymentCents: number
+    installmentCount: number
+    installments: Array<{
+      id: string
+      sequence: number
+      dueDate: string
+      amountCents: number
+      status: 'OPEN' | 'PAID' | 'OVERDUE' | 'CANCELLED'
+      paidAt: string | null
+      paymentMethod: string | null
+    }>
+  } | null
 }
 
 async function parseError(response: Response) {
@@ -55,4 +100,24 @@ export async function fetchClientPortal(accessToken: string) {
 
   if (!response.ok) throw new Error(await parseError(response))
   return response.json() as Promise<ClientPortalData>
+}
+
+export async function approveClientQuote(accessToken: string, quoteId: string) {
+  const response = await fetch(`${API_BASE}/client/quotes/${quoteId}/approve`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  if (!response.ok) throw new Error(await parseError(response))
+  return response.json()
+}
+
+export async function rejectClientQuote(accessToken: string, quoteId: string) {
+  const response = await fetch(`${API_BASE}/client/quotes/${quoteId}/reject`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  if (!response.ok) throw new Error(await parseError(response))
+  return response.json()
 }
