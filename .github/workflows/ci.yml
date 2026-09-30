@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend build and smoke test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: proximo_destino
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d proximo_destino"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/proximo_destino?schema=public
+      FRONTEND_ORIGIN: http://localhost:5173
+      NODE_ENV: test
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install
+        run: npm install --no-audit --no-fund
+
+      - name: Generate Prisma client
+        run: npm run prisma:generate
+
+      - name: Apply migrations
+        run: npm run prisma:deploy
+
+      - name: Build
+        run: npm run build
+
+      - name: Smoke test health and readiness
+        shell: bash
+        run: |
+          nohup npm run start:prod >/tmp/proximo-destino-api.log 2>&1 &
+          api_pid=$!
+          trap 'cat /tmp/proximo-destino-api.log; kill "$api_pid" 2>/dev/null || true' EXIT
+
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:3000/api/v1/readiness >/tmp/readiness.json; then
+              cat /tmp/readiness.json
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "API não ficou pronta dentro da janela do smoke test."
+          exit 1
+
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install
+        run: npm install --no-audit --no-fund
+
+      - name: Build
+        env:
+          VITE_API_URL: http://localhost:3000/api/v1
+        run: npm run build
