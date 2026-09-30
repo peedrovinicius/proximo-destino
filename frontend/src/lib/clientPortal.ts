@@ -53,6 +53,13 @@ export type ClientPortalData = {
     amountCents: number
     status: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED'
   }>
+  documents: Array<{
+    id: string
+    type: 'TRAVEL_VOUCHER' | 'PURCHASE_RECEIPT'
+    version: number
+    documentNumber: string
+    issuedAt: string
+  }>
   financePlan: {
     id: string
     totalCents: number
@@ -120,4 +127,22 @@ export async function rejectClientQuote(accessToken: string, quoteId: string) {
 
   if (!response.ok) throw new Error(await parseError(response))
   return response.json()
+}
+
+export async function openClientDocumentPdf(
+  accessToken: string,
+  documentId: string,
+) {
+  const response = await fetch(
+    `${API_BASE}/client/documents/${encodeURIComponent(documentId)}/pdf`,
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  )
+
+  if (!response.ok) throw new Error(await parseError(response))
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  window.open(url, '_blank', 'noopener,noreferrer')
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
