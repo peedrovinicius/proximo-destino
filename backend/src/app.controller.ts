@@ -1,6 +1,7 @@
 import { Controller, Get, ServiceUnavailableException } from '@nestjs/common'
 import { SkipThrottle } from '@nestjs/throttler'
 import { PrismaService } from './prisma/prisma.service'
+import { RELEASE } from './release'
 
 @Controller()
 export class AppController {
@@ -11,8 +12,8 @@ export class AppController {
   health() {
     return {
       status: 'ok',
-      service: 'proximo-destino-api',
-      version: '0.4.0',
+      service: RELEASE.service,
+      version: RELEASE.version,
     }
   }
 
@@ -23,12 +24,18 @@ export class AppController {
       await this.prisma.$queryRawUnsafe('SELECT 1')
       return {
         status: 'ready',
-        service: 'proximo-destino-api',
+        service: RELEASE.service,
         database: 'ok',
-        version: '0.4.0',
+        version: RELEASE.version,
       }
     } catch {
       throw new ServiceUnavailableException('Banco de dados indisponível')
     }
+  }
+
+  @Get('system/release')
+  @SkipThrottle()
+  release() {
+    return RELEASE
   }
 }
