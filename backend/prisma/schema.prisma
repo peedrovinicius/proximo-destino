@@ -30,21 +30,73 @@ enum ReservationStatus {
 }
 
 model User {
-  id                  String    @id @default(cuid())
-  email               String    @unique
-  passwordHash        String
-  refreshTokenHash    String?
-  role                 UserRole
-  isActive             Boolean   @default(true)
-  failedLoginAttempts  Int       @default(0)
-  lockedUntil          DateTime?
-  lastLoginAt          DateTime?
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  id                        String    @id @default(cuid())
+  email                     String    @unique
+  passwordHash              String
+  refreshTokenHash          String?
+  role                      UserRole
+  isActive                  Boolean   @default(true)
+  failedLoginAttempts       Int       @default(0)
+  lockedUntil               DateTime?
+  lastLoginAt               DateTime?
+  mfaEnabled                Boolean   @default(false)
+  mfaSecretEncrypted        String?
+  mfaPendingSecretEncrypted String?
+  mfaEnrolledAt             DateTime?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
 
-  client Client?
+  client            Client?
+  authSessions      AuthSession[]
+  mfaRecoveryCodes  MfaRecoveryCode[]
+  authAuditEvents   AuthAuditEvent[]
 
   @@index([role, isActive])
+}
+
+model AuthSession {
+  id               String    @id @default(cuid())
+  userId           String
+  refreshTokenHash String
+  userAgentHash    String?
+  ipHash           String?
+  createdAt        DateTime  @default(now())
+  lastSeenAt       DateTime  @default(now())
+  expiresAt        DateTime
+  revokedAt        DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+}
+
+model MfaRecoveryCode {
+  id        String    @id @default(cuid())
+  userId    String
+  codeHash  String
+  createdAt DateTime  @default(now())
+  usedAt    DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, usedAt])
+}
+
+model AuthAuditEvent {
+  id            String   @id @default(cuid())
+  userId        String?
+  eventType     String
+  emailHash     String?
+  ipHash        String?
+  userAgentHash String?
+  metadata      Json?
+  createdAt     DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([eventType, createdAt])
 }
 
 model Client {
