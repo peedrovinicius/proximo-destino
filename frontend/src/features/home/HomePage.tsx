@@ -1,4 +1,4 @@
-import { type FormEvent, useMemo, useState } from 'react'
+import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import {
   ArrowRight,
   CalendarDays,
@@ -13,18 +13,17 @@ import {
 } from 'lucide-react'
 import { Brand } from '../../components/Brand'
 import { WhatsAppButton } from '../../components/WhatsAppButton'
+import { fetchPublicTrips, type PublicTrip } from '../../lib/publicApi'
 import { openWhatsApp } from '../../lib/whatsapp'
-import {
-  availableDestinations,
-  availableOrigins,
-  findTrips,
-  searchableTrips,
-} from '../../data/publicTrips'
+import { TripDetailsPage } from './TripDetailsPage'
 
 type HomePageProps = {
   onClientAccess: () => void
   onAdminAccess: () => void
 }
+
+const fallbackImage =
+  'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=84'
 
 const money = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -33,31 +32,109 @@ const money = new Intl.NumberFormat('pt-BR', {
 })
 
 export function HomePage({ onClientAccess, onAdminAccess }: HomePageProps) {
-  const origins = availableOrigins()
-  const [origin, setOrigin] = useState(origins[0] ?? '')
+  const [catalog, setCatalog] = useState<PublicTrip[]>([])
+  const [results, setResults] = useState<PublicTrip[]>([])
+  const [origin, setOrigin] = useState('')
   const [destination, setDestination] = useState('')
   const [departure, setDeparture] = useState('')
   const [passengers, setPassengers] = useState('2')
   const [searched, setSearched] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [selectedTripId, setSelectedTripId] = useState<string | null>(null)
 
-  const destinations = useMemo(() => availableDestinations(origin), [origin])
-  const results = useMemo(
-    () =>
-      searched
-        ? findTrips(origin, destination, departure)
-        : findTrips(origin, '', '').slice(0, 6),
-    [departure, destination, origin, searched],
+  useEffect(() => {
+    let active = true
+
+    void fetchPublicTrips()
+      .then((items) => {
+        if (!active) return
+        setCatalog(items)
+        setResults(items.slice(0, 6))
+        const firstOrigin = [...new Set(items.map((trip) => trip.origin))].sort()[0]
+        if (firstOrigin) setOrigin(firstOrigin)
+      })
+      .catch((cause) => {
+        if (active) {
+          setError(cause instanceof Error ? cause.message : 'Não foi possível carregar as viagens.')
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const origins = useMemo(
+    () => [...new Set(catalog.map((trip) => trip.origin))].sort(),
+    [catalog],
   )
+
+  const destinations = useMemo(
+    () => [
+      ...new Set(
+        catalog
+          .filter((trip) => !origin || trip.origin === origin)
+          .map((trip) => trip.destination),
+      ),
+    ].sort(),
+    [catalog, origin],
+  )
+
+  if (selectedTripId) {
+    return (
+      <TripDetailsPage
+        tripId={selectedTripId}
+        defaultPassengers={Number(passengers)}
+        onBack={() => setSelectedTripId(null)}
+        onClientAccess={onClientAccess}
+      />
+    )
+  }
 
   function handleOriginChange(value: string) {
     setOrigin(value)
     setDestination('')
     setSearched(false)
+    setResults(
+      catalog
+        .filter((trip) => !value || trip.origin === value)
+        .slice(0, 6),
+    )
   }
 
-  function handleSearch(event: FormEvent) {
+  async function handleSearch(event: FormEvent) {
     event.preventDefault()
-    setSearched(true)
+    setLoading(true)
+    setError('')
+
+    try {
+      const items = await fetchPublicTrips({
+        origin: origin || undefined,
+        destination: destination || undefined,
+        departureDate: departure || undefined,
+      })
+      setResults(items)
+      setSearched(true)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Não foi possível concluir a busca.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function showAll() {
+    setDestination('')
+    setDeparture('')
+    setSearched(false)
+    setResults(
+      catalog
+        .filter((trip) => !origin || trip.origin === origin)
+        .slice(0, 6),
+    )
   }
 
   return (
@@ -90,13 +167,14 @@ export function HomePage({ onClientAccess, onAdminAccess }: HomePageProps) {
           <div className="public-hero-copy">
             <span className="public-kicker">Próximo Destino Turismo e Viagens</span>
             <h1>Para onde você quer ir agora?</h1>
-            <p>Escolha uma viagem disponível e deixe a agência cuidar do restante.</p>
+            <p>Escolha uma viagem cadastrada pela agência e solicite sua reserva online.</p>
           </div>
 
           <form className="travel-search-card" onSubmit={handleSearch}>
             <label>
               <span><MapPin size={15} /> Saindo de</span>
               <select value={origin} onChange={(event) => handleOriginChange(event.target.value)}>
+                <option value="">Todas as origens</option>
                 {origins.map((item) => <option key={item}>{item}</option>)}
               </select>
             </label>
@@ -130,9 +208,9 @@ export function HomePage({ onClientAccess, onAdminAccess }: HomePageProps) {
               </select>
             </label>
 
-            <button className="travel-search-submit" type="submit">
+            <button className="travel-search-submit" type="submit" disabled={loading}>
               <Search size={17} />
-              Buscar viagem
+              {loading ? 'Buscando...' : 'Buscar viagem'}
             </button>
           </form>
         </section>
@@ -140,8 +218,8 @@ export function HomePage({ onClientAccess, onAdminAccess }: HomePageProps) {
         <section className="availability-note">
           <ShieldCheck size={17} />
           <div>
-            <strong>Busca vinculada à operação da agência</strong>
-            <span>Somente destinos com viagens ativas ou programadas são exibidos.</span>
+            <strong>Catálogo conectado à operação da agência</strong>
+            <span>Somente viagens ativas ou programadas no banco de produção são exibidas.</span>
           </div>
         </section>
 
@@ -155,61 +233,78 @@ export function HomePage({ onClientAccess, onAdminAccess }: HomePageProps) {
                   ? results.length === 1
                     ? '1 viagem disponível para a sua busca.'
                     : `${results.length} viagens disponíveis para a sua busca.`
-                  : `Viagens ativas ou programadas saindo de ${origin}.`}
+                  : origin
+                    ? `Viagens ativas ou programadas saindo de ${origin}.`
+                    : 'Viagens ativas ou programadas pela agência.'}
               </p>
             </div>
-            <button type="button" onClick={() => { setDestination(''); setSearched(false) }}>
+            <button type="button" onClick={showAll}>
               Ver todas
               <ArrowRight size={15} />
             </button>
           </div>
 
-          <div className="public-destination-grid">
-            {results.map((trip) => (
-              <article className="public-destination-card" key={trip.id}>
-                <div
-                  className="public-destination-image"
-                  style={{ backgroundImage: `url(${trip.image})` }}
-                >
-                  <span>{trip.tag}</span>
-                  <em>{trip.status === 'ACTIVE' ? 'Disponível agora' : 'Programada'}</em>
-                </div>
+          {error ? <div className="admin-error" role="alert">{error}</div> : null}
 
-                <div className="public-destination-content">
-                  <div className="public-route">
-                    <div>
-                      <small>{trip.origin}</small>
-                      <strong>{trip.destination}</strong>
+          <div className="public-destination-grid" id="viagens">
+            {results.map((trip) => {
+              const nights = trip.returnDate
+                ? Math.max(
+                    0,
+                    Math.round(
+                      (new Date(trip.returnDate).getTime() -
+                        new Date(trip.departureDate).getTime()) /
+                        86_400_000,
+                    ),
+                  )
+                : null
+
+              return (
+                <article className="public-destination-card" key={trip.id}>
+                  <div
+                    className="public-destination-image"
+                    style={{ backgroundImage: `url(${trip.imageUrl || fallbackImage})` }}
+                  >
+                    <span>{trip.title}</span>
+                    <em>{trip.status === 'ACTIVE' ? 'Disponível agora' : 'Programada'}</em>
+                  </div>
+
+                  <div className="public-destination-content">
+                    <div className="public-route">
+                      <div>
+                        <small>{trip.origin}</small>
+                        <strong>{trip.destination}</strong>
+                      </div>
+                      <Plane size={18} />
                     </div>
-                    <Plane size={18} />
-                  </div>
 
-                  <div className="public-trip-meta">
-                    <span><CalendarDays size={14} /> {new Date(`${trip.departureDate}T12:00:00`).toLocaleDateString('pt-BR')}</span>
-                    <span>{trip.nights} noites</span>
-                  </div>
-
-                  <div className="public-price">
-                    <div>
-                      <small>A partir de</small>
-                      <strong>{money.format(trip.priceFrom)}</strong>
-                      <span>por pessoa</span>
+                    <div className="public-trip-meta">
+                      <span><CalendarDays size={14} /> {new Date(trip.departureDate).toLocaleDateString('pt-BR')}</span>
+                      <span>{nights == null ? 'Retorno a confirmar' : `${nights} noites`}</span>
                     </div>
-                    <button type="button" onClick={onClientAccess}>
-                      Ver viagem
-                      <ChevronRight size={15} />
-                    </button>
+
+                    <div className="public-price">
+                      <div>
+                        <small>A partir de</small>
+                        <strong>{trip.priceCents == null ? 'Sob consulta' : money.format(trip.priceCents / 100)}</strong>
+                        <span>por pessoa</span>
+                      </div>
+                      <button type="button" onClick={() => setSelectedTripId(trip.id)}>
+                        Ver viagem
+                        <ChevronRight size={15} />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              </article>
-            ))}
+                </article>
+              )
+            })}
           </div>
 
-          {results.length === 0 && (
+          {!loading && results.length === 0 && (
             <div className="empty-trips">
               <Sparkles size={23} />
               <h3>Nenhuma viagem disponível para essa combinação.</h3>
-              <p>Escolha outro destino. Rotas sem operação ativa não aparecem na pesquisa.</p>
+              <p>Quando a agência publicar uma viagem ativa ou programada, ela aparecerá aqui automaticamente.</p>
             </div>
           )}
         </section>
@@ -218,17 +313,17 @@ export function HomePage({ onClientAccess, onAdminAccess }: HomePageProps) {
           <article>
             <span>01</span>
             <h3>Escolha</h3>
-            <p>Veja apenas destinos que a agência realmente tem operação ativa ou já programada.</p>
+            <p>Veja somente viagens que existem no sistema operacional da agência.</p>
           </article>
           <article>
             <span>02</span>
-            <h3>Reserve</h3>
-            <p>A agência organiza passagem, hospedagem, transfer, passeios e condições de pagamento.</p>
+            <h3>Solicite</h3>
+            <p>Envie seus dados e receba um código individual para acompanhar a solicitação.</p>
           </article>
           <article>
             <span>03</span>
             <h3>Acompanhe</h3>
-            <p>Depois da contratação, roteiro, documentos e parcelas ficam no seu portal privado.</p>
+            <p>A situação da reserva e os dados confirmados ficam no portal privado do viajante.</p>
           </article>
         </section>
 
