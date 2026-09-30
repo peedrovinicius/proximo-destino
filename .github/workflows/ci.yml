@@ -12,6 +12,7 @@ jobs:
   backend:
     name: Backend build and smoke test
     runs-on: ubuntu-latest
+    timeout-minutes: 12
 
     services:
       postgres:
@@ -32,6 +33,11 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/proximo_destino?schema=public
       FRONTEND_ORIGIN: http://localhost:5173
       NODE_ENV: test
+      JWT_ACCESS_SECRET: ci-access-secret-not-for-production
+      JWT_REFRESH_SECRET: ci-refresh-secret-not-for-production
+      JWT_MFA_SECRET: ci-mfa-secret-not-for-production
+      AUDIT_HASH_KEY: ci-audit-hash-key-not-for-production
+      MFA_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
 
     defaults:
       run:
@@ -52,11 +58,17 @@ jobs:
       - name: Generate Prisma client
         run: npm run prisma:generate
 
+      - name: Validate Prisma schema
+        run: npx prisma validate
+
       - name: Apply migrations
         run: npm run prisma:deploy
 
       - name: Build
         run: npm run build
+
+      - name: Unit tests
+        run: npm run test:unit
 
       - name: Smoke test health and readiness
         shell: bash
@@ -79,6 +91,7 @@ jobs:
   frontend:
     name: Frontend build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     defaults:
       run:
