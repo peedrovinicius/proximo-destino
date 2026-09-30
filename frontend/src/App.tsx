@@ -11,6 +11,7 @@ type Screen = 'home' | 'client-login' | 'client' | 'admin-login' | 'admin'
 function App() {
   const [screen, setScreen] = useState<Screen>('home')
   const [adminAccessToken, setAdminAccessToken] = useState<string | null>(null)
+  const [clientAccessToken, setClientAccessToken] = useState<string | null>(null)
 
   if (screen === 'home') {
     return (
@@ -59,12 +60,28 @@ function App() {
   }
 
   if (screen === 'client') {
-    return <ClientPortal onLogout={() => setScreen('home')} />
+    if (!clientAccessToken) {
+      setScreen('client-login')
+      return null
+    }
+
+    return (
+      <ClientPortal
+        accessToken={clientAccessToken}
+        onLogout={() => {
+          setClientAccessToken(null)
+          setScreen('home')
+        }}
+      />
+    )
   }
 
   return (
     <ClientLogin
-      onSubmit={() => setScreen('client')}
+      onSubmit={(accessToken) => {
+        setClientAccessToken(accessToken)
+        setScreen('client')
+      }}
       onAdminAccess={() => setScreen('admin-login')}
     />
   )
