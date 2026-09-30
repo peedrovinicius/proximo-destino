@@ -708,7 +708,7 @@ export class DocumentsService {
     }
 
     let y = 344
-    const details = [
+    const details: Array<[string, string]> = [
       ['Companhia / fornecedor', snapshot.flight.airline || 'A confirmar'],
       ['Voo', snapshot.flight.flightNumber || 'A confirmar'],
       ['Localizador', snapshot.flight.bookingCode || 'A confirmar'],
