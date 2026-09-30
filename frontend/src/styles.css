@@ -2871,3 +2871,196 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
     flex-direction: column;
   }
 }
+
+.document-issuer {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid #e7edf2;
+}
+
+.document-issuer-heading h3 {
+  margin: 4px 0 0;
+  color: #183044;
+  font: 700 17px 'Manrope', sans-serif;
+}
+
+.document-issuer-heading p {
+  margin: 5px 0 0;
+  color: #7b8c9a;
+  font-size: 8px;
+}
+
+.voucher-form {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 16px;
+  border-radius: 14px;
+  background: #f7fafc;
+}
+
+.voucher-form-title {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 2px;
+}
+
+.voucher-form-title > svg,
+.receipt-issuer > div > svg {
+  color: #2677d9;
+}
+
+.voucher-form-title strong,
+.voucher-form-title span,
+.receipt-issuer strong,
+.receipt-issuer span {
+  display: block;
+}
+
+.voucher-form-title strong,
+.receipt-issuer strong {
+  color: #263f53;
+  font-size: 9px;
+}
+
+.voucher-form-title span,
+.receipt-issuer span {
+  margin-top: 3px;
+  color: #7b8d9b;
+  font-size: 8px;
+}
+
+.voucher-form input {
+  min-width: 0;
+  height: 40px;
+  border: 1px solid #dfe7ee;
+  border-radius: 9px;
+  padding: 0 10px;
+  color: #183044;
+  background: #fff;
+  font-size: 8px;
+}
+
+.voucher-form label {
+  display: grid;
+  gap: 5px;
+  color: #63798b;
+  font-size: 7px;
+  font-weight: 700;
+}
+
+.voucher-form button,
+.receipt-issuer button {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 9px;
+  padding: 0 14px;
+  color: #fff;
+  background: #2677d9;
+  font-size: 8px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.voucher-form button {
+  grid-column: 1 / -1;
+}
+
+.voucher-form button:disabled,
+.receipt-issuer button:disabled {
+  opacity: .5;
+  cursor: wait;
+}
+
+.receipt-issuer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid #e2e9ef;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.receipt-issuer > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.issued-documents,
+.client-documents-list {
+  display: grid;
+}
+
+.issued-document-row,
+.client-document-row {
+  display: flex;
+  width: 100%;
+  min-height: 58px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border: 0;
+  border-top: 1px solid #edf1f4;
+  color: #203a50;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.issued-document-row:first-child,
+.client-document-row:first-child {
+  border-top: 0;
+}
+
+.issued-document-row strong,
+.issued-document-row span,
+.client-document-row strong,
+.client-document-row span {
+  display: block;
+}
+
+.issued-document-row strong,
+.client-document-row strong {
+  font-size: 9px;
+}
+
+.issued-document-row span,
+.client-document-row span {
+  margin-top: 3px;
+  color: #7b8d9a;
+  font-size: 8px;
+}
+
+.issued-document-row svg,
+.client-document-row svg {
+  flex: 0 0 auto;
+  color: #2677d9;
+}
+
+@media (max-width: 900px) {
+  .voucher-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .voucher-form {
+    grid-template-columns: 1fr;
+  }
+
+  .receipt-issuer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
