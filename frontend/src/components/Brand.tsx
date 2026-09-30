@@ -8,7 +8,7 @@ export function Brand({ compact = false }: BrandProps) {
       <span className="brand-badge">
         <img
           className="brand-mascot"
-          src="/proximo-destino-mascote-exato.webp?v=7"
+          src="/proximo-destino-logo-fiel.jpg?v=8"
           alt="Próximo Destino"
         />
       </span>

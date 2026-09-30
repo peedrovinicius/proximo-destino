@@ -1579,3 +1579,17 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
     height: 62px;
   }
 }
+
+/* Aplicação fiel da logo escolhida */
+.brand-badge {
+  overflow: hidden;
+  background: #fff;
+}
+.brand-mascot,
+.brand--compact .brand-mascot {
+  object-fit: contain;
+  object-position: center;
+  filter: none !important;
+  transform: none !important;
+  background: #fff;
+}
