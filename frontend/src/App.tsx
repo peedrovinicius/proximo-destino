@@ -61,8 +61,15 @@ function App() {
 
   if (screen === 'client') {
     if (!clientAccessToken) {
-      setScreen('client-login')
-      return null
+      return (
+        <ClientLogin
+          onSubmit={(accessToken) => {
+            setClientAccessToken(accessToken)
+            setScreen('client')
+          }}
+          onAdminAccess={() => setScreen('admin-login')}
+        />
+      )
     }
 
     return (
