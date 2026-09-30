@@ -4,6 +4,7 @@ import {
   CircleDollarSign,
   Clock3,
   FileText,
+  Download,
   MapPin,
   Plane,
   ShieldCheck,
@@ -16,6 +17,7 @@ import { WhatsAppButton } from '../../components/WhatsAppButton'
 import {
   approveClientQuote,
   fetchClientPortal,
+  openClientDocumentPdf,
   rejectClientQuote,
   type ClientPortalData,
 } from '../../lib/clientPortal'
@@ -104,6 +106,14 @@ export function ClientPortal({ accessToken, onLogout }: ClientPortalProps) {
       setError(cause instanceof Error ? cause.message : 'Não foi possível registrar sua resposta.')
     } finally {
       setResponding(false)
+    }
+  }
+
+  async function openDocument(documentId: string) {
+    try {
+      await openClientDocumentPdf(accessToken, documentId)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Não foi possível abrir o documento.')
     }
   }
 
@@ -336,6 +346,31 @@ export function ClientPortal({ accessToken, onLogout }: ClientPortalProps) {
             <p>O portal mostra somente esta reserva e os dados vinculados ao seu código de acesso.</p>
           </article>
         </section>
+
+        {data.documents.length ? (
+          <section className="client-commercial-section">
+            <div className="light-panel-heading">
+              <div><span className="eyebrow">Documentos da viagem</span><h2>Passagens e comprovantes</h2></div>
+              <FileText size={20} />
+            </div>
+            <div className="client-documents-list">
+              {data.documents.map((document) => (
+                <button
+                  type="button"
+                  className="client-document-row"
+                  key={document.id}
+                  onClick={() => void openDocument(document.id)}
+                >
+                  <div>
+                    <strong>{document.type === 'TRAVEL_VOUCHER' ? 'Passagem / voucher de viagem' : 'Comprovante de compra'}</strong>
+                    <span>{document.documentNumber} · versão {document.version} · emitido em {date.format(new Date(document.issuedAt))}</span>
+                  </div>
+                  <Download size={17} />
+                </button>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         {data.services.length ? (
           <section className="client-commercial-section">
