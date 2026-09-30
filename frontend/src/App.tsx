@@ -35,8 +35,15 @@ function App() {
 
   if (screen === 'admin') {
     if (!adminAccessToken) {
-      setScreen('admin-login')
-      return null
+      return (
+        <AdminLogin
+          onSubmit={(accessToken) => {
+            setAdminAccessToken(accessToken)
+            setScreen('admin')
+          }}
+          onBack={() => setScreen('home')}
+        />
+      )
     }
 
     return (
