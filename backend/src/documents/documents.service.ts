@@ -729,7 +729,7 @@ export class DocumentsService {
         .text('SERVIÇOS VINCULADOS À RESERVA', 44, y)
       y += 18
       for (const service of snapshot.services.slice(0, 7)) {
-        this.ensureSpace(doc, y, 34)
+        y = this.ensureSpace(doc, y, 34)
         doc
           .fillColor('#243B4E')
           .font('Helvetica-Bold')
@@ -753,7 +753,7 @@ export class DocumentsService {
     }
 
     if (snapshot.notes) {
-      this.ensureSpace(doc, y, 55)
+      y = this.ensureSpace(doc, y, 55)
       doc
         .fillColor('#172B3D')
         .font('Helvetica-Bold')
@@ -876,7 +876,7 @@ export class DocumentsService {
       y += 18
 
       for (const item of snapshot.finance.installments) {
-        this.ensureSpace(doc, y, 33)
+        y = this.ensureSpace(doc, y, 33)
         doc
           .fillColor('#243B4E')
           .font('Helvetica-Bold')
@@ -909,7 +909,7 @@ export class DocumentsService {
     }
 
     if (snapshot.notes) {
-      this.ensureSpace(doc, y, 50)
+      y = this.ensureSpace(doc, y, 50)
       doc
         .fillColor('#172B3D')
         .font('Helvetica-Bold')
@@ -982,10 +982,31 @@ export class DocumentsService {
       )
   }
 
-  private ensureSpace(doc: PDFKit.PDFDocument, y: number, needed: number) {
-    if (y + needed > doc.page.height - 100) {
-      doc.addPage()
-    }
+  private ensureSpace(
+    doc: PDFKit.PDFDocument,
+    y: number,
+    needed: number,
+  ) {
+    if (y + needed <= doc.page.height - 100) return y
+
+    doc.addPage()
+    doc
+      .fillColor('#163A5F')
+      .font('Helvetica-Bold')
+      .fontSize(11)
+      .text('PRÓXIMO DESTINO', 44, 42)
+    doc
+      .fillColor('#718493')
+      .font('Helvetica')
+      .fontSize(7)
+      .text('Continuação do documento', 44, 58)
+    doc
+      .moveTo(44, 76)
+      .lineTo(551, 76)
+      .strokeColor('#DCE5EB')
+      .lineWidth(1)
+      .stroke()
+    return 94
   }
 
   private verificationUrl(code: string) {
