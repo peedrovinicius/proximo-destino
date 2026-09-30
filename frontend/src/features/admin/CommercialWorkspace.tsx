@@ -6,10 +6,14 @@ import {
   RefreshCw,
   Send,
   Trash2,
+  Ticket,
+  ReceiptText,
+  ExternalLink,
 } from 'lucide-react'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import {
   adminApi,
+  type AdminDocument,
   type AdminQuote,
   type AdminReservation,
   type FinancePlan,
@@ -57,6 +61,7 @@ export function QuotesWorkspace({
 }) {
   const [quotes, setQuotes] = useState<AdminQuote[]>([])
   const [services, setServices] = useState<ReservationService[]>([])
+  const [documents, setDocuments] = useState<AdminDocument[]>([])
   const [selectedQuoteId, setSelectedQuoteId] = useState('')
   const [reservationId, setReservationId] = useState('')
   const [title, setTitle] = useState('')
@@ -69,6 +74,13 @@ export function QuotesWorkspace({
   const [quantity, setQuantity] = useState('1')
   const [cost, setCost] = useState('')
   const [sale, setSale] = useState('')
+  const [airline, setAirline] = useState('')
+  const [flightNumber, setFlightNumber] = useState('')
+  const [bookingCode, setBookingCode] = useState('')
+  const [seat, setSeat] = useState('')
+  const [baggage, setBaggage] = useState('')
+  const [departureAt, setDepartureAt] = useState('')
+  const [arrivalAt, setArrivalAt] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -98,6 +110,20 @@ export function QuotesWorkspace({
     () => quotes.find((quote) => quote.id === selectedQuoteId) ?? null,
     [quotes, selectedQuoteId],
   )
+
+  useEffect(() => {
+    if (!selectedQuote) {
+      setDocuments([])
+      return
+    }
+
+    void adminApi
+      .documents(accessToken, selectedQuote.reservationId)
+      .then(setDocuments)
+      .catch((cause) => {
+        setError(cause instanceof Error ? cause.message : 'Falha ao carregar documentos.')
+      })
+  }, [accessToken, selectedQuote?.reservationId])
 
   async function createQuote(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -204,6 +230,64 @@ export function QuotesWorkspace({
       await load()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Não foi possível atualizar o serviço.')
+    }
+  }
+
+  async function refreshDocuments(reservationId: string) {
+    setDocuments(await adminApi.documents(accessToken, reservationId))
+  }
+
+  async function issueVoucher(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!selectedQuote) return
+
+    setBusy(true)
+    setError('')
+    try {
+      await adminApi.issueTravelVoucher(
+        accessToken,
+        selectedQuote.reservationId,
+        {
+          airline: airline || undefined,
+          flightNumber: flightNumber || undefined,
+          bookingCode: bookingCode || undefined,
+          seat: seat || undefined,
+          baggage: baggage || undefined,
+          departureAt: departureAt ? new Date(departureAt).toISOString() : undefined,
+          arrivalAt: arrivalAt ? new Date(arrivalAt).toISOString() : undefined,
+        },
+      )
+      await refreshDocuments(selectedQuote.reservationId)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Não foi possível emitir a passagem.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function issueReceipt() {
+    if (!selectedQuote) return
+
+    setBusy(true)
+    setError('')
+    try {
+      await adminApi.issuePurchaseReceipt(
+        accessToken,
+        selectedQuote.reservationId,
+      )
+      await refreshDocuments(selectedQuote.reservationId)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Não foi possível emitir o comprovante.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function openDocument(documentId: string) {
+    try {
+      await adminApi.openDocumentPdf(accessToken, documentId)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Não foi possível abrir o documento.')
     }
   }
 
@@ -359,6 +443,66 @@ export function QuotesWorkspace({
               <span className="approved-note"><CheckCircle2 size={15} /> Cotação aprovada e bloqueada para edição</span>
             ) : null}
           </div>
+
+          {selectedQuote.status === 'APPROVED' ? (
+            <section className="document-issuer">
+              <div className="document-issuer-heading">
+                <div>
+                  <span className="eyebrow">Documentos da viagem</span>
+                  <h3>Passagem e comprovante</h3>
+                  <p>Os documentos ficam versionados e podem ser reabertos em PDF.</p>
+                </div>
+              </div>
+
+              <form className="voucher-form" onSubmit={issueVoucher}>
+                <div className="voucher-form-title">
+                  <Ticket size={18} />
+                  <div>
+                    <strong>Emitir passagem / voucher</strong>
+                    <span>Informe os dados disponíveis do voo. Campos não preenchidos sairão como “A confirmar”.</span>
+                  </div>
+                </div>
+                <input placeholder="Companhia / fornecedor" value={airline} onChange={(e) => setAirline(e.target.value)} />
+                <input placeholder="Número do voo" value={flightNumber} onChange={(e) => setFlightNumber(e.target.value)} />
+                <input placeholder="Localizador" value={bookingCode} onChange={(e) => setBookingCode(e.target.value)} />
+                <input placeholder="Assento" value={seat} onChange={(e) => setSeat(e.target.value)} />
+                <input placeholder="Bagagem" value={baggage} onChange={(e) => setBaggage(e.target.value)} />
+                <label><span>Saída</span><input type="datetime-local" value={departureAt} onChange={(e) => setDepartureAt(e.target.value)} /></label>
+                <label><span>Chegada</span><input type="datetime-local" value={arrivalAt} onChange={(e) => setArrivalAt(e.target.value)} /></label>
+                <button type="submit" disabled={busy}><Ticket size={15} /> Emitir PDF</button>
+              </form>
+
+              <div className="receipt-issuer">
+                <div>
+                  <ReceiptText size={18} />
+                  <div>
+                    <strong>Comprovante de compra</strong>
+                    <span>Registra a cotação aprovada e os pagamentos já lançados no financeiro.</span>
+                  </div>
+                </div>
+                <button type="button" onClick={() => void issueReceipt()} disabled={busy}>
+                  <ReceiptText size={15} /> Emitir comprovante
+                </button>
+              </div>
+
+              <div className="issued-documents">
+                {documents.length ? documents.map((document) => (
+                  <button
+                    type="button"
+                    className="issued-document-row"
+                    key={document.id}
+                    onClick={() => void openDocument(document.id)}
+                  >
+                    <div>
+                      <strong>{document.type === 'TRAVEL_VOUCHER' ? 'Passagem / voucher' : 'Comprovante de compra'}</strong>
+                      <span>{document.documentNumber} · versão {document.version}</span>
+                    </div>
+                    <ExternalLink size={15} />
+                  </button>
+                )) : <p className="admin-empty">Nenhum documento emitido para esta reserva.</p>}
+              </div>
+            </section>
+          ) : null}
         </section>
       ) : null}
 
