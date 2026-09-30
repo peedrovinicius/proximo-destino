@@ -146,6 +146,15 @@ export type FinancePlan = {
   }>
 }
 
+export type AdminDocument = {
+  id: string
+  type: 'TRAVEL_VOUCHER' | 'PURCHASE_RECEIPT'
+  version: number
+  documentNumber: string
+  verificationCode: string
+  issuedAt: string
+}
+
 export type SearchResult = {
   clients: Array<{ id: string; fullName: string; email: string | null; phone: string | null }>
   trips: Array<{
@@ -349,6 +358,68 @@ export const adminApi = {
       method: 'PATCH',
       body: JSON.stringify({ status, paymentMethod }),
     }),
+
+  documents: (token: string, reservationId: string) =>
+    adminFetch<AdminDocument[]>(
+      token,
+      `/admin/documents/reservation/${encodeURIComponent(reservationId)}`,
+    ),
+
+  issueTravelVoucher: (
+    token: string,
+    reservationId: string,
+    data: {
+      airline?: string
+      flightNumber?: string
+      bookingCode?: string
+      seat?: string
+      baggage?: string
+      departureLocation?: string
+      arrivalLocation?: string
+      departureAt?: string
+      arrivalAt?: string
+      departureTerminal?: string
+      arrivalTerminal?: string
+      notes?: string
+    },
+  ) =>
+    adminFetch<AdminDocument>(
+      token,
+      `/admin/documents/reservation/${encodeURIComponent(reservationId)}/travel-voucher`,
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      },
+    ),
+
+  issuePurchaseReceipt: (
+    token: string,
+    reservationId: string,
+    data: { notes?: string } = {},
+  ) =>
+    adminFetch<AdminDocument>(
+      token,
+      `/admin/documents/reservation/${encodeURIComponent(reservationId)}/purchase-receipt`,
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      },
+    ),
+
+  openDocumentPdf: async (token: string, documentId: string) => {
+    const response = await fetch(
+      `${API_BASE}/admin/documents/${encodeURIComponent(documentId)}/pdf`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
+      },
+    )
+    if (!response.ok) throw new Error('Não foi possível abrir o documento.')
+    const blob = await response.blob()
+    const url = URL.createObjectURL(blob)
+    window.open(url, '_blank', 'noopener,noreferrer')
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  },
 
   search: (token: string, query: string) =>
     adminFetch<SearchResult>(token, `/admin/search?q=${encodeURIComponent(query)}`),
