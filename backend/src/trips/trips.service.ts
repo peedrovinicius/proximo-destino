@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { TripStatus } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
+import { CreateTripDto, UpdateTripDto } from './dto/admin-trip.dto'
 
 @Injectable()
 export class TripsService {
@@ -72,10 +73,64 @@ export class TripsService {
       },
     })
 
-    if (!trip) {
-      throw new NotFoundException('Viagem não encontrada')
-    }
-
+    if (!trip) throw new NotFoundException('Viagem não encontrada')
     return trip
+  }
+
+  listAdmin(query?: string) {
+    const q = query?.trim()
+
+    return this.prisma.trip.findMany({
+      where: q
+        ? {
+            OR: [
+              { title: { contains: q, mode: 'insensitive' } },
+              { origin: { contains: q, mode: 'insensitive' } },
+              { destination: { contains: q, mode: 'insensitive' } },
+            ],
+          }
+        : undefined,
+      include: { _count: { select: { reservations: true } } },
+      orderBy: { departureDate: 'asc' },
+      take: 100,
+    })
+  }
+
+  create(data: CreateTripDto) {
+    return this.prisma.trip.create({
+      data: {
+        title: data.title.trim(),
+        origin: data.origin.trim(),
+        destination: data.destination.trim(),
+        departureDate: data.departureDate,
+        returnDate: data.returnDate,
+        status: data.status ?? TripStatus.DRAFT,
+        capacity: data.capacity,
+        priceCents: data.priceCents,
+        summary: data.summary?.trim(),
+        imageUrl: data.imageUrl?.trim(),
+      },
+    })
+  }
+
+  async update(id: string, data: UpdateTripDto) {
+    const exists = await this.prisma.trip.count({ where: { id } })
+    if (!exists) throw new NotFoundException('Viagem não encontrada')
+
+    return this.prisma.trip.update({
+      where: { id },
+      data: {
+        title: data.title?.trim(),
+        origin: data.origin?.trim(),
+        destination: data.destination?.trim(),
+        departureDate: data.departureDate,
+        returnDate: data.returnDate,
+        status: data.status,
+        capacity: data.capacity,
+        priceCents: data.priceCents,
+        summary: data.summary?.trim(),
+        imageUrl: data.imageUrl?.trim(),
+      },
+    })
   }
 }
