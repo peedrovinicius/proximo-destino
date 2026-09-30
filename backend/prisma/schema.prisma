@@ -60,6 +60,11 @@ enum InstallmentStatus {
   CANCELLED
 }
 
+enum TravelDocumentType {
+  TRAVEL_VOUCHER
+  PURCHASE_RECEIPT
+}
+
 model User {
   id                        String    @id @default(cuid())
   email                     String    @unique
@@ -81,6 +86,7 @@ model User {
   authSessions      AuthSession[]
   mfaRecoveryCodes  MfaRecoveryCode[]
   authAuditEvents   AuthAuditEvent[]
+  issuedDocuments   TravelDocument[]
 
   @@index([role, isActive])
 }
@@ -202,6 +208,7 @@ model Reservation {
   quotes      Quote[]
   services    ReservationService[]
   financePlan FinancePlan?
+  documents   TravelDocument[]
 
   @@unique([clientId, tripId])
   @@index([tripId, status])
@@ -302,4 +309,23 @@ model Installment {
 
   @@unique([financePlanId, sequence])
   @@index([status, dueDate])
+}
+
+model TravelDocument {
+  id               String             @id @default(cuid())
+  reservationId    String
+  type             TravelDocumentType
+  version          Int
+  documentNumber   String             @unique
+  verificationCode String             @unique
+  snapshot         Json
+  issuedByUserId   String?
+  issuedAt         DateTime           @default(now())
+  createdAt        DateTime           @default(now())
+
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  issuedBy    User?       @relation(fields: [issuedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([reservationId, type, version])
+  @@index([reservationId, type, issuedAt])
 }
