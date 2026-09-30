@@ -43,9 +43,107 @@ export type AdminTrip = {
 export type AdminReservation = {
   id: string
   status: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED'
+  passengerCount: number
   createdAt: string
   client: { id: string; fullName: string; email: string | null; phone: string | null }
   trip: { id: string; title: string; origin: string; destination: string; departureDate: string }
+}
+
+export type QuoteStatus = 'DRAFT' | 'SENT' | 'APPROVED' | 'REJECTED' | 'EXPIRED'
+export type QuoteItemCategory = 'FLIGHT' | 'HOTEL' | 'TRANSFER' | 'TOUR' | 'INSURANCE' | 'OTHER'
+
+export type AdminQuote = {
+  id: string
+  reservationId: string
+  revision: number
+  status: QuoteStatus
+  title: string
+  validUntil: string | null
+  notes: string | null
+  subtotalCostCents: number
+  subtotalSaleCents: number
+  discountCents: number
+  totalCents: number
+  marginCents: number
+  sentAt: string | null
+  approvedAt: string | null
+  rejectedAt: string | null
+  items: Array<{
+    id: string
+    category: QuoteItemCategory
+    description: string
+    supplier: string | null
+    quantity: number
+    unitCostCents: number
+    unitSaleCents: number
+    totalCostCents: number
+    totalSaleCents: number
+  }>
+  reservation: {
+    id: string
+    status: AdminReservation['status']
+    passengerCount: number
+    client: {
+      id: string
+      fullName: string
+      email: string | null
+      phone: string | null
+    }
+    trip: {
+      id: string
+      title: string
+      origin: string
+      destination: string
+      departureDate: string
+    }
+  }
+}
+
+export type ReservationService = {
+  id: string
+  reservationId: string
+  category: QuoteItemCategory
+  description: string
+  supplier: string | null
+  amountCents: number
+  status: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED'
+  createdAt: string
+  updatedAt: string
+  reservation: {
+    client: { fullName: string }
+    trip: { title: string; destination: string }
+  }
+}
+
+export type FinancePlan = {
+  id: string
+  reservationId: string
+  quoteId: string
+  totalCents: number
+  downPaymentCents: number
+  installmentCount: number
+  createdAt: string
+  quote: {
+    id: string
+    title: string
+    revision: number
+    status: QuoteStatus
+  }
+  reservation: {
+    id: string
+    status: AdminReservation['status']
+    client: { id: string; fullName: string; email: string | null }
+    trip: { id: string; title: string; destination: string; departureDate: string }
+  }
+  installments: Array<{
+    id: string
+    sequence: number
+    dueDate: string
+    amountCents: number
+    status: 'OPEN' | 'PAID' | 'OVERDUE' | 'CANCELLED'
+    paidAt: string | null
+    paymentMethod: string | null
+  }>
 }
 
 export type SearchResult = {
@@ -151,6 +249,105 @@ export const adminApi = {
     adminFetch<void>(token, `/admin/reservations/${id}/status`, {
       method: 'PATCH',
       body: JSON.stringify({ status }),
+    }),
+
+  quotes: (token: string, reservationId = '') =>
+    adminFetch<AdminQuote[]>(
+      token,
+      `/admin/commercial/quotes${reservationId ? `?reservationId=${encodeURIComponent(reservationId)}` : ''}`,
+    ),
+
+  createQuote: (
+    token: string,
+    data: {
+      reservationId: string
+      title: string
+      validUntil?: string
+      notes?: string
+      discountCents?: number
+    },
+  ) =>
+    adminFetch<AdminQuote>(token, '/admin/commercial/quotes', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  addQuoteItem: (
+    token: string,
+    quoteId: string,
+    data: {
+      category: QuoteItemCategory
+      description: string
+      supplier?: string
+      quantity: number
+      unitCostCents: number
+      unitSaleCents: number
+    },
+  ) =>
+    adminFetch<AdminQuote>(token, `/admin/commercial/quotes/${quoteId}/items`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  removeQuoteItem: (token: string, quoteId: string, itemId: string) =>
+    adminFetch<AdminQuote>(
+      token,
+      `/admin/commercial/quotes/${quoteId}/items/${itemId}`,
+      { method: 'DELETE' },
+    ),
+
+  sendQuote: (token: string, quoteId: string) =>
+    adminFetch<AdminQuote>(token, `/admin/commercial/quotes/${quoteId}/send`, {
+      method: 'POST',
+    }),
+
+  reviseQuote: (token: string, quoteId: string) =>
+    adminFetch<AdminQuote>(token, `/admin/commercial/quotes/${quoteId}/revise`, {
+      method: 'POST',
+    }),
+
+  services: (token: string, reservationId = '') =>
+    adminFetch<ReservationService[]>(
+      token,
+      `/admin/commercial/services${reservationId ? `?reservationId=${encodeURIComponent(reservationId)}` : ''}`,
+    ),
+
+  updateServiceStatus: (
+    token: string,
+    id: string,
+    status: ReservationService['status'],
+  ) =>
+    adminFetch<void>(token, `/admin/commercial/services/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    }),
+
+  financePlans: (token: string) =>
+    adminFetch<FinancePlan[]>(token, '/admin/commercial/finance/plans'),
+
+  createFinancePlan: (
+    token: string,
+    data: {
+      reservationId: string
+      installmentCount: number
+      firstDueDate: string
+      downPaymentCents?: number
+    },
+  ) =>
+    adminFetch<FinancePlan>(token, '/admin/commercial/finance/plans', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateInstallment: (
+    token: string,
+    id: string,
+    status: FinancePlan['installments'][number]['status'],
+    paymentMethod?: string,
+  ) =>
+    adminFetch<void>(token, `/admin/commercial/finance/installments/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, paymentMethod }),
     }),
 
   search: (token: string, query: string) =>
