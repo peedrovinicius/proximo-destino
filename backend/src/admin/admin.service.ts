@@ -63,7 +63,12 @@ export class AdminService {
 
   listReservations() {
     return this.prisma.reservation.findMany({
-      include: {
+      select: {
+        id: true,
+        status: true,
+        passengerCount: true,
+        createdAt: true,
+        updatedAt: true,
         client: { select: { id: true, fullName: true, email: true, phone: true } },
         trip: {
           select: {
@@ -93,7 +98,22 @@ export class AdminService {
         clientId: data.clientId,
         tripId: data.tripId,
       },
-      include: { client: true, trip: true },
+      select: {
+        id: true,
+        status: true,
+        passengerCount: true,
+        createdAt: true,
+        client: { select: { id: true, fullName: true, email: true, phone: true } },
+        trip: {
+          select: {
+            id: true,
+            title: true,
+            origin: true,
+            destination: true,
+            departureDate: true,
+          },
+        },
+      },
     })
   }
 
