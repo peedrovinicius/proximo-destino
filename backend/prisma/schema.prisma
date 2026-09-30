@@ -29,6 +29,37 @@ enum ReservationStatus {
   COMPLETED
 }
 
+enum QuoteStatus {
+  DRAFT
+  SENT
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum QuoteItemCategory {
+  FLIGHT
+  HOTEL
+  TRANSFER
+  TOUR
+  INSURANCE
+  OTHER
+}
+
+enum ReservationServiceStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+enum InstallmentStatus {
+  OPEN
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
 model User {
   id                        String    @id @default(cuid())
   email                     String    @unique
@@ -166,9 +197,109 @@ model Reservation {
   createdAt       DateTime          @default(now())
   updatedAt DateTime          @updatedAt
 
-  client Client @relation(fields: [clientId], references: [id], onDelete: Restrict)
-  trip   Trip   @relation(fields: [tripId], references: [id], onDelete: Restrict)
+  client      Client               @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  trip        Trip                 @relation(fields: [tripId], references: [id], onDelete: Restrict)
+  quotes      Quote[]
+  services    ReservationService[]
+  financePlan FinancePlan?
 
   @@unique([clientId, tripId])
   @@index([tripId, status])
+}
+
+model Quote {
+  id                String      @id @default(cuid())
+  reservationId     String
+  revision          Int
+  status            QuoteStatus @default(DRAFT)
+  title             String
+  validUntil        DateTime?
+  notes             String?
+  subtotalCostCents Int         @default(0)
+  subtotalSaleCents Int         @default(0)
+  discountCents     Int         @default(0)
+  totalCents        Int         @default(0)
+  marginCents       Int         @default(0)
+  sentAt            DateTime?
+  approvedAt        DateTime?
+  rejectedAt        DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  items       QuoteItem[]
+  financePlan FinancePlan?
+
+  @@unique([reservationId, revision])
+  @@index([reservationId, status])
+}
+
+model QuoteItem {
+  id             String            @id @default(cuid())
+  quoteId        String
+  category       QuoteItemCategory
+  description    String
+  supplier       String?
+  quantity       Int               @default(1)
+  unitCostCents  Int               @default(0)
+  unitSaleCents  Int               @default(0)
+  totalCostCents Int               @default(0)
+  totalSaleCents Int               @default(0)
+  createdAt      DateTime          @default(now())
+
+  quote              Quote                 @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  reservationService ReservationService?
+
+  @@index([quoteId, category])
+}
+
+model ReservationService {
+  id                String                   @id @default(cuid())
+  reservationId     String
+  sourceQuoteItemId String?                  @unique
+  category          QuoteItemCategory
+  description       String
+  supplier          String?
+  amountCents       Int
+  status            ReservationServiceStatus @default(PENDING)
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  reservation     Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  sourceQuoteItem QuoteItem?  @relation(fields: [sourceQuoteItemId], references: [id], onDelete: SetNull)
+
+  @@index([reservationId, status])
+}
+
+model FinancePlan {
+  id                String   @id @default(cuid())
+  reservationId     String   @unique
+  quoteId           String   @unique
+  totalCents        Int
+  downPaymentCents  Int      @default(0)
+  installmentCount  Int
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  reservation Reservation  @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  quote       Quote        @relation(fields: [quoteId], references: [id], onDelete: Restrict)
+  installments Installment[]
+}
+
+model Installment {
+  id            String            @id @default(cuid())
+  financePlanId String
+  sequence      Int
+  dueDate       DateTime
+  amountCents   Int
+  status        InstallmentStatus @default(OPEN)
+  paidAt        DateTime?
+  paymentMethod String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  financePlan FinancePlan @relation(fields: [financePlanId], references: [id], onDelete: Cascade)
+
+  @@unique([financePlanId, sequence])
+  @@index([status, dueDate])
 }
