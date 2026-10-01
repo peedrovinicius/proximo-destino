@@ -13,7 +13,20 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateNested,
 } from 'class-validator'
+
+export class ReservationPassengerDto {
+  @IsString()
+  @MinLength(2)
+  @MaxLength(160)
+  fullName!: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  document?: string
+}
 
 export class RequestReservationDto {
   @IsString()
@@ -49,6 +62,14 @@ export class RequestReservationDto {
   @Min(1, { each: true })
   @Max(80, { each: true })
   selectedSeats?: number[]
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => ReservationPassengerDto)
+  passengers?: ReservationPassengerDto[]
 
   @IsOptional()
   @IsIn(['RESERVATION', 'PURCHASE'])
