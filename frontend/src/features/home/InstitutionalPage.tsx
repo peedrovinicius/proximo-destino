@@ -524,7 +524,7 @@ export function InstitutionalPage({
   const current = content[page]
 
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'instant' })
+    window.scrollTo({ top: 0, behavior: 'auto' })
     document.title = `${current.title} | Próximo Destino`
 
     return () => {
