@@ -4,19 +4,37 @@ import { AdminLogin } from './features/admin/AdminLogin'
 import { ClientLogin } from './features/client/ClientLogin'
 import { ClientPortal } from './features/client/ClientPortal'
 import { HomePage } from './features/home/HomePage'
+import { InstitutionalPage } from './features/home/InstitutionalPage'
+import type { InstitutionalPageKey } from './components/PublicFooter'
 import { logoutAdmin } from './lib/adminAuth'
 
-type Screen = 'home' | 'client-login' | 'client' | 'admin-login' | 'admin'
+type Screen = 'home' | 'institutional' | 'client-login' | 'client' | 'admin-login' | 'admin'
 
 function App() {
   const [screen, setScreen] = useState<Screen>('home')
   const [adminAccessToken, setAdminAccessToken] = useState<string | null>(null)
   const [clientAccessToken, setClientAccessToken] = useState<string | null>(null)
+  const [institutionalPage, setInstitutionalPage] = useState<InstitutionalPageKey>('about')
 
   if (screen === 'home') {
     return (
       <HomePage
         onClientAccess={() => setScreen('client-login')}
+        onAdminAccess={() => setScreen('admin-login')}
+        onInstitutionalNavigate={(page) => {
+          setInstitutionalPage(page)
+          setScreen('institutional')
+        }}
+      />
+    )
+  }
+
+  if (screen === 'institutional') {
+    return (
+      <InstitutionalPage
+        page={institutionalPage}
+        onBack={() => setScreen('home')}
+        onNavigate={(page) => setInstitutionalPage(page)}
         onAdminAccess={() => setScreen('admin-login')}
       />
     )
