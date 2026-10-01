@@ -108,6 +108,12 @@ export class PortalService {
           'Escolha uma forma de pagamento para continuar a compra',
         )
       }
+
+      if (!this.canProcessOnlinePayment(data.paymentMethod)) {
+        throw new ServiceUnavailableException(
+          'Pagamento online ainda não está disponível',
+        )
+      }
     }
 
     const seatSelectionEnabled =
