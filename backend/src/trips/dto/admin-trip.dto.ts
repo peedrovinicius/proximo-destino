@@ -15,7 +15,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator'
-import { TripStatus } from '@prisma/client'
+import { BoardingStatus, TripStatus } from '@prisma/client'
 import {
   BUS_TEMPLATES,
   SEAT_LAYOUTS,
@@ -183,4 +183,10 @@ export class UpdateTripDto extends TripVehicleFieldsDto {
 export class UpdateSeatBlockDto {
   @IsBoolean()
   blocked!: boolean
+}
+
+
+export class UpdateBoardingStatusDto {
+  @IsEnum(BoardingStatus)
+  status!: BoardingStatus
 }
