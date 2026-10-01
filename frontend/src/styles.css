@@ -7305,3 +7305,48 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
     border-radius: 999px;
   }
 }
+
+
+/* Mobile travel date overflow fix */
+
+.travel-search-card,
+.travel-search-card > *,
+.travel-search-card label {
+  min-width: 0;
+}
+
+.travel-search-card select,
+.travel-search-card input,
+.travel-search-submit {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.travel-search-card input[type="date"] {
+  display: block;
+  inline-size: 100%;
+  max-inline-size: 100%;
+  min-inline-size: 0;
+}
+
+@media (max-width: 700px) {
+  .travel-search-card {
+    grid-template-columns: minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  .travel-search-card label {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .travel-search-card input[type="date"] {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+}
