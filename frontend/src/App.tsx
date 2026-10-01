@@ -85,6 +85,7 @@ function App() {
             setClientAccessToken(accessToken)
             setScreen('client')
           }}
+          onBack={() => setScreen('home')}
           onAdminAccess={() => setScreen('admin-login')}
         />
       )
