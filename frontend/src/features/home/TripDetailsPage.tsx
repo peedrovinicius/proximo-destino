@@ -18,6 +18,7 @@ import {
   requestReservation,
   type PublicSeatMap,
   type PublicTrip,
+  type PurchasePaymentMethod,
   type ReservationRequestResult,
 } from '../../lib/publicApi'
 
@@ -56,6 +57,8 @@ export function TripDetailsPage({
   const [seatMapLoading, setSeatMapLoading] = useState(true)
   const [seatSelectorOpen, setSeatSelectorOpen] = useState(false)
   const [selectedSeats, setSelectedSeats] = useState<number[]>([])
+  const [flowMode, setFlowMode] = useState<'PURCHASE' | 'RESERVATION'>('PURCHASE')
+  const [paymentMethod, setPaymentMethod] = useState<PurchasePaymentMethod>('PIX')
 
   useEffect(() => {
     let active = true
@@ -64,6 +67,9 @@ export function TripDetailsPage({
       .then((result) => {
         if (!active) return
         setTrip(result)
+        if (result.priceCents == null || result.priceCents <= 0) {
+          setFlowMode('RESERVATION')
+        }
         window.scrollTo({ top: 0, behavior: 'auto' })
         document.title = `${result.destination} | Próximo Destino`
       })
@@ -181,6 +187,8 @@ export function TripDetailsPage({
         phone,
         passengerCount,
         selectedSeats: seatMap?.enabled ? selectedSeats : undefined,
+        intent: flowMode,
+        paymentMethod: flowMode === 'PURCHASE' ? paymentMethod : undefined,
       })
       setRequestResult(result)
       setSeatSelectorOpen(false)
@@ -234,6 +242,10 @@ export function TripDetailsPage({
     trip.capacity !== null &&
     trip.capacity >= 1 &&
     trip.capacity <= 80
+  const purchaseAvailable = trip.priceCents !== null && trip.priceCents > 0
+  const totalCents = purchaseAvailable
+    ? trip.priceCents! * passengerCount
+    : null
 
   return (
     <div className="trip-details-page">
@@ -293,12 +305,40 @@ export function TripDetailsPage({
             {requestResult ? (
               <div className="reservation-success">
                 <CheckCircle2 size={30} />
-                <span className="eyebrow">Solicitação registrada</span>
-                <h2>Guarde seu código de acesso</h2>
+                <span className="eyebrow">
+                  {requestResult.purchaseOrder ? 'Compra registrada' : 'Solicitação registrada'}
+                </span>
+                <h2>
+                  {requestResult.purchaseOrder
+                    ? 'Pedido aguardando pagamento'
+                    : 'Guarde seu código de acesso'}
+                </h2>
                 {requestResult.selectedSeats.length ? (
                   <div className="reservation-selected-seats">
                     <span>Assentos</span>
                     <strong>{requestResult.selectedSeats.join(', ')}</strong>
+                  </div>
+                ) : null}
+                {requestResult.purchaseOrder ? (
+                  <div className="purchase-success-summary">
+                    <div>
+                      <span>Total do pedido</span>
+                      <strong>{money.format(requestResult.purchaseOrder.totalCents / 100)}</strong>
+                    </div>
+                    <div>
+                      <span>Pagamento</span>
+                      <strong>
+                        {{
+                          PIX: 'PIX',
+                          CARD: 'Cartão',
+                          BOLETO: 'Boleto',
+                          TRANSFER: 'Transferência',
+                        }[requestResult.purchaseOrder.paymentMethod]}
+                      </strong>
+                    </div>
+                    <small>
+                      O pedido foi criado e está aguardando o processamento do pagamento.
+                    </small>
                   </div>
                 ) : null}
                 <div className="reservation-access-code">
@@ -318,9 +358,40 @@ export function TripDetailsPage({
               </div>
             ) : (
               <form onSubmit={submit}>
-                <span className="eyebrow">Quero esta viagem</span>
-                <h2>Solicitar reserva</h2>
-                <p>A equipe recebe seus dados e confirma disponibilidade e condições.</p>
+                {purchaseAvailable ? (
+                  <div className="purchase-mode-switch" role="tablist" aria-label="Forma de contratação">
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={flowMode === 'PURCHASE'}
+                      className={flowMode === 'PURCHASE' ? 'active' : ''}
+                      onClick={() => setFlowMode('PURCHASE')}
+                    >
+                      Comprar
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={flowMode === 'RESERVATION'}
+                      className={flowMode === 'RESERVATION' ? 'active' : ''}
+                      onClick={() => setFlowMode('RESERVATION')}
+                    >
+                      Reservar
+                    </button>
+                  </div>
+                ) : null}
+
+                <span className="eyebrow">
+                  {flowMode === 'PURCHASE' ? 'Compra da viagem' : 'Quero esta viagem'}
+                </span>
+                <h2>
+                  {flowMode === 'PURCHASE' ? 'Comprar viagem' : 'Solicitar reserva'}
+                </h2>
+                <p>
+                  {flowMode === 'PURCHASE'
+                    ? 'Escolha os passageiros, assentos e a forma de pagamento para criar seu pedido.'
+                    : 'A equipe recebe seus dados e confirma disponibilidade e condições.'}
+                </p>
 
                 <label>
                   Nome completo
@@ -364,11 +435,66 @@ export function TripDetailsPage({
                   </div>
                 ) : null}
 
+                {flowMode === 'PURCHASE' && purchaseAvailable ? (
+                  <>
+                    <fieldset className="purchase-payment-methods">
+                      <legend>Forma de pagamento</legend>
+                      {([
+                        ['PIX', 'PIX', 'Confirmação rápida'],
+                        ['CARD', 'Cartão', 'Crédito ou débito'],
+                        ['BOLETO', 'Boleto', 'Pagamento bancário'],
+                        ['TRANSFER', 'Transferência', 'Transferência bancária'],
+                      ] as const).map(([value, label, description]) => (
+                        <label
+                          key={value}
+                          className={paymentMethod === value ? 'active' : ''}
+                        >
+                          <input
+                            type="radio"
+                            name="payment-method"
+                            value={value}
+                            checked={paymentMethod === value}
+                            onChange={() => setPaymentMethod(value)}
+                          />
+                          <span>
+                            <strong>{label}</strong>
+                            <small>{description}</small>
+                          </span>
+                        </label>
+                      ))}
+                    </fieldset>
+
+                    <div className="purchase-total">
+                      <div>
+                        <span>{passengerCount} {passengerCount === 1 ? 'passageiro' : 'passageiros'}</span>
+                        <small>
+                          {money.format(trip.priceCents! / 100)} por pessoa
+                        </small>
+                      </div>
+                      <strong>{money.format((totalCents ?? 0) / 100)}</strong>
+                    </div>
+                  </>
+                ) : null}
+
                 {error ? <p className="admin-login-error" role="alert">{error}</p> : null}
 
-                <button type="submit" disabled={submitting || (seatSelectionExpected && seatMapLoading)}>
-                  {submitting ? 'Registrando...' : 'Enviar solicitação'}
+                <button
+                  type="submit"
+                  className={flowMode === 'PURCHASE' ? 'purchase-submit' : ''}
+                  disabled={submitting || (seatSelectionExpected && seatMapLoading)}
+                >
+                  {submitting
+                    ? 'Registrando...'
+                    : flowMode === 'PURCHASE' && totalCents !== null
+                      ? `Comprar por ${money.format(totalCents / 100)}`
+                      : 'Enviar solicitação'}
                 </button>
+
+                {flowMode === 'PURCHASE' ? (
+                  <small className="purchase-payment-note">
+                    O pedido é criado com pagamento pendente. Nenhuma cobrança é feita automaticamente nesta etapa.
+                  </small>
+                ) : null}
               </form>
             )}
           </aside>
