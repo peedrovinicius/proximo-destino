@@ -112,18 +112,27 @@ describe('compra pública da viagem', () => {
     assert.equal(config.methods.CARD, false)
   })
 
-  it('mantém a solicitação de reserva sem criar pedido de compra', async () => {
+  it('mantém a reserva sem compra e vincula passageiros aos assentos', async () => {
     const result = await portal.requestReservation({
       tripId: reservationTripId,
       fullName: 'Cliente reserva',
       email: reservationEmail,
       phone: '85888888888',
-      passengerCount: 1,
-      selectedSeats: [3],
+      passengerCount: 2,
+      passengers: [
+        { fullName: 'Cliente reserva' },
+        { fullName: 'Acompanhante da reserva' },
+      ],
+      selectedSeats: [3, 4],
       intent: 'RESERVATION',
     })
 
     assert.equal(result.purchaseOrder, null)
+    assert.equal(result.passengers.length, 2)
+    assert.equal(result.passengers[0]?.fullName, 'Cliente reserva')
+    assert.equal(result.passengers[0]?.seatAssignment?.seatNumber, 3)
+    assert.equal(result.passengers[1]?.fullName, 'Acompanhante da reserva')
+    assert.equal(result.passengers[1]?.seatAssignment?.seatNumber, 4)
 
     const count = await prisma.purchaseOrder.count({
       where: { reservationId: result.reservation.id },
