@@ -19,10 +19,19 @@ export class PaymentConnectionService {
 
   async status() {
     const connection = await this.prisma.paymentProviderConnection.findUnique({ where: { provider: 'MERCADO_PAGO' } })
+    const platformConfigured = this.platformConfigured()
+    const webhookConfigured = this.webhookConfigured()
+    const connected = Boolean(connection)
+
     return {
       provider: 'MERCADO_PAGO',
-      platformConfigured: this.platformConfigured(),
-      connected: Boolean(connection),
+      platformConfigured,
+      webhookConfigured,
+      connected,
+      readyForPayments:
+        platformConfigured &&
+        webhookConfigured &&
+        connected,
       externalUserId: connection?.externalUserId ?? null,
       liveMode: connection?.liveMode ?? null,
       connectedAt: connection?.connectedAt ?? null,
@@ -147,6 +156,12 @@ export class PaymentConnectionService {
     return Boolean(
       this.config.get<string>('MERCADO_PAGO_CLIENT_ID')?.trim() &&
       this.config.get<string>('MERCADO_PAGO_CLIENT_SECRET')?.trim(),
+    )
+  }
+
+  webhookConfigured() {
+    return Boolean(
+      this.config.get<string>('MERCADO_PAGO_WEBHOOK_SECRET')?.trim(),
     )
   }
 
