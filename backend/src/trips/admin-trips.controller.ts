@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -14,6 +15,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard'
 import { Roles } from '../auth/roles.decorator'
 import { RolesGuard } from '../auth/roles.guard'
 import {
+  AssignSeatClientDto,
   BulkUpdateBoardingStatusDto,
   CreateTripDto,
   UpdateBoardingStatusDto,
@@ -48,6 +50,25 @@ export class AdminTripsController {
   @Roles(UserRole.ADMIN)
   seatMap(@Param('id') id: string) {
     return this.trips.findAdminSeatMap(id)
+  }
+
+  @Post(':id/seats/:seatNumber/assignment')
+  @Roles(UserRole.ADMIN)
+  assignSeatClient(
+    @Param('id') id: string,
+    @Param('seatNumber', ParseIntPipe) seatNumber: number,
+    @Body() body: AssignSeatClientDto,
+  ) {
+    return this.trips.assignClientToSeat(id, seatNumber, body)
+  }
+
+  @Delete(':id/seats/:seatNumber/assignment')
+  @Roles(UserRole.ADMIN)
+  removeManualSeatAssignment(
+    @Param('id') id: string,
+    @Param('seatNumber', ParseIntPipe) seatNumber: number,
+  ) {
+    return this.trips.removeManualSeatAssignment(id, seatNumber)
   }
 
   @Patch(':id/seats/:seatNumber')
