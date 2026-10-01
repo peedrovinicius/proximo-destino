@@ -56,7 +56,10 @@ function roleFromToken(token: string) {
 }
 
 export function AdminDashboard({ accessToken, onLogout }: AdminDashboardProps) {
-  const [tab, setTab] = useState<Tab>('overview')
+  const [tab, setTab] = useState<Tab>(() => {
+    const params = new URLSearchParams(window.location.search)
+    return params.has('paymentConnection') ? 'settings' : 'overview'
+  })
   const [dashboard, setDashboard] = useState<DashboardData | null>(null)
   const [clients, setClients] = useState<AdminClient[]>([])
   const [trips, setTrips] = useState<AdminTrip[]>([])
@@ -91,6 +94,13 @@ export function AdminDashboard({ accessToken, onLogout }: AdminDashboardProps) {
   useEffect(() => {
     void reload()
   }, [accessToken])
+
+  useEffect(() => {
+    if (tab !== 'settings') return
+    const params = new URLSearchParams(window.location.search)
+    if (!params.has('paymentConnection')) return
+    window.history.replaceState({}, '', window.location.pathname + window.location.hash)
+  }, [tab])
 
   async function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -1145,17 +1155,9 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
     setMessage('')
     try {
       const result = await adminApi.connectMercadoPago(accessToken)
-      const popup = window.open(
-        result.authorizationUrl,
-        'mercado-pago-connect',
-        'popup=yes,width=720,height=760',
-      )
-      if (!popup) {
-        setMessage('Permita pop-ups para conectar o Mercado Pago.')
-      }
+      window.location.assign(result.authorizationUrl)
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : 'Falha ao iniciar conexão.')
-    } finally {
       setWorking(false)
     }
   }
@@ -1219,16 +1221,31 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
           </>
         ) : (
           <>
+            <div className="payment-onboarding-steps" aria-label="Etapas para ativar pagamentos">
+              <div>
+                <span>1</span>
+                <p><strong>Conectar conta</strong><small>Use sua conta Mercado Pago.</small></p>
+              </div>
+              <div>
+                <span>2</span>
+                <p><strong>Autorizar</strong><small>Confirme a permissão no Mercado Pago.</small></p>
+              </div>
+              <div>
+                <span>3</span>
+                <p><strong>Começar a receber</strong><small>PIX e cartão ficam disponíveis.</small></p>
+              </div>
+            </div>
+
             <div className="payment-connection-copy">
               <strong>
                 {status?.platformConfigured
-                  ? 'Ativação em um clique'
-                  : 'Integração aguardando configuração inicial'}
+                  ? 'Pronto para conectar'
+                  : 'Recurso sendo preparado pela plataforma'}
               </strong>
               <span>
                 {status?.platformConfigured
-                  ? 'Clique em Conectar Mercado Pago, entre na sua conta e autorize. Nenhuma chave técnica será solicitada.'
-                  : 'A plataforma ainda precisa das credenciais da aplicação Mercado Pago uma única vez. Depois disso, cada administrador conecta a própria conta pelo botão abaixo.'}
+                  ? 'Você não precisa copiar chaves, tokens ou códigos. A autorização acontece diretamente no Mercado Pago.'
+                  : 'Nenhuma ação técnica é necessária nesta tela. Quando a integração central estiver habilitada, o botão será liberado automaticamente.'}
               </span>
             </div>
             <div className="payment-connection-actions">

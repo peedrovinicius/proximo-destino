@@ -6,7 +6,7 @@ import { ClientPortal } from './features/client/ClientPortal'
 import { HomePage } from './features/home/HomePage'
 import { InstitutionalPage } from './features/home/InstitutionalPage'
 import type { InstitutionalPageKey } from './components/PublicFooter'
-import { logoutAdmin } from './lib/adminAuth'
+import { logoutAdmin, refreshAdminSession } from './lib/adminAuth'
 
 type Screen = 'home' | 'institutional' | 'client-login' | 'client' | 'admin-login' | 'admin'
 
@@ -18,7 +18,21 @@ function App() {
 
   useEffect(() => {
     const status = new URLSearchParams(window.location.search).get('paymentConnection')
-    if (!status || !window.opener) return
+    if (!status || window.opener) return
+
+    void refreshAdminSession()
+      .then((result) => {
+        setAdminAccessToken(result.accessToken)
+        setScreen('admin')
+      })
+      .catch(() => {
+        setScreen('admin-login')
+      })
+  }, [])
+
+  useEffect(() => {
+    const status = new URLSearchParams(window.location.search).get('paymentConnection')
+    if (!status) return
 
     const payload = {
       type: 'MERCADO_PAGO_OAUTH',
@@ -32,8 +46,10 @@ function App() {
       // armazenamento indisponível
     }
 
-    window.opener.postMessage(payload, window.location.origin)
-    window.setTimeout(() => window.close(), 250)
+    if (window.opener) {
+      window.opener.postMessage(payload, window.location.origin)
+      window.setTimeout(() => window.close(), 250)
+    }
   }, [])
 
   if (screen === 'home') {

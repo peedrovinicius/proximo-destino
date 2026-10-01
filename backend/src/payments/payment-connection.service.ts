@@ -146,8 +146,7 @@ export class PaymentConnectionService {
   platformConfigured() {
     return Boolean(
       this.config.get<string>('MERCADO_PAGO_CLIENT_ID')?.trim() &&
-      this.config.get<string>('MERCADO_PAGO_CLIENT_SECRET')?.trim() &&
-      this.config.get<string>('MERCADO_PAGO_WEBHOOK_SECRET')?.trim(),
+      this.config.get<string>('MERCADO_PAGO_CLIENT_SECRET')?.trim(),
     )
   }
 
