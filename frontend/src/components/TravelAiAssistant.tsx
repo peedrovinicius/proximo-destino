@@ -61,9 +61,8 @@ export function TravelAiAssistant() {
         { role: 'assistant', content: result.answer },
       ])
       setStatus('')
-    } catch (cause) {
-      void cause
-            setMessages((current) => [
+    } catch {
+      setMessages((current) => [
         ...current,
         {
           role: 'assistant',
@@ -188,7 +187,7 @@ export function TravelAiAssistant() {
         className="ai-assistant-trigger"
         onClick={() => setOpen((current) => !current)}
         aria-expanded={open}
-        aria-label={open ? 'Fechar assistente de IA' : 'Abrir assistente de IA'}
+        aria-label={open ? 'Fechar assistente de viagens' : 'Abrir assistente de viagens'}
       >
         <Sparkles size={19} />
         <span>Assistente de viagens</span>
