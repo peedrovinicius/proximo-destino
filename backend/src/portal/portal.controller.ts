@@ -8,13 +8,18 @@ import {
   Req,
   Res,
   Param,
+  Patch,
   UseGuards,
 } from '@nestjs/common'
 import { Throttle } from '@nestjs/throttler'
 import type { Response } from 'express'
 import { DocumentsService } from '../documents/documents.service'
 import { ClientPortalGuard, type ClientPortalRequest } from './client-portal.guard'
-import { ClientPortalLoginDto, RequestReservationDto } from './dto/portal.dto'
+import {
+  ClientPortalLoginDto,
+  RequestReservationDto,
+  UpdateClientPassengersDto,
+} from './dto/portal.dto'
 import { PortalService } from './portal.service'
 
 @Controller()
@@ -72,6 +77,20 @@ export class PortalController {
     )
   }
 
+
+  @Patch('client/passengers')
+  @UseGuards(ClientPortalGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  updatePassengers(
+    @Req() request: ClientPortalRequest,
+    @Body() body: UpdateClientPassengersDto,
+  ) {
+    return this.portal.updateClientPassengers(
+      request.portal.clientId,
+      request.portal.reservationId,
+      body,
+    )
+  }
 
   @Post('client/payment/start')
   @UseGuards(ClientPortalGuard)
