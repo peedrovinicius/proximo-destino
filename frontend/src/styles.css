@@ -3137,3 +3137,12 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
     gap: 7px;
   }
 }
+
+.public-footer-instagram {
+  text-decoration: none;
+  transition: opacity .18s ease;
+}
+
+.public-footer-instagram:hover {
+  opacity: .72;
+}
