@@ -82,6 +82,14 @@ export type ReservationRequestResult = {
   }
   accessCode: string
   selectedSeats: number[]
+  passengers: Array<{
+    id: string
+    sequence: number
+    fullName: string | null
+    document: string | null
+    isPrimary: boolean
+    seatAssignment: { seatNumber: number } | null
+  }>
   purchaseOrder: {
     id: string
     status: 'PENDING_PAYMENT' | 'PAID' | 'CANCELLED' | 'EXPIRED'
@@ -150,6 +158,10 @@ export async function requestReservation(input: {
   phone: string
   passengerCount: number
   selectedSeats?: number[]
+  passengers?: Array<{
+    fullName: string
+    document?: string
+  }>
   intent?: 'RESERVATION' | 'PURCHASE'
   paymentMethod?: PurchasePaymentMethod
 }) {
