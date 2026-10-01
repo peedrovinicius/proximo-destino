@@ -54,6 +54,30 @@ export class PortalService {
     }
   }
 
+  private mercadoPagoClient() {
+    const accessToken =
+      this.config.get<string>('MERCADO_PAGO_ACCESS_TOKEN')?.trim()
+
+    if (!accessToken) {
+      throw new ServiceUnavailableException(
+        'Pagamento online ainda não está configurado',
+      )
+    }
+
+    return new MercadoPagoConfig({
+      accessToken,
+      options: { timeout: 10_000 },
+    })
+  }
+
+  private canProcessOnlinePayment(method: string | undefined) {
+    const config = this.paymentConfig()
+    return (
+      config.configured &&
+      (method === 'PIX' || method === 'CARD')
+    )
+  }
+
   async requestReservation(data: RequestReservationDto) {
     const trip = await this.prisma.trip.findFirst({
       where: {
