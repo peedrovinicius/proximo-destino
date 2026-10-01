@@ -14,6 +14,7 @@ import {
 import { useEffect, useMemo, useState } from 'react'
 import { Brand } from '../../components/Brand'
 import { WhatsAppButton } from '../../components/WhatsAppButton'
+import { ClientPassengersPanel } from './ClientPassengersPanel'
 import {
   approveClientQuote,
   fetchClientPortal,
@@ -263,6 +264,12 @@ export function ClientPortal({ accessToken, onLogout }: ClientPortalProps) {
             <small>ID {data.id.slice(-8).toUpperCase()}</small>
           </article>
         </section>
+
+        <ClientPassengersPanel
+          accessToken={accessToken}
+          data={data}
+          onUpdated={setData}
+        />
 
         {data.purchaseOrder ? (
           <section className="client-payment-panel">
