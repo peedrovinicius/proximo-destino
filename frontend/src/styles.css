@@ -6178,6 +6178,12 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
   color: #c7cbd2;
 }
 
+.seat-bus-front strong {
+  color: #506173;
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .seat-bus-front span {
   color: #9b9da3;
   font-size: 9px;
@@ -6188,10 +6194,17 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
 
 .seat-grid {
   display: grid;
-  grid-template-columns: repeat(2, 64px) minmax(28px, 1fr) repeat(2, 64px);
   gap: 18px 10px;
   align-items: center;
   justify-content: center;
+}
+
+.seat-grid--two-by-two {
+  grid-template-columns: repeat(2, 64px) minmax(28px, 1fr) repeat(2, 64px);
+}
+
+.seat-grid--two-by-one {
+  grid-template-columns: repeat(2, 64px) minmax(36px, 1fr) 64px;
 }
 
 .seat-item {
@@ -6415,8 +6428,15 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
   }
 
   .seat-grid {
-    grid-template-columns: repeat(2, minmax(54px, 60px)) minmax(24px, 1fr) repeat(2, minmax(54px, 60px));
     gap: 16px 8px;
+  }
+
+  .seat-grid--two-by-two {
+    grid-template-columns: repeat(2, minmax(54px, 60px)) minmax(24px, 1fr) repeat(2, minmax(54px, 60px));
+  }
+
+  .seat-grid--two-by-one {
+    grid-template-columns: repeat(2, minmax(54px, 60px)) minmax(30px, 1fr) minmax(54px, 60px);
   }
 
   .seat-item {
@@ -6466,7 +6486,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
 }
 
 
-/* Admin seat capacity */
+/* Admin bus model catalog */
 
 .admin-form-hint {
   margin-top: -3px;
@@ -6475,27 +6495,93 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
   line-height: 1.45;
 }
 
-.admin-trip-row {
-  grid-template-columns: minmax(0, 1fr) 105px 110px minmax(240px, .72fr);
+.admin-bus-field {
+  display: grid;
+  gap: 8px;
+  margin-top: 2px;
+  border: 1px solid #e4ebf1;
+  border-radius: 13px;
+  padding: 12px;
+  background: #f8fafc;
 }
 
-.admin-seat-capacity {
+.admin-bus-field > label {
+  color: #52697c;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .02em;
+}
+
+.admin-bus-preview {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 66px 64px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid #dfeaf5;
+  border-radius: 10px;
+  padding: 10px;
+  background: #fff;
+}
+
+.admin-bus-preview strong,
+.admin-bus-preview span {
+  display: block;
+}
+
+.admin-bus-preview strong {
+  color: #174d84;
+  font-size: 9px;
+}
+
+.admin-bus-preview span {
+  margin-top: 3px;
+  color: #718598;
+  font-size: 7px;
+  line-height: 1.45;
+}
+
+.admin-bus-preview small {
+  white-space: nowrap;
+  color: #2677d9;
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.admin-bus-custom {
+  display: grid;
+  grid-template-columns: .8fr 1.2fr;
+  gap: 8px;
+}
+
+.admin-trip-row {
+  grid-template-columns: minmax(0, 1fr) 92px 104px minmax(320px, .95fr);
+}
+
+.admin-bus-control {
+  display: grid;
+  grid-template-columns: minmax(105px, .8fr) minmax(120px, 1fr) auto;
   align-items: center;
   gap: 7px;
 }
 
-.admin-seat-capacity > div {
+.admin-bus-control-summary {
   min-width: 0;
 }
 
-.admin-seat-capacity > div strong {
-  color: #35506a;
-  font-size: 9px;
+.admin-bus-control-summary strong,
+.admin-bus-control-summary span {
+  display: block;
 }
 
-.admin-seat-capacity > div span {
+.admin-bus-control-summary strong {
+  overflow: hidden;
+  color: #35506a;
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-bus-control-summary span {
   overflow: hidden;
   margin-top: 2px;
   color: #8795a2;
@@ -6504,7 +6590,9 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
   white-space: nowrap;
 }
 
-.admin-seat-capacity input {
+.admin-bus-control > select,
+.admin-bus-control-custom input,
+.admin-bus-control-custom select {
   width: 100%;
   height: 34px;
   border: 1px solid #dfe7ee;
@@ -6512,14 +6600,21 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
   padding: 0 8px;
   color: #183044;
   background: #fff;
-  font-size: 9px;
-  text-align: center;
+  font-size: 8px;
 }
 
-.admin-seat-capacity button {
+.admin-bus-control-custom {
+  display: grid;
+  grid-column: 2 / 3;
+  grid-template-columns: 1fr 70px;
+  gap: 6px;
+}
+
+.admin-bus-control > button {
   height: 34px;
   border: 0;
   border-radius: 9px;
+  padding: 0 11px;
   color: #fff;
   background: #2677d9;
   font-size: 8px;
@@ -6527,8 +6622,18 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
   cursor: pointer;
 }
 
-.admin-seat-capacity button:disabled {
+.admin-bus-control > button:disabled {
   opacity: .5;
+}
+
+@media (max-width: 1180px) {
+  .admin-trip-row {
+    grid-template-columns: minmax(0, 1fr) 88px minmax(280px, .9fr);
+  }
+
+  .admin-trip-row > span:nth-of-type(2) {
+    display: none;
+  }
 }
 
 @media (max-width: 980px) {
@@ -6536,8 +6641,32 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
     grid-template-columns: 1fr;
   }
 
-  .admin-seat-capacity {
-    grid-template-columns: minmax(0, 1fr) 72px 70px;
-    padding-top: 4px;
+  .admin-bus-control {
+    grid-template-columns: minmax(0, 1fr) minmax(150px, .8fr) auto;
+    padding-top: 5px;
   }
 }
+
+@media (max-width: 620px) {
+  .admin-bus-custom {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-bus-preview {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-bus-control {
+    grid-template-columns: 1fr auto;
+  }
+
+  .admin-bus-control-summary {
+    grid-column: 1 / -1;
+  }
+
+  .admin-bus-control-custom {
+    grid-column: 1 / -1;
+    grid-template-columns: 1fr 90px;
+  }
+}
+
