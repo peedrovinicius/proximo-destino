@@ -13,9 +13,11 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Brand } from '../../components/Brand'
 import { SeatSelector } from '../../components/SeatSelector'
 import {
+  fetchPublicPaymentConfig,
   fetchPublicTrip,
   fetchPublicTripSeats,
   requestReservation,
+  type PublicPaymentConfig,
   type PublicSeatMap,
   type PublicTrip,
   type PurchasePaymentMethod,
@@ -57,8 +59,10 @@ export function TripDetailsPage({
   const [seatMapLoading, setSeatMapLoading] = useState(true)
   const [seatSelectorOpen, setSeatSelectorOpen] = useState(false)
   const [selectedSeats, setSelectedSeats] = useState<number[]>([])
-  const [flowMode, setFlowMode] = useState<'PURCHASE' | 'RESERVATION'>('PURCHASE')
+  const [flowMode, setFlowMode] = useState<'PURCHASE' | 'RESERVATION'>('RESERVATION')
   const [paymentMethod, setPaymentMethod] = useState<PurchasePaymentMethod>('PIX')
+  const [paymentConfig, setPaymentConfig] = useState<PublicPaymentConfig | null>(null)
+  const [pixCopied, setPixCopied] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -67,14 +71,19 @@ export function TripDetailsPage({
       .then((result) => {
         if (!active) return
         setTrip(result)
-        if (result.priceCents == null || result.priceCents <= 0) {
-          setFlowMode('RESERVATION')
-        }
         window.scrollTo({ top: 0, behavior: 'auto' })
         document.title = `${result.destination} | Próximo Destino`
       })
       .catch((cause) => {
         if (active) setError(cause instanceof Error ? cause.message : 'Viagem indisponível.')
+      })
+
+    void fetchPublicPaymentConfig()
+      .then((result) => {
+        if (active) setPaymentConfig(result)
+      })
+      .catch(() => {
+        if (active) setPaymentConfig(null)
       })
 
     void fetchPublicTripSeats(tripId)
@@ -101,6 +110,19 @@ export function TripDetailsPage({
       document.title = 'Próximo Destino'
     }
   }, [tripId])
+
+  useEffect(() => {
+    if (
+      trip?.priceCents &&
+      trip.priceCents > 0 &&
+      paymentConfig?.configured
+    ) {
+      setFlowMode('PURCHASE')
+      return
+    }
+
+    setFlowMode('RESERVATION')
+  }, [trip, paymentConfig])
 
   async function refreshSeatMap(showError = false) {
     setSeatMapLoading(true)
