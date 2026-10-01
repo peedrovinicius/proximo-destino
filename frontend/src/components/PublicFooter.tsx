@@ -119,7 +119,7 @@ export function PublicFooter({ onNavigate, onAdminAccess }: PublicFooterProps) {
       </div>
 
       <div className="site-footer-bottom">
-        <span>CNPJ 59.239.955/0001-49</span>
+        <span>Próximo Destino Turismo e Viagens · Pindoretama - CE · CNPJ 59.239.955/0001-49</span>
         <span>Copyright © 2026 Próximo Destino. Todos os direitos reservados.</span>
       </div>
     </footer>
