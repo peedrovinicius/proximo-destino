@@ -300,13 +300,29 @@ export class PortalService {
         })
       : null
 
+    let payment = null
+    if (purchaseOrder) {
+      try {
+        payment = await this.initializePurchasePayment(purchaseOrder.id)
+      } catch {
+        payment = {
+          provider: 'MERCADO_PAGO' as const,
+          kind: 'UNAVAILABLE' as const,
+          status: 'pending',
+          message:
+            'O pedido foi criado, mas o pagamento não pôde ser iniciado agora.',
+        }
+      }
+    }
+
     return {
       reservation,
       accessCode,
       selectedSeats,
       purchaseOrder,
+      payment,
       message: purchaseIntent
-        ? 'Pedido criado. O pagamento está aguardando processamento.'
+        ? 'Pedido criado. Continue para concluir o pagamento.'
         : 'Solicitação recebida. Guarde o código para acessar sua viagem.',
     }
   }
