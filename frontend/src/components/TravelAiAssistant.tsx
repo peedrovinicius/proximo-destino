@@ -188,9 +188,9 @@ export function TravelAiAssistant() {
         onClick={() => setOpen((current) => !current)}
         aria-expanded={open}
         aria-label={open ? 'Fechar assistente de viagens' : 'Abrir assistente de viagens'}
+        title="Assistente de viagens"
       >
-        <Sparkles size={19} />
-        <span>Assistente de viagens</span>
+        <Sparkles size={20} strokeWidth={2.1} aria-hidden="true" />
       </button>
     </div>
   )
