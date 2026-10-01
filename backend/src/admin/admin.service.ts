@@ -89,6 +89,79 @@ export class AdminService {
     })
   }
 
+  async paymentsDashboard() {
+    const orders = await this.prisma.purchaseOrder.findMany({
+      select: {
+        id: true,
+        status: true,
+        paymentMethod: true,
+        unitPriceCents: true,
+        passengerCount: true,
+        totalCents: true,
+        createdAt: true,
+        updatedAt: true,
+        reservation: {
+          select: {
+            id: true,
+            status: true,
+            seatAssignments: {
+              select: { seatNumber: true },
+              orderBy: { seatNumber: 'asc' },
+            },
+            client: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+                phone: true,
+              },
+            },
+            trip: {
+              select: {
+                id: true,
+                title: true,
+                origin: true,
+                destination: true,
+                departureDate: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    })
+
+    const summary = orders.reduce(
+      (acc, order) => {
+        acc.totalOrders += 1
+        if (order.status === 'PAID') {
+          acc.paidOrders += 1
+          acc.paidCents += order.totalCents
+        } else if (order.status === 'PENDING_PAYMENT') {
+          acc.pendingOrders += 1
+          acc.pendingCents += order.totalCents
+        } else if (order.status === 'CANCELLED') {
+          acc.cancelledOrders += 1
+        } else if (order.status === 'EXPIRED') {
+          acc.expiredOrders += 1
+        }
+        return acc
+      },
+      {
+        totalOrders: 0,
+        paidOrders: 0,
+        pendingOrders: 0,
+        cancelledOrders: 0,
+        expiredOrders: 0,
+        paidCents: 0,
+        pendingCents: 0,
+      },
+    )
+
+    return { summary, orders }
+  }
+
   async createReservation(data: CreateReservationDto) {
     const [client, trip] = await Promise.all([
       this.prisma.client.findUnique({ where: { id: data.clientId }, select: { id: true } }),

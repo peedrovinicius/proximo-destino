@@ -185,6 +185,48 @@ export type AdminDocument = {
   issuedAt: string
 }
 
+export type AdminPurchaseOrder = {
+  id: string
+  status: 'PENDING_PAYMENT' | 'PAID' | 'CANCELLED' | 'EXPIRED'
+  paymentMethod: 'PIX' | 'CARD' | 'BOLETO' | 'TRANSFER'
+  unitPriceCents: number
+  passengerCount: number
+  totalCents: number
+  createdAt: string
+  updatedAt: string
+  reservation: {
+    id: string
+    status: AdminReservation['status']
+    seatAssignments: Array<{ seatNumber: number }>
+    client: {
+      id: string
+      fullName: string
+      email: string | null
+      phone: string | null
+    }
+    trip: {
+      id: string
+      title: string
+      origin: string
+      destination: string
+      departureDate: string
+    }
+  }
+}
+
+export type AdminPaymentsDashboard = {
+  summary: {
+    totalOrders: number
+    paidOrders: number
+    pendingOrders: number
+    cancelledOrders: number
+    expiredOrders: number
+    paidCents: number
+    pendingCents: number
+  }
+  orders: AdminPurchaseOrder[]
+}
+
 export type PaymentConnectionStatus = {
   provider: 'MERCADO_PAGO'
   platformConfigured: boolean
@@ -247,6 +289,9 @@ async function adminFetch<T>(
 }
 
 export const adminApi = {
+  purchaseOrders: (token: string) =>
+    adminFetch<AdminPaymentsDashboard>(token, '/admin/payments/orders'),
+
   paymentConnection: (token: string) =>
     adminFetch<PaymentConnectionStatus>(token, '/admin/payments/mercado-pago'),
 

@@ -39,6 +39,13 @@ export class AdminController {
     return this.admin.listReservations()
   }
 
+  @Get('payments/orders')
+  @Roles(UserRole.ADMIN, UserRole.FINANCE)
+  payments() {
+    return this.admin.paymentsDashboard()
+  }
+
+
   @Post('reservations')
   @Roles(UserRole.ADMIN, UserRole.AGENT)
   createReservation(@Body() body: CreateReservationDto) {
