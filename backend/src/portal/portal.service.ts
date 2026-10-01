@@ -311,6 +311,29 @@ export class PortalService {
     }
   }
 
+  private paymentWebhookUrl() {
+    const override =
+      this.config.get<string>('MERCADO_PAGO_WEBHOOK_URL')?.trim()
+    if (override) return override
+
+    const publicDomain =
+      this.config.get<string>('RAILWAY_PUBLIC_DOMAIN')?.trim()
+
+    if (!publicDomain) {
+      throw new ServiceUnavailableException(
+        'URL pública do webhook de pagamento não configurada',
+      )
+    }
+
+    return `https://${publicDomain}/api/v1/payments/mercado-pago/webhook`
+  }
+
+  private frontendOrigin() {
+    return this.config
+      .getOrThrow<string>('FRONTEND_ORIGIN')
+      .replace(/\/$/, '')
+  }
+
   async login(data: ClientPortalLoginDto) {
     const email = data.email.trim().toLowerCase()
     const reservations = await this.prisma.reservation.findMany({
