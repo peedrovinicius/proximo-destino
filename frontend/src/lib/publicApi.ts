@@ -39,6 +39,40 @@ export type PublicSeatMap = {
 
 export type PurchasePaymentMethod = 'PIX' | 'CARD' | 'BOLETO' | 'TRANSFER'
 
+export type PublicPaymentConfig = {
+  provider: 'MERCADO_PAGO'
+  configured: boolean
+  methods: {
+    PIX: boolean
+    CARD: boolean
+    BOLETO: boolean
+    TRANSFER: boolean
+  }
+}
+
+export type PaymentStartResult =
+  | {
+      provider: 'MERCADO_PAGO'
+      kind: 'PIX'
+      status: string
+      qrCode: string
+      qrCodeBase64: string | null
+      ticketUrl: string | null
+      expiresAt: string | null
+    }
+  | {
+      provider: 'MERCADO_PAGO'
+      kind: 'CHECKOUT'
+      status: string
+      checkoutUrl: string
+    }
+  | {
+      provider: 'MERCADO_PAGO'
+      kind: 'UNAVAILABLE'
+      status: string
+      message: string
+    }
+
 export type ReservationRequestResult = {
   reservation: {
     id: string
@@ -57,6 +91,7 @@ export type ReservationRequestResult = {
     totalCents: number
     createdAt: string
   } | null
+  payment: PaymentStartResult | null
   message: string
 }
 
@@ -69,6 +104,12 @@ async function parseError(response: Response) {
     // sem corpo JSON
   }
   return 'Não foi possível concluir a operação.'
+}
+
+export async function fetchPublicPaymentConfig() {
+  const response = await fetch(`${API_BASE}/public/payments/config`)
+  if (!response.ok) throw new Error(await parseError(response))
+  return response.json() as Promise<PublicPaymentConfig>
 }
 
 export async function fetchPublicTrips(filters: {

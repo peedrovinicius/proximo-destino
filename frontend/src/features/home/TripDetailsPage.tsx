@@ -13,9 +13,11 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Brand } from '../../components/Brand'
 import { SeatSelector } from '../../components/SeatSelector'
 import {
+  fetchPublicPaymentConfig,
   fetchPublicTrip,
   fetchPublicTripSeats,
   requestReservation,
+  type PublicPaymentConfig,
   type PublicSeatMap,
   type PublicTrip,
   type PurchasePaymentMethod,
@@ -57,8 +59,10 @@ export function TripDetailsPage({
   const [seatMapLoading, setSeatMapLoading] = useState(true)
   const [seatSelectorOpen, setSeatSelectorOpen] = useState(false)
   const [selectedSeats, setSelectedSeats] = useState<number[]>([])
-  const [flowMode, setFlowMode] = useState<'PURCHASE' | 'RESERVATION'>('PURCHASE')
+  const [flowMode, setFlowMode] = useState<'PURCHASE' | 'RESERVATION'>('RESERVATION')
   const [paymentMethod, setPaymentMethod] = useState<PurchasePaymentMethod>('PIX')
+  const [paymentConfig, setPaymentConfig] = useState<PublicPaymentConfig | null>(null)
+  const [pixCopied, setPixCopied] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -67,14 +71,19 @@ export function TripDetailsPage({
       .then((result) => {
         if (!active) return
         setTrip(result)
-        if (result.priceCents == null || result.priceCents <= 0) {
-          setFlowMode('RESERVATION')
-        }
         window.scrollTo({ top: 0, behavior: 'auto' })
         document.title = `${result.destination} | Próximo Destino`
       })
       .catch((cause) => {
         if (active) setError(cause instanceof Error ? cause.message : 'Viagem indisponível.')
+      })
+
+    void fetchPublicPaymentConfig()
+      .then((result) => {
+        if (active) setPaymentConfig(result)
+      })
+      .catch(() => {
+        if (active) setPaymentConfig(null)
       })
 
     void fetchPublicTripSeats(tripId)
@@ -101,6 +110,19 @@ export function TripDetailsPage({
       document.title = 'Próximo Destino'
     }
   }, [tripId])
+
+  useEffect(() => {
+    if (
+      trip?.priceCents &&
+      trip.priceCents > 0 &&
+      paymentConfig?.configured
+    ) {
+      setFlowMode('PURCHASE')
+      return
+    }
+
+    setFlowMode('RESERVATION')
+  }, [trip, paymentConfig])
 
   async function refreshSeatMap(showError = false) {
     setSeatMapLoading(true)
@@ -151,6 +173,19 @@ export function TripDetailsPage({
       window.setTimeout(() => setCopied(false), 1800)
     } catch {
       setCopied(false)
+    }
+  }
+
+  async function copyPixCode() {
+    const payment = requestResult?.payment
+    if (!payment || payment.kind !== 'PIX') return
+
+    try {
+      await navigator.clipboard.writeText(payment.qrCode)
+      setPixCopied(true)
+      window.setTimeout(() => setPixCopied(false), 1800)
+    } catch {
+      setPixCopied(false)
     }
   }
 
@@ -242,8 +277,13 @@ export function TripDetailsPage({
     trip.capacity !== null &&
     trip.capacity >= 1 &&
     trip.capacity <= 80
-  const purchaseAvailable = trip.priceCents !== null && trip.priceCents > 0
-  const totalCents = purchaseAvailable
+  const hasPublishedPrice =
+    trip.priceCents !== null &&
+    trip.priceCents > 0
+  const purchaseAvailable =
+    hasPublishedPrice &&
+    paymentConfig?.configured === true
+  const totalCents = hasPublishedPrice
     ? trip.priceCents! * passengerCount
     : null
 
@@ -295,8 +335,20 @@ export function TripDetailsPage({
             <div className="availability-note">
               <ShieldCheck size={17} />
               <div>
-                <strong>Solicitação sem cobrança automática</strong>
-                <span>O envio abaixo registra interesse. A reserva permanece pendente até confirmação da agência.</span>
+                <strong>
+                  {purchaseAvailable
+                    ? 'Pagamento online protegido'
+                    : hasPublishedPrice
+                      ? 'Compra online em configuração'
+                      : 'Solicitação sem cobrança automática'}
+                </strong>
+                <span>
+                  {purchaseAvailable
+                    ? 'PIX e cartão são processados pelo ambiente seguro do Mercado Pago.'
+                    : hasPublishedPrice
+                      ? 'A reserva continua disponível enquanto o pagamento online é ativado pela agência.'
+                      : 'O envio abaixo registra interesse. A reserva permanece pendente até confirmação da agência.'}
+                </span>
               </div>
             </div>
           </article>
@@ -341,6 +393,71 @@ export function TripDetailsPage({
                     </small>
                   </div>
                 ) : null}
+                {requestResult.payment?.kind === 'PIX' ? (
+                  <div className="purchase-pix-box">
+                    <div className="purchase-pix-heading">
+                      <div>
+                        <span>PIX gerado</span>
+                        <strong>Escaneie ou copie o código</strong>
+                      </div>
+                      <small>Aguardando pagamento</small>
+                    </div>
+
+                    {requestResult.payment.qrCodeBase64 ? (
+                      <img
+                        className="purchase-pix-qr"
+                        src={`data:image/png;base64,${requestResult.payment.qrCodeBase64}`}
+                        alt="QR Code PIX para pagamento"
+                      />
+                    ) : null}
+
+                    <div className="purchase-pix-copy">
+                      <code>{requestResult.payment.qrCode}</code>
+                      <button
+                        type="button"
+                        onClick={() => void copyPixCode()}
+                        aria-label="Copiar código PIX"
+                      >
+                        {pixCopied ? <Check size={16} /> : <Copy size={16} />}
+                        <span>{pixCopied ? 'Copiado' : 'Copiar PIX'}</span>
+                      </button>
+                    </div>
+
+                    {requestResult.payment.ticketUrl ? (
+                      <a
+                        className="purchase-provider-link"
+                        href={requestResult.payment.ticketUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Abrir instruções do PIX
+                      </a>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {requestResult.payment?.kind === 'CHECKOUT' ? (
+                  <div className="purchase-checkout-box">
+                    <span>Pagamento com cartão</span>
+                    <strong>Conclua no ambiente seguro do Mercado Pago</strong>
+                    <a
+                      className="purchase-provider-link purchase-provider-link--primary"
+                      href={requestResult.payment.checkoutUrl}
+                    >
+                      Continuar para o Mercado Pago
+                    </a>
+                  </div>
+                ) : null}
+
+                {requestResult.payment?.kind === 'UNAVAILABLE' ? (
+                  <div className="purchase-payment-unavailable">
+                    <strong>Pagamento temporariamente indisponível</strong>
+                    <span>
+                      Seu pedido foi preservado. Use “Minha viagem” para tentar novamente.
+                    </span>
+                  </div>
+                ) : null}
+
                 <div className="reservation-access-code">
                   <code>{requestResult.accessCode}</code>
                   <button
@@ -358,14 +475,22 @@ export function TripDetailsPage({
               </div>
             ) : (
               <form onSubmit={submit}>
-                {purchaseAvailable ? (
+                {hasPublishedPrice ? (
                   <div className="purchase-mode-switch" role="tablist" aria-label="Forma de contratação">
                     <button
                       type="button"
                       role="tab"
                       aria-selected={flowMode === 'PURCHASE'}
                       className={flowMode === 'PURCHASE' ? 'active' : ''}
-                      onClick={() => setFlowMode('PURCHASE')}
+                      onClick={() => {
+                        if (purchaseAvailable) setFlowMode('PURCHASE')
+                      }}
+                      disabled={!purchaseAvailable}
+                      title={
+                        purchaseAvailable
+                          ? 'Comprar online'
+                          : 'Pagamento online em configuração'
+                      }
                     >
                       Comprar
                     </button>
@@ -440,10 +565,8 @@ export function TripDetailsPage({
                     <fieldset className="purchase-payment-methods">
                       <legend>Forma de pagamento</legend>
                       {([
-                        ['PIX', 'PIX', 'Confirmação rápida'],
-                        ['CARD', 'Cartão', 'Crédito ou débito'],
-                        ['BOLETO', 'Boleto', 'Pagamento bancário'],
-                        ['TRANSFER', 'Transferência', 'Transferência bancária'],
+                        ['PIX', 'PIX', 'QR Code e copia e cola'],
+                        ['CARD', 'Cartão', 'Checkout seguro do Mercado Pago'],
                       ] as const).map(([value, label, description]) => (
                         <label
                           key={value}
@@ -481,7 +604,11 @@ export function TripDetailsPage({
                 <button
                   type="submit"
                   className={flowMode === 'PURCHASE' ? 'purchase-submit' : ''}
-                  disabled={submitting || (seatSelectionExpected && seatMapLoading)}
+                  disabled={
+                    submitting ||
+                    (seatSelectionExpected && seatMapLoading) ||
+                    (flowMode === 'PURCHASE' && !purchaseAvailable)
+                  }
                 >
                   {submitting
                     ? 'Registrando...'
@@ -492,7 +619,7 @@ export function TripDetailsPage({
 
                 {flowMode === 'PURCHASE' ? (
                   <small className="purchase-payment-note">
-                    O pedido é criado com pagamento pendente. Nenhuma cobrança é feita automaticamente nesta etapa.
+                    PIX é gerado na própria página. No cartão, você continua no checkout seguro do Mercado Pago.
                   </small>
                 ) : null}
               </form>

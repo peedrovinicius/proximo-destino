@@ -1,5 +1,27 @@
 const API_BASE = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '')
 
+export type ClientPaymentStartResult =
+  | {
+      provider: 'MERCADO_PAGO'
+      kind: 'PIX'
+      status: string
+      qrCode: string
+      qrCodeBase64: string | null
+      ticketUrl: string | null
+      expiresAt: string | null
+    }
+  | {
+      provider: 'MERCADO_PAGO'
+      kind: 'CHECKOUT'
+      status: string
+      checkoutUrl: string
+    }
+  | {
+      provider: 'MERCADO_PAGO'
+      kind: 'PAID'
+      status: string
+    }
+
 export type ClientPortalData = {
   id: string
   status: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED'
@@ -48,6 +70,16 @@ export type ClientPortalData = {
       totalSaleCents: number
     }>
   }>
+  purchaseOrder: {
+    id: string
+    status: 'PENDING_PAYMENT' | 'PAID' | 'CANCELLED' | 'EXPIRED'
+    paymentMethod: 'PIX' | 'CARD' | 'BOLETO' | 'TRANSFER'
+    unitPriceCents: number
+    passengerCount: number
+    totalCents: number
+    createdAt: string
+    updatedAt: string
+  } | null
   services: Array<{
     id: string
     category: 'FLIGHT' | 'HOTEL' | 'TRANSFER' | 'TOUR' | 'INSURANCE' | 'OTHER'
@@ -110,6 +142,16 @@ export async function fetchClientPortal(accessToken: string) {
 
   if (!response.ok) throw new Error(await parseError(response))
   return response.json() as Promise<ClientPortalData>
+}
+
+export async function retryClientPayment(accessToken: string) {
+  const response = await fetch(`${API_BASE}/client/payment/start`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  if (!response.ok) throw new Error(await parseError(response))
+  return response.json() as Promise<ClientPaymentStartResult>
 }
 
 export async function approveClientQuote(accessToken: string, quoteId: string) {

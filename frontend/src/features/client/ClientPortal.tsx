@@ -19,6 +19,8 @@ import {
   fetchClientPortal,
   openClientDocumentPdf,
   rejectClientQuote,
+  retryClientPayment,
+  type ClientPaymentStartResult,
   type ClientPortalData,
 } from '../../lib/clientPortal'
 
@@ -70,6 +72,9 @@ export function ClientPortal({ accessToken, onLogout }: ClientPortalProps) {
   const [data, setData] = useState<ClientPortalData | null>(null)
   const [error, setError] = useState('')
   const [responding, setResponding] = useState(false)
+  const [paymentStarting, setPaymentStarting] = useState(false)
+  const [paymentResult, setPaymentResult] = useState<ClientPaymentStartResult | null>(null)
+  const [pixCopied, setPixCopied] = useState(false)
 
   async function loadPortal() {
     setError('')
@@ -106,6 +111,44 @@ export function ClientPortal({ accessToken, onLogout }: ClientPortalProps) {
       setError(cause instanceof Error ? cause.message : 'Não foi possível registrar sua resposta.')
     } finally {
       setResponding(false)
+    }
+  }
+
+  async function resumePayment() {
+    setPaymentStarting(true)
+    setError('')
+
+    try {
+      const result = await retryClientPayment(accessToken)
+      setPaymentResult(result)
+
+      if (result.kind === 'CHECKOUT') {
+        window.location.assign(result.checkoutUrl)
+      }
+
+      if (result.kind === 'PAID') {
+        await loadPortal()
+      }
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'Não foi possível iniciar o pagamento.',
+      )
+    } finally {
+      setPaymentStarting(false)
+    }
+  }
+
+  async function copyPixCode() {
+    if (paymentResult?.kind !== 'PIX') return
+
+    try {
+      await navigator.clipboard.writeText(paymentResult.qrCode)
+      setPixCopied(true)
+      window.setTimeout(() => setPixCopied(false), 1800)
+    } catch {
+      setPixCopied(false)
     }
   }
 
@@ -220,6 +263,76 @@ export function ClientPortal({ accessToken, onLogout }: ClientPortalProps) {
             <small>ID {data.id.slice(-8).toUpperCase()}</small>
           </article>
         </section>
+
+        {data.purchaseOrder ? (
+          <section className="client-payment-panel">
+            <div className="client-payment-heading">
+              <div>
+                <span className="eyebrow">Pagamento da compra</span>
+                <h2>
+                  {data.purchaseOrder.status === 'PAID'
+                    ? 'Pagamento confirmado'
+                    : data.purchaseOrder.status === 'PENDING_PAYMENT'
+                      ? 'Pagamento pendente'
+                      : 'Pagamento encerrado'}
+                </h2>
+                <p>
+                  {data.purchaseOrder.paymentMethod === 'PIX'
+                    ? 'PIX'
+                    : data.purchaseOrder.paymentMethod === 'CARD'
+                      ? 'Cartão'
+                      : data.purchaseOrder.paymentMethod}
+                  {' · '}
+                  {money.format(data.purchaseOrder.totalCents / 100)}
+                </p>
+              </div>
+              <strong className={'client-payment-status client-payment-status--' + data.purchaseOrder.status.toLowerCase()}>
+                {data.purchaseOrder.status === 'PAID'
+                  ? 'Pago'
+                  : data.purchaseOrder.status === 'PENDING_PAYMENT'
+                    ? 'Aguardando'
+                    : data.purchaseOrder.status === 'EXPIRED'
+                      ? 'Expirado'
+                      : 'Cancelado'}
+              </strong>
+            </div>
+
+            {data.purchaseOrder.status === 'PENDING_PAYMENT' ? (
+              <div className="client-payment-actions">
+                <button
+                  type="button"
+                  onClick={() => void resumePayment()}
+                  disabled={paymentStarting}
+                >
+                  <CircleDollarSign size={16} />
+                  {paymentStarting
+                    ? 'Preparando pagamento...'
+                    : data.purchaseOrder.paymentMethod === 'PIX'
+                      ? 'Gerar PIX'
+                      : 'Continuar pagamento'}
+                </button>
+              </div>
+            ) : null}
+
+            {paymentResult?.kind === 'PIX' ? (
+              <div className="client-payment-pix">
+                {paymentResult.qrCodeBase64 ? (
+                  <img
+                    src={`data:image/png;base64,${paymentResult.qrCodeBase64}`}
+                    alt="QR Code PIX para pagamento"
+                  />
+                ) : null}
+                <div>
+                  <strong>PIX copia e cola</strong>
+                  <code>{paymentResult.qrCode}</code>
+                  <button type="button" onClick={() => void copyPixCode()}>
+                    {pixCopied ? 'Copiado' : 'Copiar código PIX'}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
 
         {quote ? (
           <section className="client-quote-panel">

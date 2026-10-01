@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
+  HttpCode,
   Post,
   Req,
   Res,
@@ -22,10 +24,37 @@ export class PortalController {
     private readonly documents: DocumentsService,
   ) {}
 
+  @Get('public/payments/config')
+  paymentConfig() {
+    return this.portal.paymentConfig()
+  }
+
   @Post('public/reservations/request')
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   requestReservation(@Body() body: RequestReservationDto) {
     return this.portal.requestReservation(body)
+  }
+
+
+  @Post('payments/mercado-pago/webhook')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  paymentWebhook(
+    @Body() body: {
+      type?: string
+      action?: string
+      data?: { id?: string }
+    },
+    @Headers('x-signature') xSignature?: string,
+    @Headers('x-request-id') xRequestId?: string,
+  ) {
+    return this.portal.handlePaymentWebhook({
+      type: body.type,
+      action: body.action,
+      dataId: body.data?.id,
+      xSignature,
+      xRequestId,
+    })
   }
 
   @Post('client/login')
@@ -38,6 +67,17 @@ export class PortalController {
   @UseGuards(ClientPortalGuard)
   portalData(@Req() request: ClientPortalRequest) {
     return this.portal.getPortal(
+      request.portal.clientId,
+      request.portal.reservationId,
+    )
+  }
+
+
+  @Post('client/payment/start')
+  @UseGuards(ClientPortalGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  retryPayment(@Req() request: ClientPortalRequest) {
+    return this.portal.retryPayment(
       request.portal.clientId,
       request.portal.reservationId,
     )

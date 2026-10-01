@@ -1,7 +1,9 @@
 import {
   BadRequestException,
+  BadGatewayException,
   ConflictException,
   Injectable,
+  ServiceUnavailableException,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common'
@@ -10,11 +12,19 @@ import { JwtService } from '@nestjs/jwt'
 import {
   Prisma,
   PurchasePaymentMethod,
+  PurchaseStatus,
   QuoteStatus,
   ReservationStatus,
   TripStatus,
 } from '@prisma/client'
 import * as argon2 from 'argon2'
+import {
+  InvalidWebhookSignatureError,
+  MercadoPagoConfig,
+  Order,
+  Payment,
+  WebhookSignatureValidator,
+} from 'mercadopago'
 import { randomBytes } from 'node:crypto'
 import { PrismaService } from '../prisma/prisma.service'
 import { ClientPortalLoginDto, RequestReservationDto } from './dto/portal.dto'
@@ -26,6 +36,48 @@ export class PortalService {
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
   ) {}
+
+  paymentConfig() {
+    const configured = Boolean(
+      this.config.get<string>('MERCADO_PAGO_ACCESS_TOKEN')?.trim() &&
+      this.config.get<string>('MERCADO_PAGO_WEBHOOK_SECRET')?.trim(),
+    )
+
+    return {
+      provider: 'MERCADO_PAGO',
+      configured,
+      methods: {
+        PIX: configured,
+        CARD: configured,
+        BOLETO: false,
+        TRANSFER: false,
+      },
+    }
+  }
+
+  private mercadoPagoClient() {
+    const accessToken =
+      this.config.get<string>('MERCADO_PAGO_ACCESS_TOKEN')?.trim()
+
+    if (!accessToken) {
+      throw new ServiceUnavailableException(
+        'Pagamento online ainda não está configurado',
+      )
+    }
+
+    return new MercadoPagoConfig({
+      accessToken,
+      options: { timeout: 10_000 },
+    })
+  }
+
+  private canProcessOnlinePayment(method: string | undefined) {
+    const config = this.paymentConfig()
+    return (
+      config.configured &&
+      (method === 'PIX' || method === 'CARD')
+    )
+  }
 
   async requestReservation(data: RequestReservationDto) {
     const trip = await this.prisma.trip.findFirst({
@@ -55,6 +107,12 @@ export class PortalService {
       if (!data.paymentMethod) {
         throw new BadRequestException(
           'Escolha uma forma de pagamento para continuar a compra',
+        )
+      }
+
+      if (!this.canProcessOnlinePayment(data.paymentMethod)) {
+        throw new ServiceUnavailableException(
+          'Pagamento online ainda não está disponível',
         )
       }
     }
@@ -243,15 +301,342 @@ export class PortalService {
         })
       : null
 
+    let payment = null
+    if (purchaseOrder) {
+      try {
+        payment = await this.initializePurchasePayment(purchaseOrder.id)
+      } catch {
+        payment = {
+          provider: 'MERCADO_PAGO' as const,
+          kind: 'UNAVAILABLE' as const,
+          status: 'pending',
+          message:
+            'O pedido foi criado, mas o pagamento não pôde ser iniciado agora.',
+        }
+      }
+    }
+
     return {
       reservation,
       accessCode,
       selectedSeats,
       purchaseOrder,
+      payment,
       message: purchaseIntent
-        ? 'Pedido criado. O pagamento está aguardando processamento.'
+        ? 'Pedido criado. Continue para concluir o pagamento.'
         : 'Solicitação recebida. Guarde o código para acessar sua viagem.',
     }
+  }
+
+  private async initializePurchasePayment(purchaseOrderId: string) {
+    const purchase = await this.prisma.purchaseOrder.findUnique({
+      where: { id: purchaseOrderId },
+      include: {
+        reservation: {
+          include: {
+            client: true,
+            trip: true,
+          },
+        },
+      },
+    })
+
+    if (!purchase) {
+      throw new NotFoundException('Pedido de compra não encontrado')
+    }
+
+    const client = this.mercadoPagoClient()
+    const webhookUrl = this.paymentWebhookUrl()
+
+    if (purchase.paymentMethod === PurchasePaymentMethod.PIX) {
+      const payment = new Payment(client)
+      const response = await payment.create({
+        body: {
+          transaction_amount: purchase.totalCents / 100,
+          description: purchase.reservation.trip.title.slice(0, 120),
+          payment_method_id: 'pix',
+          external_reference: purchase.id,
+          notification_url: webhookUrl,
+          date_of_expiration: new Date(Date.now() + 30 * 60_000).toISOString(),
+          payer: {
+            email: purchase.reservation.client.email ?? undefined,
+          },
+        },
+        requestOptions: {
+          idempotencyKey: `${purchase.id}-pix`,
+        },
+      })
+
+      const transaction = response.point_of_interaction?.transaction_data
+      if (!transaction?.qr_code) {
+        throw new BadGatewayException('O PIX não pôde ser gerado')
+      }
+
+      return {
+        provider: 'MERCADO_PAGO' as const,
+        kind: 'PIX' as const,
+        status: response.status ?? 'pending',
+        qrCode: transaction.qr_code,
+        qrCodeBase64: transaction.qr_code_base64 ?? null,
+        ticketUrl: transaction.ticket_url ?? null,
+        expiresAt: response.date_of_expiration ?? null,
+      }
+    }
+
+    if (purchase.paymentMethod === PurchasePaymentMethod.CARD) {
+      const order = new Order(client)
+      const total = (purchase.totalCents / 100).toFixed(2)
+      const unit = (purchase.unitPriceCents / 100).toFixed(2)
+      const frontend = this.frontendOrigin()
+      const response = await order.create({
+        body: {
+          type: 'online',
+          processing_mode: 'manual',
+          capture_mode: 'automatic_async',
+          total_amount: total,
+          external_reference: purchase.id,
+          expiration_time: 'PT30M',
+          description: purchase.reservation.trip.title.slice(0, 120),
+          payer: {
+            email: purchase.reservation.client.email ?? undefined,
+          },
+          items: [
+            {
+              title: purchase.reservation.trip.title.slice(0, 120),
+              unit_price: unit,
+              quantity: purchase.passengerCount,
+              unit_measure: 'unit',
+              category_id: 'travels',
+              type: 'travel',
+              event_date: purchase.reservation.trip.departureDate.toISOString(),
+            },
+          ],
+          config: {
+            online: {
+              callback_url: webhookUrl,
+              success_url: `${frontend}/?payment=success`,
+              pending_url: `${frontend}/?payment=pending`,
+              failure_url: `${frontend}/?payment=failure`,
+              auto_return: 'approved',
+            },
+            payment_method: {
+              not_allowed_types: ['ticket', 'bank_transfer'],
+            },
+          },
+        },
+        requestOptions: {
+          idempotencyKey: `${purchase.id}-checkout`,
+        },
+      })
+
+      if (!response.checkout_url) {
+        throw new BadGatewayException('O checkout não pôde ser iniciado')
+      }
+
+      return {
+        provider: 'MERCADO_PAGO' as const,
+        kind: 'CHECKOUT' as const,
+        status: response.status ?? 'created',
+        checkoutUrl: response.checkout_url,
+      }
+    }
+
+    throw new BadRequestException('Forma de pagamento online inválida')
+  }
+
+  private async applyPurchaseStatus(
+    purchaseOrderId: string,
+    status: PurchaseStatus,
+  ) {
+    const purchase = await this.prisma.purchaseOrder.findUnique({
+      where: { id: purchaseOrderId },
+      select: { reservationId: true },
+    })
+
+    if (!purchase) return { ignored: true }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.purchaseOrder.update({
+        where: { id: purchaseOrderId },
+        data: { status },
+      })
+
+      if (status === PurchaseStatus.PAID) {
+        await tx.reservation.update({
+          where: { id: purchase.reservationId },
+          data: { status: ReservationStatus.CONFIRMED },
+        })
+        return
+      }
+
+      if (
+        status === PurchaseStatus.CANCELLED ||
+        status === PurchaseStatus.EXPIRED
+      ) {
+        await tx.seatAssignment.deleteMany({
+          where: { reservationId: purchase.reservationId },
+        })
+        await tx.reservation.update({
+          where: { id: purchase.reservationId },
+          data: { status: ReservationStatus.CANCELLED },
+        })
+      }
+    })
+
+    return { updated: true, status }
+  }
+
+  async handlePaymentWebhook(input: {
+    type?: string
+    action?: string
+    dataId?: string
+    xSignature?: string
+    xRequestId?: string
+  }) {
+    const secret =
+      this.config.get<string>('MERCADO_PAGO_WEBHOOK_SECRET')?.trim()
+
+    if (!secret) {
+      throw new ServiceUnavailableException(
+        'Webhook de pagamento ainda não está configurado',
+      )
+    }
+
+    try {
+      WebhookSignatureValidator.validate({
+        xSignature: input.xSignature,
+        xRequestId: input.xRequestId,
+        dataId: input.dataId,
+        secret,
+        toleranceSeconds: 300,
+      })
+    } catch (error) {
+      if (
+        error instanceof InvalidWebhookSignatureError ||
+        error instanceof RangeError
+      ) {
+        throw new UnauthorizedException('Assinatura do webhook inválida')
+      }
+      throw error
+    }
+
+    if (!input.dataId) return { ignored: true }
+
+    const client = this.mercadoPagoClient()
+
+    if (input.type === 'payment') {
+      const payment = await new Payment(client).get({
+        id: input.dataId,
+      })
+
+      const purchaseId = payment.external_reference
+      if (!purchaseId) return { ignored: true }
+
+      const purchase = await this.prisma.purchaseOrder.findUnique({
+        where: { id: purchaseId },
+        select: { totalCents: true },
+      })
+      if (!purchase) return { ignored: true }
+
+      const amountCents = Math.round((payment.transaction_amount ?? -1) * 100)
+      if (amountCents !== purchase.totalCents) {
+        return { ignored: true, reason: 'amount_mismatch' }
+      }
+
+      const status =
+        payment.status === 'approved'
+          ? PurchaseStatus.PAID
+          : ['cancelled', 'rejected', 'refunded', 'charged_back'].includes(
+                payment.status ?? '',
+              )
+            ? PurchaseStatus.CANCELLED
+            : PurchaseStatus.PENDING_PAYMENT
+
+      return this.applyPurchaseStatus(purchaseId, status)
+    }
+
+    if (input.type === 'order' || input.action?.startsWith('order.')) {
+      const order = await new Order(client).get({
+        id: input.dataId,
+      })
+
+      const purchaseId = order.external_reference
+      if (!purchaseId) return { ignored: true }
+
+      const purchase = await this.prisma.purchaseOrder.findUnique({
+        where: { id: purchaseId },
+        select: { totalCents: true },
+      })
+      if (!purchase) return { ignored: true }
+
+      const amountCents = Math.round(Number(order.total_amount ?? '-1') * 100)
+      if (amountCents !== purchase.totalCents) {
+        return { ignored: true, reason: 'amount_mismatch' }
+      }
+
+      const status =
+        order.status === 'processed' && order.status_detail === 'accredited'
+          ? PurchaseStatus.PAID
+          : order.status === 'expired'
+            ? PurchaseStatus.EXPIRED
+            : ['canceled', 'failed', 'refunded'].includes(order.status ?? '')
+              ? PurchaseStatus.CANCELLED
+              : PurchaseStatus.PENDING_PAYMENT
+
+      return this.applyPurchaseStatus(purchaseId, status)
+    }
+
+    return { ignored: true }
+  }
+
+  private paymentWebhookUrl() {
+    const override =
+      this.config.get<string>('MERCADO_PAGO_WEBHOOK_URL')?.trim()
+    if (override) return override
+
+    const publicDomain =
+      this.config.get<string>('RAILWAY_PUBLIC_DOMAIN')?.trim()
+
+    if (!publicDomain) {
+      throw new ServiceUnavailableException(
+        'URL pública do webhook de pagamento não configurada',
+      )
+    }
+
+    return `https://${publicDomain}/api/v1/payments/mercado-pago/webhook`
+  }
+
+  private frontendOrigin() {
+    return this.config
+      .getOrThrow<string>('FRONTEND_ORIGIN')
+      .replace(/\/$/, '')
+  }
+
+  async retryPayment(clientId: string, reservationId: string) {
+    const purchase = await this.prisma.purchaseOrder.findFirst({
+      where: {
+        reservationId,
+        reservation: { clientId },
+      },
+      select: {
+        id: true,
+        status: true,
+      },
+    })
+
+    if (!purchase) {
+      throw new NotFoundException('Pedido de compra não encontrado')
+    }
+
+    if (purchase.status === PurchaseStatus.PAID) {
+      return {
+        provider: 'MERCADO_PAGO' as const,
+        kind: 'PAID' as const,
+        status: 'approved',
+      }
+    }
+
+    return this.initializePurchasePayment(purchase.id)
   }
 
   async login(data: ClientPortalLoginDto) {
