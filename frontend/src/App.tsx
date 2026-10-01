@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AdminDashboard } from './features/admin/AdminDashboard'
 import { AdminLogin } from './features/admin/AdminLogin'
 import { ClientLogin } from './features/client/ClientLogin'
@@ -15,6 +15,26 @@ function App() {
   const [adminAccessToken, setAdminAccessToken] = useState<string | null>(null)
   const [clientAccessToken, setClientAccessToken] = useState<string | null>(null)
   const [institutionalPage, setInstitutionalPage] = useState<InstitutionalPageKey>('about')
+
+  useEffect(() => {
+    const status = new URLSearchParams(window.location.search).get('paymentConnection')
+    if (!status || !window.opener) return
+
+    const payload = {
+      type: 'MERCADO_PAGO_OAUTH',
+      status: status === 'success' ? 'success' : 'error',
+      at: Date.now(),
+    }
+
+    try {
+      localStorage.setItem('mercado-pago-oauth-result', JSON.stringify(payload))
+    } catch {
+      // armazenamento indisponível
+    }
+
+    window.opener.postMessage(payload, window.location.origin)
+    window.setTimeout(() => window.close(), 250)
+  }, [])
 
   if (screen === 'home') {
     return (

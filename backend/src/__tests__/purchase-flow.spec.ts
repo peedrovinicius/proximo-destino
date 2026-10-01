@@ -105,8 +105,8 @@ describe('compra pública da viagem', () => {
     )
   })
 
-  it('expõe o gateway como indisponível sem credenciais', () => {
-    const config = portal.paymentConfig()
+  it('expõe o gateway como indisponível sem credenciais', async () => {
+    const config = await portal.paymentConfig()
     assert.equal(config.configured, false)
     assert.equal(config.methods.PIX, false)
     assert.equal(config.methods.CARD, false)

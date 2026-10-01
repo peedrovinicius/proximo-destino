@@ -101,6 +101,8 @@ model User {
   mfaRecoveryCodes  MfaRecoveryCode[]
   authAuditEvents   AuthAuditEvent[]
   issuedDocuments   TravelDocument[]
+  paymentConnections PaymentProviderConnection[] @relation("PaymentConnectionOwner")
+  paymentOauthStates PaymentOAuthState[]
 
   @@index([role, isActive])
 }
@@ -382,4 +384,38 @@ model TravelDocument {
 
   @@unique([reservationId, type, version])
   @@index([reservationId, type, issuedAt])
+}
+
+
+model PaymentProviderConnection {
+  id                    String   @id @default(cuid())
+  provider              String   @unique
+  externalUserId        String?
+  accessTokenEncrypted  String
+  refreshTokenEncrypted String?
+  publicKey             String?
+  scope                 String?
+  liveMode              Boolean  @default(true)
+  expiresAt             DateTime?
+  connectedByUserId     String?
+  connectedAt           DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  connectedBy User? @relation("PaymentConnectionOwner", fields: [connectedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([connectedByUserId])
+}
+
+model PaymentOAuthState {
+  id        String   @id @default(cuid())
+  provider  String
+  stateHash String   @unique
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
 }
