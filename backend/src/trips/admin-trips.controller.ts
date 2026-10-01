@@ -13,7 +13,12 @@ import { UserRole } from '@prisma/client'
 import { JwtAuthGuard } from '../auth/jwt-auth.guard'
 import { Roles } from '../auth/roles.decorator'
 import { RolesGuard } from '../auth/roles.guard'
-import { CreateTripDto, UpdateSeatBlockDto, UpdateTripDto } from './dto/admin-trip.dto'
+import {
+  CreateTripDto,
+  UpdateBoardingStatusDto,
+  UpdateSeatBlockDto,
+  UpdateTripDto,
+} from './dto/admin-trip.dto'
 import { TripsService } from './trips.service'
 
 @Controller('admin/trips')
@@ -52,6 +57,22 @@ export class AdminTripsController {
     @Body() body: UpdateSeatBlockDto,
   ) {
     return this.trips.setSeatBlocked(id, seatNumber, body.blocked)
+  }
+
+  @Get(':id/boarding')
+  @Roles(UserRole.ADMIN)
+  boardingList(@Param('id') id: string) {
+    return this.trips.boardingList(id)
+  }
+
+  @Patch(':id/boarding/:passengerId')
+  @Roles(UserRole.ADMIN)
+  updateBoarding(
+    @Param('id') id: string,
+    @Param('passengerId') passengerId: string,
+    @Body() body: UpdateBoardingStatusDto,
+  ) {
+    return this.trips.updateBoardingStatus(id, passengerId, body.status)
   }
 
   @Patch(':id')
