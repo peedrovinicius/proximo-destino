@@ -16,6 +16,7 @@ import {
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Brand } from '../../components/Brand'
 import { FinanceWorkspace, QuotesWorkspace } from './CommercialWorkspace'
+import { AdminSeatMapDialog } from './AdminSeatMap'
 import {
   adminApi,
   type AdminClient,
@@ -255,7 +256,12 @@ export function AdminDashboard({ accessToken, onLogout }: AdminDashboardProps) {
         ) : null}
 
         {tab === 'trips' ? (
-          <TripsView accessToken={accessToken} trips={trips} onChanged={reload} />
+          <TripsView
+            accessToken={accessToken}
+            trips={trips}
+            canManageSeats={isAdmin}
+            onChanged={reload}
+          />
         ) : null}
 
         {tab === 'reservations' ? (
@@ -710,10 +716,12 @@ function VehicleConfigurationFields({
 function TripsView({
   accessToken,
   trips,
+  canManageSeats,
   onChanged,
 }: {
   accessToken: string
   trips: AdminTrip[]
+  canManageSeats: boolean
   onChanged: () => Promise<void>
 }) {
   const [title, setTitle] = useState('')
@@ -730,6 +738,7 @@ function TripsView({
   const [vehicleFeatures, setVehicleFeatures] = useState<VehicleFeature[]>([])
   const [blockedSeats, setBlockedSeats] = useState('')
   const [saving, setSaving] = useState(false)
+  const [showSeatMap, setShowSeatMap] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -972,6 +981,7 @@ function TripsView({
                 accessToken={accessToken}
                 trip={trip}
                 templates={busTemplates}
+                canManageSeats={canManageSeats}
                 onChanged={onChanged}
               />
             </div>
@@ -986,11 +996,13 @@ function TripBusControl({
   accessToken,
   trip,
   templates,
+  canManageSeats,
   onChanged,
 }: {
   accessToken: string
   trip: AdminTrip
   templates: BusTemplateOption[]
+  canManageSeats: boolean
   onChanged: () => Promise<void>
 }) {
   const initialTemplate = trip.busTemplate ?? (trip.capacity ? 'CUSTOM' : '')
@@ -1223,6 +1235,25 @@ function TripBusControl({
       <button type="submit" disabled={saving}>
         {saving ? 'Salvando' : 'Aplicar configuração'}
       </button>
+
+      {canManageSeats && trip.capacity ? (
+        <button
+          type="button"
+          className="admin-seat-map-open"
+          onClick={() => setShowSeatMap(true)}
+        >
+          Gerenciar assentos
+        </button>
+      ) : null}
+
+      {showSeatMap ? (
+        <AdminSeatMapDialog
+          accessToken={accessToken}
+          tripId={trip.id}
+          onClose={() => setShowSeatMap(false)}
+          onChanged={onChanged}
+        />
+      ) : null}
     </form>
   )
 }
