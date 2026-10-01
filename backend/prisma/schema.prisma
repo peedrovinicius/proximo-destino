@@ -259,14 +259,26 @@ model PurchaseOrder {
   paymentMethod    PurchasePaymentMethod
   unitPriceCents   Int
   passengerCount   Int
-  totalCents       Int
-  provider         String?
-  createdAt        DateTime              @default(now())
+  totalCents            Int
+  provider              String?
+  providerPaymentId     String?   @unique
+  providerOrderId       String?   @unique
+  providerStatus        String?
+  providerStatusDetail  String?
+  checkoutUrl           String?
+  pixQrCode             String?
+  pixQrCodeBase64       String?
+  pixTicketUrl          String?
+  paymentInitializedAt  DateTime?
+  paidAt                DateTime?
+  expiresAt             DateTime?
+  createdAt              DateTime              @default(now())
   updatedAt        DateTime              @updatedAt
 
   reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Restrict)
 
   @@index([status, createdAt])
+  @@index([providerStatus, updatedAt])
 }
 
 model Quote {
