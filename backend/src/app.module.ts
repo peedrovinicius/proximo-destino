@@ -8,6 +8,7 @@ import { ClientsModule } from './clients/clients.module'
 import { CommercialModule } from './commercial/commercial.module'
 import { DocumentsModule } from './documents/documents.module'
 import { IntegrityModule } from './integrity/integrity.module'
+import { PaymentsModule } from './payments/payments.module'
 import { PortalModule } from './portal/portal.module'
 import { PrivacyModule } from './privacy/privacy.module'
 import { PrismaModule } from './prisma/prisma.module'
@@ -32,6 +33,7 @@ import { UsersModule } from './users/users.module'
     TripsModule,
     AdminModule,
     AssistantModule,
+    PaymentsModule,
     PortalModule,
     PrivacyModule,
   ],
