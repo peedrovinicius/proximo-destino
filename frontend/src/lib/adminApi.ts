@@ -414,6 +414,21 @@ export const adminApi = {
       },
     ),
 
+  bulkUpdateBoardingStatus: (
+    token: string,
+    tripId: string,
+    passengerIds: string[],
+    status: BoardingStatus,
+  ) =>
+    adminFetch<AdminBoardingList>(
+      token,
+      `/admin/trips/${encodeURIComponent(tripId)}/boarding`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ passengerIds, status }),
+      },
+    ),
+
   reservationPassengers: (token: string, reservationId: string) =>
     adminFetch<AdminReservationPassengers>(
       token,
