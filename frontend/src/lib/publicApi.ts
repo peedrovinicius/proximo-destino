@@ -14,6 +14,13 @@ export type PublicTrip = {
   status: 'ACTIVE' | 'SCHEDULED'
 }
 
+export type PublicSeatMap = {
+  enabled: boolean
+  capacity: number | null
+  occupiedSeats: number[]
+  availableCount: number | null
+}
+
 export type ReservationRequestResult = {
   reservation: {
     id: string
@@ -22,6 +29,7 @@ export type ReservationRequestResult = {
     createdAt: string
   }
   accessCode: string
+  selectedSeats: number[]
   message: string
 }
 
@@ -59,12 +67,21 @@ export async function fetchPublicTrip(id: string) {
   return response.json() as Promise<PublicTrip>
 }
 
+export async function fetchPublicTripSeats(id: string) {
+  const response = await fetch(
+    `${API_BASE}/public/trips/${encodeURIComponent(id)}/seats`,
+  )
+  if (!response.ok) throw new Error(await parseError(response))
+  return response.json() as Promise<PublicSeatMap>
+}
+
 export async function requestReservation(input: {
   tripId: string
   fullName: string
   email: string
   phone: string
   passengerCount: number
+  selectedSeats?: number[]
 }) {
   const response = await fetch(`${API_BASE}/public/reservations/request`, {
     method: 'POST',
