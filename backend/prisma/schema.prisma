@@ -187,7 +187,8 @@ model Trip {
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 
-  reservations Reservation[]
+  reservations    Reservation[]
+  seatAssignments SeatAssignment[]
 
   @@index([origin, destination, departureDate])
   @@index([status, departureDate])
@@ -208,10 +209,26 @@ model Reservation {
   quotes      Quote[]
   services    ReservationService[]
   financePlan FinancePlan?
-  documents   TravelDocument[]
+  documents       TravelDocument[]
+  seatAssignments SeatAssignment[]
 
   @@unique([clientId, tripId])
   @@index([tripId, status])
+}
+
+model SeatAssignment {
+  id            String   @id @default(cuid())
+  tripId        String
+  reservationId String
+  seatNumber    Int
+  createdAt     DateTime @default(now())
+
+  trip        Trip        @relation(fields: [tripId], references: [id], onDelete: Restrict)
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, seatNumber])
+  @@unique([reservationId, seatNumber])
+  @@index([reservationId])
 }
 
 model Quote {

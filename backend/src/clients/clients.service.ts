@@ -68,6 +68,10 @@ export class ClientsService {
             id: true,
             status: true,
             passengerCount: true,
+            seatAssignments: {
+              select: { seatNumber: true },
+              orderBy: { seatNumber: 'asc' },
+            },
             createdAt: true,
             trip: true,
           },

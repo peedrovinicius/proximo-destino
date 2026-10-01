@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
-import { TripStatus } from '@prisma/client'
+import { ReservationStatus, TripStatus } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { CreateTripDto, UpdateTripDto } from './dto/admin-trip.dto'
 
@@ -50,6 +50,53 @@ export class TripsService {
       orderBy: [{ departureDate: 'asc' }, { destination: 'asc' }],
       take: 100,
     })
+  }
+
+  async findPublicSeatMap(id: string) {
+    const trip = await this.prisma.trip.findFirst({
+      where: {
+        id,
+        status: { in: [TripStatus.ACTIVE, TripStatus.SCHEDULED] },
+        departureDate: { gte: new Date() },
+      },
+      select: {
+        id: true,
+        capacity: true,
+      },
+    })
+
+    if (!trip) throw new NotFoundException('Viagem não encontrada')
+
+    const capacity = trip.capacity
+
+    if (capacity === null || capacity < 1 || capacity > 80) {
+      return {
+        enabled: false,
+        capacity,
+        occupiedSeats: [] as number[],
+        availableCount: capacity,
+      }
+    }
+
+    const assignments = await this.prisma.seatAssignment.findMany({
+      where: {
+        tripId: trip.id,
+        reservation: {
+          status: { not: ReservationStatus.CANCELLED },
+        },
+      },
+      select: { seatNumber: true },
+      orderBy: { seatNumber: 'asc' },
+    })
+
+    const occupiedSeats = assignments.map((assignment) => assignment.seatNumber)
+
+    return {
+      enabled: true,
+      capacity,
+      occupiedSeats,
+      availableCount: Math.max(0, capacity - occupiedSeats.length),
+    }
   }
 
   async findPublicById(id: string) {

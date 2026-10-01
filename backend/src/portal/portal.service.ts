@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -6,7 +7,12 @@ import {
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { JwtService } from '@nestjs/jwt'
-import { QuoteStatus, ReservationStatus, TripStatus } from '@prisma/client'
+import {
+  Prisma,
+  QuoteStatus,
+  ReservationStatus,
+  TripStatus,
+} from '@prisma/client'
 import * as argon2 from 'argon2'
 import { randomBytes } from 'node:crypto'
 import { PrismaService } from '../prisma/prisma.service'
@@ -27,10 +33,49 @@ export class PortalService {
         status: { in: [TripStatus.ACTIVE, TripStatus.SCHEDULED] },
         departureDate: { gte: new Date() },
       },
-      select: { id: true },
+      select: {
+        id: true,
+        capacity: true,
+      },
     })
 
     if (!trip) throw new NotFoundException('Viagem indisponível')
+
+    const seatSelectionEnabled =
+      trip.capacity !== null &&
+      trip.capacity >= 1 &&
+      trip.capacity <= 80
+
+    const selectedSeats = [...(data.selectedSeats ?? [])].sort((a, b) => a - b)
+
+    if (seatSelectionEnabled) {
+      if (selectedSeats.length !== data.passengerCount) {
+        throw new BadRequestException(
+          `Selecione exatamente ${data.passengerCount} assento(s) para concluir a solicitação`,
+        )
+      }
+
+      if (selectedSeats.some((seat) => seat < 1 || seat > (trip.capacity as number))) {
+        throw new BadRequestException('Há um assento fora da capacidade desta viagem')
+      }
+
+      const occupied = await this.prisma.seatAssignment.findMany({
+        where: {
+          tripId: trip.id,
+          seatNumber: { in: selectedSeats },
+          reservation: { status: { not: ReservationStatus.CANCELLED } },
+        },
+        select: { seatNumber: true },
+      })
+
+      if (occupied.length) {
+        throw new ConflictException(
+          `O(s) assento(s) ${occupied.map((item) => item.seatNumber).join(', ')} não está(ão) mais disponível(is)`,
+        )
+      }
+    } else if (selectedSeats.length) {
+      throw new BadRequestException('Esta viagem não possui escolha de assentos')
+    }
 
     const email = data.email.trim().toLowerCase()
     const accessCode = this.generateAccessCode()
@@ -64,24 +109,70 @@ export class PortalService {
       throw new ConflictException('Já existe uma solicitação para este e-mail nesta viagem')
     }
 
-    const reservation = await this.prisma.reservation.create({
-      data: {
-        clientId: client.id,
-        tripId: trip.id,
-        passengerCount: data.passengerCount,
-        accessCodeHash,
-      },
-      select: {
-        id: true,
-        status: true,
-        passengerCount: true,
-        createdAt: true,
-      },
-    })
+    let reservation
+
+    try {
+      reservation = await this.prisma.$transaction(async (tx) => {
+        const created = await tx.reservation.create({
+          data: {
+            clientId: client.id,
+            tripId: trip.id,
+            passengerCount: data.passengerCount,
+            accessCodeHash,
+          },
+          select: {
+            id: true,
+            status: true,
+            passengerCount: true,
+            createdAt: true,
+          },
+        })
+
+        if (seatSelectionEnabled) {
+          await tx.seatAssignment.createMany({
+            data: selectedSeats.map((seatNumber) => ({
+              tripId: trip.id,
+              reservationId: created.id,
+              seatNumber,
+            })),
+          })
+        }
+
+        return created
+      })
+    } catch (cause) {
+      if (
+        cause instanceof Prisma.PrismaClientKnownRequestError &&
+        cause.code === 'P2002'
+      ) {
+        const duplicateReservation = await this.prisma.reservation.findUnique({
+          where: {
+            clientId_tripId: {
+              clientId: client.id,
+              tripId: trip.id,
+            },
+          },
+          select: { id: true },
+        })
+
+        if (duplicateReservation) {
+          throw new ConflictException(
+            'Já existe uma solicitação para este e-mail nesta viagem',
+          )
+        }
+
+        throw new ConflictException(
+          'Um dos assentos selecionados acabou de ser ocupado. Atualize a seleção e tente novamente.',
+        )
+      }
+
+      throw cause
+    }
 
     return {
       reservation,
       accessCode,
+      selectedSeats,
       message: 'Solicitação recebida. Guarde o código para acessar sua viagem.',
     }
   }
@@ -140,6 +231,10 @@ export class PortalService {
         status: true,
         passengerCount: true,
         createdAt: true,
+        seatAssignments: {
+          select: { seatNumber: true },
+          orderBy: { seatNumber: 'asc' },
+        },
         client: {
           select: {
             id: true,

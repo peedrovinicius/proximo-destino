@@ -67,6 +67,10 @@ export class AdminService {
         id: true,
         status: true,
         passengerCount: true,
+        seatAssignments: {
+          select: { seatNumber: true },
+          orderBy: { seatNumber: 'asc' },
+        },
         createdAt: true,
         updatedAt: true,
         client: { select: { id: true, fullName: true, email: true, phone: true } },
@@ -102,6 +106,10 @@ export class AdminService {
         id: true,
         status: true,
         passengerCount: true,
+        seatAssignments: {
+          select: { seatNumber: true },
+          orderBy: { seatNumber: 'asc' },
+        },
         createdAt: true,
         client: { select: { id: true, fullName: true, email: true, phone: true } },
         trip: {
@@ -120,6 +128,16 @@ export class AdminService {
   async updateReservationStatus(id: string, status: ReservationStatus) {
     const exists = await this.prisma.reservation.count({ where: { id } })
     if (!exists) throw new NotFoundException('Reserva não encontrada')
+
+    if (status === ReservationStatus.CANCELLED) {
+      return this.prisma.$transaction(async (tx) => {
+        await tx.seatAssignment.deleteMany({ where: { reservationId: id } })
+        return tx.reservation.update({
+          where: { id },
+          data: { status },
+        })
+      })
+    }
 
     return this.prisma.reservation.update({
       where: { id },

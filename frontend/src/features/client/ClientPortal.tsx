@@ -195,7 +195,11 @@ export function ClientPortal({ accessToken, onLogout }: ClientPortalProps) {
             <div className="summary-icon"><Users size={20} /></div>
             <span>Passageiros</span>
             <strong>{data.passengerCount}</strong>
-            <small>Vinculados a esta solicitação</small>
+            <small>
+              {data.seatAssignments.length
+                ? `Assentos: ${data.seatAssignments.map((seat) => seat.seatNumber).join(', ')}`
+                : 'Vinculados a esta solicitação'}
+            </small>
           </article>
           <article className="client-summary-card">
             <div className="summary-icon"><WalletCards size={20} /></div>
