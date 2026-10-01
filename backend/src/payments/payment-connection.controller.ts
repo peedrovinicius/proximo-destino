@@ -1,0 +1,57 @@
+import {
+  Controller,
+  Get,
+  Post,
+  Query,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common'
+import { UserRole } from '@prisma/client'
+import type { Response } from 'express'
+import type { AuthenticatedRequest } from '../auth/jwt-auth.guard'
+import { JwtAuthGuard } from '../auth/jwt-auth.guard'
+import { Roles } from '../auth/roles.decorator'
+import { RolesGuard } from '../auth/roles.guard'
+import { PaymentConnectionService } from './payment-connection.service'
+
+@Controller('admin/payments')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.ADMIN)
+export class PaymentConnectionAdminController {
+  constructor(private readonly payments: PaymentConnectionService) {}
+
+  @Get('mercado-pago')
+  status() {
+    return this.payments.status()
+  }
+
+  @Post('mercado-pago/connect')
+  connect(@Req() request: AuthenticatedRequest) {
+    return this.payments.begin(request.user.id)
+  }
+
+  @Post('mercado-pago/disconnect')
+  disconnect() {
+    return this.payments.disconnect()
+  }
+}
+
+@Controller('payments/mercado-pago/oauth')
+export class PaymentOAuthController {
+  constructor(private readonly payments: PaymentConnectionService) {}
+
+  @Get('callback')
+  async callback(
+    @Query('code') code: string,
+    @Query('state') state: string,
+    @Res() response: Response,
+  ) {
+    try {
+      await this.payments.complete(code, state)
+      return response.redirect(this.payments.frontendResultUrl('success'))
+    } catch {
+      return response.redirect(this.payments.frontendResultUrl('error'))
+    }
+  }
+}
