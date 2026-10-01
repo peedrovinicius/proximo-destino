@@ -2,7 +2,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { MercadoPagoConfig, Order } from 'mercadopago'
+import { MercadoPagoConfig, Order, Payment } from 'mercadopago'
 
 export class MercadoPagoService {
   constructor(private readonly config: ConfigService) {}
@@ -27,6 +27,48 @@ export class MercadoPagoService {
       accessToken,
       options: { timeout: 10_000 },
     })
+  }
+
+  async createPix(input: {
+    idempotencyKey: string
+    externalReference: string
+    totalCents: number
+    title: string
+    payerEmail: string
+  }) {
+    const payment = new Payment(this.client())
+
+    const response = await payment.create({
+      body: {
+        transaction_amount: input.totalCents / 100,
+        description: input.title.slice(0, 120),
+        payment_method_id: 'pix',
+        external_reference: input.externalReference,
+        payer: {
+          email: input.payerEmail,
+        },
+      },
+      requestOptions: {
+        idempotencyKey: input.idempotencyKey,
+      },
+    })
+
+    const transaction = response.point_of_interaction?.transaction_data
+    if (!transaction?.qr_code) {
+      throw new ServiceUnavailableException(
+        'O PIX não pôde ser gerado',
+      )
+    }
+
+    return {
+      provider: 'MERCADO_PAGO' as const,
+      kind: 'PIX' as const,
+      providerPaymentId: response.id ? String(response.id) : null,
+      status: response.status ?? 'pending',
+      qrCode: transaction.qr_code,
+      qrCodeBase64: transaction.qr_code_base64 ?? null,
+      ticketUrl: transaction.ticket_url ?? null,
+    }
   }
 
   async createCheckout(input: {
