@@ -26,6 +26,12 @@ export class AdminTripsController {
     return this.trips.busTemplates()
   }
 
+  @Get(':id/seats')
+  @Roles(UserRole.ADMIN, UserRole.AGENT)
+  seatMap(@Param('id') id: string) {
+    return this.trips.findAdminSeatMap(id)
+  }
+
   @Get()
   list(@Query('q') query?: string) {
     return this.trips.listAdmin(query)
