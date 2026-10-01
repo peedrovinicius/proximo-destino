@@ -14,6 +14,11 @@ export class TripsController {
     return this.tripsService.searchPublic(origin, destination, departureDate)
   }
 
+  @Get(':id/seats')
+  seatMap(@Param('id') id: string) {
+    return this.tripsService.findPublicSeatMap(id)
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.tripsService.findPublicById(id)
