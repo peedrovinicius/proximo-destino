@@ -410,14 +410,22 @@ export function TripDetailsPage({
               </div>
             ) : (
               <form onSubmit={submit}>
-                {purchaseAvailable ? (
+                {hasPublishedPrice ? (
                   <div className="purchase-mode-switch" role="tablist" aria-label="Forma de contratação">
                     <button
                       type="button"
                       role="tab"
                       aria-selected={flowMode === 'PURCHASE'}
                       className={flowMode === 'PURCHASE' ? 'active' : ''}
-                      onClick={() => setFlowMode('PURCHASE')}
+                      onClick={() => {
+                        if (purchaseAvailable) setFlowMode('PURCHASE')
+                      }}
+                      disabled={!purchaseAvailable}
+                      title={
+                        purchaseAvailable
+                          ? 'Comprar online'
+                          : 'Pagamento online em configuração'
+                      }
                     >
                       Comprar
                     </button>
@@ -492,10 +500,8 @@ export function TripDetailsPage({
                     <fieldset className="purchase-payment-methods">
                       <legend>Forma de pagamento</legend>
                       {([
-                        ['PIX', 'PIX', 'Confirmação rápida'],
-                        ['CARD', 'Cartão', 'Crédito ou débito'],
-                        ['BOLETO', 'Boleto', 'Pagamento bancário'],
-                        ['TRANSFER', 'Transferência', 'Transferência bancária'],
+                        ['PIX', 'PIX', 'QR Code e copia e cola'],
+                        ['CARD', 'Cartão', 'Checkout seguro do Mercado Pago'],
                       ] as const).map(([value, label, description]) => (
                         <label
                           key={value}
@@ -533,7 +539,11 @@ export function TripDetailsPage({
                 <button
                   type="submit"
                   className={flowMode === 'PURCHASE' ? 'purchase-submit' : ''}
-                  disabled={submitting || (seatSelectionExpected && seatMapLoading)}
+                  disabled={
+                    submitting ||
+                    (seatSelectionExpected && seatMapLoading) ||
+                    (flowMode === 'PURCHASE' && !purchaseAvailable)
+                  }
                 >
                   {submitting
                     ? 'Registrando...'
@@ -544,7 +554,7 @@ export function TripDetailsPage({
 
                 {flowMode === 'PURCHASE' ? (
                   <small className="purchase-payment-note">
-                    O pedido é criado com pagamento pendente. Nenhuma cobrança é feita automaticamente nesta etapa.
+                    PIX é gerado na própria página. No cartão, você continua no checkout seguro do Mercado Pago.
                   </small>
                 ) : null}
               </form>
