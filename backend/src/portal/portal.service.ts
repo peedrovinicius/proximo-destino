@@ -1,7 +1,9 @@
 import {
   BadRequestException,
+  BadGatewayException,
   ConflictException,
   Injectable,
+  ServiceUnavailableException,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common'
@@ -15,6 +17,13 @@ import {
   TripStatus,
 } from '@prisma/client'
 import * as argon2 from 'argon2'
+import {
+  InvalidWebhookSignatureError,
+  MercadoPagoConfig,
+  Order,
+  Payment,
+  WebhookSignatureValidator,
+} from 'mercadopago'
 import { randomBytes } from 'node:crypto'
 import { PrismaService } from '../prisma/prisma.service'
 import { ClientPortalLoginDto, RequestReservationDto } from './dto/portal.dto'
