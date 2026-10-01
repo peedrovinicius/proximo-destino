@@ -176,6 +176,19 @@ export function TripDetailsPage({
     }
   }
 
+  async function copyPixCode() {
+    const payment = requestResult?.payment
+    if (!payment || payment.kind !== 'PIX') return
+
+    try {
+      await navigator.clipboard.writeText(payment.qrCode)
+      setPixCopied(true)
+      window.setTimeout(() => setPixCopied(false), 1800)
+    } catch {
+      setPixCopied(false)
+    }
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!trip) return
@@ -264,8 +277,13 @@ export function TripDetailsPage({
     trip.capacity !== null &&
     trip.capacity >= 1 &&
     trip.capacity <= 80
-  const purchaseAvailable = trip.priceCents !== null && trip.priceCents > 0
-  const totalCents = purchaseAvailable
+  const hasPublishedPrice =
+    trip.priceCents !== null &&
+    trip.priceCents > 0
+  const purchaseAvailable =
+    hasPublishedPrice &&
+    paymentConfig?.configured === true
+  const totalCents = hasPublishedPrice
     ? trip.priceCents! * passengerCount
     : null
 
@@ -317,8 +335,20 @@ export function TripDetailsPage({
             <div className="availability-note">
               <ShieldCheck size={17} />
               <div>
-                <strong>Solicitação sem cobrança automática</strong>
-                <span>O envio abaixo registra interesse. A reserva permanece pendente até confirmação da agência.</span>
+                <strong>
+                  {purchaseAvailable
+                    ? 'Pagamento online protegido'
+                    : hasPublishedPrice
+                      ? 'Compra online em configuração'
+                      : 'Solicitação sem cobrança automática'}
+                </strong>
+                <span>
+                  {purchaseAvailable
+                    ? 'PIX e cartão são processados pelo ambiente seguro do Mercado Pago.'
+                    : hasPublishedPrice
+                      ? 'A reserva continua disponível enquanto o pagamento online é ativado pela agência.'
+                      : 'O envio abaixo registra interesse. A reserva permanece pendente até confirmação da agência.'}
+                </span>
               </div>
             </div>
           </article>
