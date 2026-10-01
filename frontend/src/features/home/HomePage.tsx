@@ -356,10 +356,16 @@ export function HomePage({ onClientAccess, onAdminAccess }: HomePageProps) {
         <div className="public-footer-legal" aria-label="Dados institucionais">
           <span><strong>CNPJ</strong> 12.750.321/0001-92</span>
           <span><strong>Cadastur</strong> 12.750.321/0001-92</span>
-          <span className="public-footer-instagram">
+          <a
+            className="public-footer-instagram"
+            href="https://www.instagram.com/proximodestino02/"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Instagram da Próximo Destino"
+          >
             <Instagram size={15} />
-            <strong>Instagram</strong>
-          </span>
+            <strong>@proximodestino02</strong>
+          </a>
         </div>
 
         <button type="button" onClick={onAdminAccess}>Área administrativa</button>
