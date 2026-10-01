@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   BadGatewayException,
+  Optional,
   ConflictException,
   Injectable,
   ServiceUnavailableException,
@@ -26,6 +27,7 @@ import {
   WebhookSignatureValidator,
 } from 'mercadopago'
 import { randomBytes } from 'node:crypto'
+import { PaymentConnectionService } from '../payments/payment-connection.service'
 import { PrismaService } from '../prisma/prisma.service'
 import { ClientPortalLoginDto, RequestReservationDto } from './dto/portal.dto'
 
@@ -35,13 +37,16 @@ export class PortalService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    @Optional() private readonly paymentConnection?: PaymentConnectionService,
   ) {}
 
-  paymentConfig() {
-    const configured = Boolean(
-      this.config.get<string>('MERCADO_PAGO_ACCESS_TOKEN')?.trim() &&
-      this.config.get<string>('MERCADO_PAGO_WEBHOOK_SECRET')?.trim(),
-    )
+  async paymentConfig() {
+    const connected = this.paymentConnection
+      ? (await this.paymentConnection.status()).connected
+      : Boolean(this.config.get<string>('MERCADO_PAGO_ACCESS_TOKEN')?.trim())
+    const configured =
+      connected &&
+      Boolean(this.config.get<string>('MERCADO_PAGO_WEBHOOK_SECRET')?.trim())
 
     return {
       provider: 'MERCADO_PAGO',
@@ -55,9 +60,10 @@ export class PortalService {
     }
   }
 
-  private mercadoPagoClient() {
-    const accessToken =
-      this.config.get<string>('MERCADO_PAGO_ACCESS_TOKEN')?.trim()
+  private async mercadoPagoClient() {
+    const accessToken = this.paymentConnection
+      ? await this.paymentConnection.getAccessToken()
+      : this.config.get<string>('MERCADO_PAGO_ACCESS_TOKEN')?.trim()
 
     if (!accessToken) {
       throw new ServiceUnavailableException(
@@ -71,12 +77,9 @@ export class PortalService {
     })
   }
 
-  private canProcessOnlinePayment(method: string | undefined) {
-    const config = this.paymentConfig()
-    return (
-      config.configured &&
-      (method === 'PIX' || method === 'CARD')
-    )
+  private async canProcessOnlinePayment(method: string | undefined) {
+    const config = await this.paymentConfig()
+    return config.configured && (method === 'PIX' || method === 'CARD')
   }
 
   async requestReservation(data: RequestReservationDto) {
@@ -110,7 +113,7 @@ export class PortalService {
         )
       }
 
-      if (!this.canProcessOnlinePayment(data.paymentMethod)) {
+      if (!(await this.canProcessOnlinePayment(data.paymentMethod))) {
         throw new ServiceUnavailableException(
           'Pagamento online ainda não está disponível',
         )
@@ -345,7 +348,7 @@ export class PortalService {
       throw new NotFoundException('Pedido de compra não encontrado')
     }
 
-    const client = this.mercadoPagoClient()
+    const client = await this.mercadoPagoClient()
     const webhookUrl = this.paymentWebhookUrl()
 
     if (purchase.paymentMethod === PurchasePaymentMethod.PIX) {
@@ -522,7 +525,7 @@ export class PortalService {
 
     if (!input.dataId) return { ignored: true }
 
-    const client = this.mercadoPagoClient()
+    const client = await this.mercadoPagoClient()
 
     if (input.type === 'payment') {
       const payment = await new Payment(client).get({
