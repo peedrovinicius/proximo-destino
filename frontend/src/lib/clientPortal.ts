@@ -27,6 +27,16 @@ export type ClientPortalData = {
   status: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED'
   passengerCount: number
   createdAt: string
+  canEditPassengers: boolean
+  passengers: Array<{
+    id: string
+    sequence: number
+    fullName: string | null
+    document: string | null
+    birthDate: string | null
+    isPrimary: boolean
+    seatAssignment: { seatNumber: number } | null
+  }>
   seatAssignments: Array<{
     seatNumber: number
   }>
@@ -138,6 +148,28 @@ export async function loginClientPortal(email: string, code: string) {
 export async function fetchClientPortal(accessToken: string) {
   const response = await fetch(`${API_BASE}/client/portal`, {
     headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  if (!response.ok) throw new Error(await parseError(response))
+  return response.json() as Promise<ClientPortalData>
+}
+
+export async function updateClientPassengers(
+  accessToken: string,
+  passengers: Array<{
+    id: string
+    fullName: string
+    document?: string | null
+    birthDate?: string | null
+  }>,
+) {
+  const response = await fetch(`${API_BASE}/client/passengers`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ passengers }),
   })
 
   if (!response.ok) throw new Error(await parseError(response))
