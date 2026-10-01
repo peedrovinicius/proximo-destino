@@ -6,6 +6,7 @@ import {
   MapPin,
   MessageCircle,
   Instagram,
+  Mail,
   Plane,
   Search,
   ShieldCheck,
@@ -354,16 +355,40 @@ export function HomePage({ onClientAccess, onAdminAccess }: HomePageProps) {
         </div>
 
         <div className="public-footer-legal" aria-label="Dados institucionais">
-          <span><strong>CNPJ</strong> 59.239.955/0001-49</span>
+          <span className="public-footer-contact">
+            <strong>CNPJ</strong>
+            <span>59.239.955/0001-49</span>
+          </span>
+
           <a
-            className="public-footer-instagram"
+            className="public-footer-contact"
             href="https://www.instagram.com/proximodestino02/"
             target="_blank"
             rel="noreferrer"
             aria-label="Instagram da Próximo Destino"
           >
             <Instagram size={15} />
-            <strong>@proximodestino02</strong>
+            <span>@proximodestino02</span>
+          </a>
+
+          <a
+            className="public-footer-contact"
+            href="mailto:proximodestinoviagens7@gmail.com"
+            aria-label="E-mail da Próximo Destino"
+          >
+            <Mail size={15} />
+            <span>proximodestinoviagens7@gmail.com</span>
+          </a>
+
+          <a
+            className="public-footer-contact"
+            href="https://wa.me/5585994284379"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="WhatsApp da Próximo Destino"
+          >
+            <MessageCircle size={15} />
+            <span>+55 85 99428-4379</span>
           </a>
         </div>
 
