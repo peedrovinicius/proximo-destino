@@ -241,6 +241,16 @@ export const adminApi = {
       body: JSON.stringify(data),
     }),
 
+  updateTrip: (
+    token: string,
+    id: string,
+    data: { capacity: number | null },
+  ) =>
+    adminFetch<AdminTrip>(token, `/admin/trips/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
   reservations: (token: string) =>
     adminFetch<AdminReservation[]>(token, '/admin/reservations'),
 
