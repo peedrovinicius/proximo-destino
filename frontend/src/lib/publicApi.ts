@@ -76,3 +76,29 @@ export async function requestReservation(input: {
   if (!response.ok) throw new Error(await parseError(response))
   return response.json() as Promise<ReservationRequestResult>
 }
+
+
+export type AssistantMessage = {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export async function askTravelAssistant(
+  message: string,
+  history: AssistantMessage[],
+) {
+  const response = await fetch(`${API_BASE}/public/assistant`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message,
+      history: history.slice(-8),
+    }),
+  })
+
+  if (!response.ok) throw new Error(await parseError(response))
+  return response.json() as Promise<{
+    answer: string
+    catalogUpdatedAt: string
+  }>
+}
