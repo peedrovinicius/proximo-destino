@@ -7759,3 +7759,60 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
     width: 100%;
   }
 }
+
+
+/* Simple payment onboarding */
+
+.payment-onboarding-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.payment-onboarding-steps > div {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 9px;
+  border: 1px solid #e8edf2;
+  border-radius: 14px;
+  padding: 12px;
+  background: #fbfcfd;
+}
+
+.payment-onboarding-steps > div > span {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  place-items: center;
+  border-radius: 50%;
+  color: #0066cc;
+  background: #eaf4ff;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.payment-onboarding-steps p {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  margin: 0;
+}
+
+.payment-onboarding-steps strong {
+  color: #29455c;
+  font-size: 10px;
+}
+
+.payment-onboarding-steps small {
+  color: #7b8996;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+@media (max-width: 700px) {
+  .payment-onboarding-steps {
+    grid-template-columns: 1fr;
+  }
+}
