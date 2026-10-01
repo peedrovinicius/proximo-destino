@@ -483,8 +483,8 @@ const content: Record<InstitutionalPageKey, PageContent> = {
       {
         title: 'Antes de sair',
         items: [
-          'Confira endereço e horário do embarque no voucher ou bilhete oficial.',
-          'Observe terminal, portão, aeroporto, rodoviária ou ponto indicado pelo fornecedor.',
+          'Confira endereço e horário do embarque no voucher ou documento informado pelo fornecedor.',
+          'Confira o terminal, rodoviária ou ponto de embarque informado pela transportadora ou pelo prestador responsável.',
           'Chegue com antecedência compatível com o serviço contratado.',
           'Em caso de divergência, entre em contato com a agência antes do horário de embarque.',
         ],
