@@ -52,6 +52,9 @@ export function TripDetailsPage({
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [passengerCount, setPassengerCount] = useState(defaultPassengers)
+  const [companionNames, setCompanionNames] = useState<string[]>(
+    Array.from({ length: Math.max(0, defaultPassengers - 1) }, () => ''),
+  )
   const [submitting, setSubmitting] = useState(false)
   const [requestResult, setRequestResult] = useState<ReservationRequestResult | null>(null)
   const [copied, setCopied] = useState(false)
@@ -161,7 +164,21 @@ export function TripDetailsPage({
   function changePassengerCount(value: number) {
     if (value === passengerCount) return
     setPassengerCount(value)
+    setCompanionNames((current) =>
+      Array.from(
+        { length: Math.max(0, value - 1) },
+        (_, index) => current[index] ?? '',
+      ),
+    )
     setSelectedSeats([])
+  }
+
+  function changeCompanionName(index: number, value: string) {
+    setCompanionNames((current) =>
+      current.map((name, currentIndex) =>
+        currentIndex === index ? value : name,
+      ),
+    )
   }
 
   async function copyAccessCode() {
@@ -211,6 +228,14 @@ export function TripDetailsPage({
       return
     }
 
+    const incompleteCompanion = companionNames.findIndex(
+      (name) => name.trim().length < 2,
+    )
+    if (incompleteCompanion >= 0) {
+      setError(`Informe o nome completo do passageiro ${incompleteCompanion + 2}.`)
+      return
+    }
+
     setSubmitting(true)
     setError('')
 
@@ -221,6 +246,10 @@ export function TripDetailsPage({
         email,
         phone,
         passengerCount,
+        passengers: [
+          { fullName: fullName.trim() },
+          ...companionNames.map((name) => ({ fullName: name.trim() })),
+        ],
         selectedSeats: seatMap?.enabled ? selectedSeats : undefined,
         intent: flowMode,
         paymentMethod: flowMode === 'PURCHASE' ? paymentMethod : undefined,
@@ -369,6 +398,20 @@ export function TripDetailsPage({
                   <div className="reservation-selected-seats">
                     <span>Assentos</span>
                     <strong>{requestResult.selectedSeats.join(', ')}</strong>
+                  </div>
+                ) : null}
+
+                {requestResult.passengers.length > 1 ? (
+                  <div className="reservation-passenger-summary">
+                    {requestResult.passengers.map((passenger) => (
+                      <div key={passenger.id}>
+                        <span>Passageiro {passenger.sequence}</span>
+                        <strong>{passenger.fullName || 'Nome não informado'}</strong>
+                        {passenger.seatAssignment ? (
+                          <small>Assento {passenger.seatAssignment.seatNumber}</small>
+                        ) : null}
+                      </div>
+                    ))}
                   </div>
                 ) : null}
                 {requestResult.purchaseOrder ? (
@@ -536,6 +579,39 @@ export function TripDetailsPage({
                     {[1,2,3,4,5,6,7,8,9,10].map((value) => <option key={value} value={value}>{value}</option>)}
                   </select>
                 </label>
+
+                {passengerCount > 1 ? (
+                  <div className="public-passenger-fields">
+                    <div className="public-passenger-fields-heading">
+                      <strong>Quem vai viajar?</strong>
+                      <span>Informe os nomes dos acompanhantes.</span>
+                    </div>
+
+                    <div className="public-passenger-primary">
+                      <div>
+                        <strong>Passageiro 1</strong>
+                        <span>{fullName.trim() || 'Titular da reserva'}</span>
+                      </div>
+                      {selectedSeats[0] ? <small>Assento {selectedSeats[0]}</small> : null}
+                    </div>
+
+                    {companionNames.map((name, index) => (
+                      <label className="public-passenger-row" key={index}>
+                        <span>
+                          Passageiro {index + 2}
+                          {selectedSeats[index + 1] ? ` · Assento ${selectedSeats[index + 1]}` : ''}
+                        </span>
+                        <input
+                          value={name}
+                          onChange={(event) => changeCompanionName(index, event.target.value)}
+                          autoComplete="off"
+                          placeholder="Nome completo do acompanhante"
+                          required
+                        />
+                      </label>
+                    ))}
+                  </div>
+                ) : null}
 
                 {seatSelectionExpected ? (
                   <div className="reservation-seat-field">
