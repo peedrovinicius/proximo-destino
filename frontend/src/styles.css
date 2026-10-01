@@ -8650,3 +8650,134 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
     width: 100%;
   }
 }
+
+
+/* Public passenger identification */
+
+.public-passenger-fields {
+  display: grid;
+  gap: 9px;
+  margin: 4px 0 2px;
+  padding: 12px;
+  border: 1px solid #e4ebf1;
+  border-radius: 13px;
+  background: #f8fafc;
+}
+
+.public-passenger-fields-heading {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 2px;
+}
+
+.public-passenger-fields-heading strong {
+  color: #183044;
+  font-size: 9px;
+}
+
+.public-passenger-fields-heading span {
+  color: #8493a0;
+  font-size: 7px;
+}
+
+.public-passenger-primary {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid #e3ebf1;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.public-passenger-primary strong,
+.public-passenger-primary span {
+  display: block;
+}
+
+.public-passenger-primary strong {
+  color: #6d7f90;
+  font-size: 7px;
+  font-weight: 800;
+}
+
+.public-passenger-primary span {
+  margin-top: 3px;
+  color: #213e56;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.public-passenger-primary small {
+  flex: 0 0 auto;
+  padding: 5px 7px;
+  border-radius: 999px;
+  color: #1f65a5;
+  background: #edf5fd;
+  font-size: 7px;
+  font-weight: 800;
+}
+
+.public-passenger-row {
+  display: grid;
+  gap: 5px;
+}
+
+.public-passenger-row > span {
+  color: #5d7183;
+  font-size: 7px;
+  font-weight: 800;
+}
+
+.public-passenger-row input {
+  margin: 0;
+  background: #fff;
+}
+
+.reservation-passenger-summary {
+  display: grid;
+  gap: 7px;
+  width: 100%;
+}
+
+.reservation-passenger-summary > div {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid #e2eaf0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.reservation-passenger-summary span,
+.reservation-passenger-summary small {
+  color: #7e8f9e;
+  font-size: 7px;
+}
+
+.reservation-passenger-summary strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #27455d;
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+  .public-passenger-fields {
+    padding: 10px;
+  }
+
+  .reservation-passenger-summary > div {
+    grid-template-columns: 1fr auto;
+  }
+
+  .reservation-passenger-summary span {
+    grid-column: 1 / -1;
+  }
+}
