@@ -180,10 +180,14 @@ model Trip {
   departureDate DateTime
   returnDate    DateTime?
   status        TripStatus @default(DRAFT)
-  capacity      Int?
-  busTemplate   String?
-  seatLayout    String?
-  priceCents    Int?
+  capacity          Int?
+  busTemplate       String?
+  seatLayout        String?
+  deckCount         Int?
+  lowerDeckCapacity Int?
+  vehicleFeatures   Json?
+  blockedSeats      Int[]      @default([])
+  priceCents        Int?
   summary       String?
   imageUrl      String?
   createdAt     DateTime   @default(now())
