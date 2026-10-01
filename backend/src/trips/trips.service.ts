@@ -2,10 +2,20 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { ReservationStatus, TripStatus } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { CreateTripDto, UpdateTripDto } from './dto/admin-trip.dto'
+import {
+  describeBus,
+  isSeatLayout,
+  listBusTemplates,
+  resolveBusTemplate,
+} from './bus-templates'
 
 @Injectable()
 export class TripsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  busTemplates() {
+    return listBusTemplates()
+  }
 
   async searchPublic(origin?: string, destination?: string, departureDate?: string) {
     let dateFilter: { gte: Date; lt?: Date }
@@ -42,6 +52,8 @@ export class TripsService {
         departureDate: true,
         returnDate: true,
         capacity: true,
+        busTemplate: true,
+        seatLayout: true,
         priceCents: true,
         summary: true,
         imageUrl: true,
@@ -62,6 +74,8 @@ export class TripsService {
       select: {
         id: true,
         capacity: true,
+        busTemplate: true,
+        seatLayout: true,
       },
     })
 
@@ -69,10 +83,18 @@ export class TripsService {
 
     const capacity = trip.capacity
 
+    const seatLayout = isSeatLayout(trip.seatLayout)
+      ? trip.seatLayout
+      : 'TWO_BY_TWO'
+    const busLabel = describeBus(trip.busTemplate, capacity)
+
     if (capacity === null || capacity < 1 || capacity > 80) {
       return {
         enabled: false,
         capacity,
+        busTemplate: trip.busTemplate,
+        busLabel,
+        seatLayout,
         occupiedSeats: [] as number[],
         availableCount: capacity,
       }
@@ -94,6 +116,9 @@ export class TripsService {
     return {
       enabled: true,
       capacity,
+      busTemplate: trip.busTemplate,
+      busLabel,
+      seatLayout,
       occupiedSeats,
       availableCount: Math.max(0, capacity - occupiedSeats.length),
     }
@@ -113,6 +138,8 @@ export class TripsService {
         departureDate: true,
         returnDate: true,
         capacity: true,
+        busTemplate: true,
+        seatLayout: true,
         priceCents: true,
         summary: true,
         imageUrl: true,
@@ -144,6 +171,14 @@ export class TripsService {
   }
 
   create(data: CreateTripDto) {
+    const busConfig = data.busTemplate
+      ? resolveBusTemplate(data.busTemplate, data.capacity, data.seatLayout)
+      : {
+          busTemplate: null,
+          capacity: data.capacity,
+          seatLayout: data.seatLayout ?? null,
+        }
+
     return this.prisma.trip.create({
       data: {
         title: data.title.trim(),
@@ -152,7 +187,9 @@ export class TripsService {
         departureDate: data.departureDate,
         returnDate: data.returnDate,
         status: data.status ?? TripStatus.DRAFT,
-        capacity: data.capacity,
+        capacity: busConfig.capacity,
+        busTemplate: busConfig.busTemplate,
+        seatLayout: busConfig.seatLayout,
         priceCents: data.priceCents,
         summary: data.summary?.trim(),
         imageUrl: data.imageUrl?.trim(),
@@ -161,8 +198,80 @@ export class TripsService {
   }
 
   async update(id: string, data: UpdateTripDto) {
-    const exists = await this.prisma.trip.count({ where: { id } })
-    if (!exists) throw new NotFoundException('Viagem não encontrada')
+    const existing = await this.prisma.trip.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        capacity: true,
+        busTemplate: true,
+        seatLayout: true,
+      },
+    })
+
+    if (!existing) throw new NotFoundException('Viagem não encontrada')
+
+    const busTouched =
+      data.busTemplate !== undefined ||
+      data.capacity !== undefined ||
+      data.seatLayout !== undefined
+
+    let busData: {
+      capacity?: number | null
+      busTemplate?: string | null
+      seatLayout?: string | null
+    } = {}
+
+    if (busTouched) {
+      if (data.busTemplate !== undefined) {
+        if (data.busTemplate === null) {
+          const capacity =
+            data.capacity !== undefined ? data.capacity : existing.capacity
+          const seatLayout =
+            data.seatLayout !== undefined ? data.seatLayout : existing.seatLayout
+
+          busData = capacity === null
+            ? { capacity: null, busTemplate: null, seatLayout: null }
+            : { capacity, busTemplate: null, seatLayout }
+        } else {
+          const config = resolveBusTemplate(
+            data.busTemplate,
+            data.capacity !== undefined ? data.capacity : existing.capacity,
+            data.seatLayout !== undefined ? data.seatLayout : existing.seatLayout,
+          )
+          busData = {
+            capacity: config.capacity,
+            busTemplate: config.busTemplate,
+            seatLayout: config.seatLayout,
+          }
+        }
+      } else {
+        const capacity =
+          data.capacity !== undefined ? data.capacity : existing.capacity
+        const seatLayout =
+          data.seatLayout !== undefined ? data.seatLayout : existing.seatLayout
+
+        if (capacity === null) {
+          busData = { capacity: null, busTemplate: null, seatLayout: null }
+        } else if (existing.busTemplate) {
+          const config = resolveBusTemplate(
+            'CUSTOM',
+            capacity,
+            seatLayout ?? 'TWO_BY_TWO',
+          )
+          busData = {
+            capacity: config.capacity,
+            busTemplate: config.busTemplate,
+            seatLayout: config.seatLayout,
+          }
+        } else {
+          busData = {
+            capacity,
+            busTemplate: null,
+            seatLayout: isSeatLayout(seatLayout) ? seatLayout : null,
+          }
+        }
+      }
+    }
 
     return this.prisma.trip.update({
       where: { id },
@@ -173,7 +282,7 @@ export class TripsService {
         departureDate: data.departureDate,
         returnDate: data.returnDate,
         status: data.status,
-        capacity: data.capacity,
+        ...busData,
         priceCents: data.priceCents,
         summary: data.summary?.trim(),
         imageUrl: data.imageUrl?.trim(),
