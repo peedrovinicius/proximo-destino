@@ -487,6 +487,109 @@ export class PortalService {
     return { updated: true, status }
   }
 
+  async handlePaymentWebhook(input: {
+    type?: string
+    action?: string
+    dataId?: string
+    xSignature?: string
+    xRequestId?: string
+  }) {
+    const secret =
+      this.config.get<string>('MERCADO_PAGO_WEBHOOK_SECRET')?.trim()
+
+    if (!secret) {
+      throw new ServiceUnavailableException(
+        'Webhook de pagamento ainda não está configurado',
+      )
+    }
+
+    try {
+      WebhookSignatureValidator.validate({
+        xSignature: input.xSignature,
+        xRequestId: input.xRequestId,
+        dataId: input.dataId,
+        secret,
+        toleranceSeconds: 300,
+      })
+    } catch (error) {
+      if (
+        error instanceof InvalidWebhookSignatureError ||
+        error instanceof RangeError
+      ) {
+        throw new UnauthorizedException('Assinatura do webhook inválida')
+      }
+      throw error
+    }
+
+    if (!input.dataId) return { ignored: true }
+
+    const client = this.mercadoPagoClient()
+
+    if (input.type === 'payment') {
+      const payment = await new Payment(client).get({
+        id: input.dataId,
+      })
+
+      const purchaseId = payment.external_reference
+      if (!purchaseId) return { ignored: true }
+
+      const purchase = await this.prisma.purchaseOrder.findUnique({
+        where: { id: purchaseId },
+        select: { totalCents: true },
+      })
+      if (!purchase) return { ignored: true }
+
+      const amountCents = Math.round((payment.transaction_amount ?? -1) * 100)
+      if (amountCents !== purchase.totalCents) {
+        return { ignored: true, reason: 'amount_mismatch' }
+      }
+
+      const status =
+        payment.status === 'approved'
+          ? PurchaseStatus.PAID
+          : ['cancelled', 'rejected', 'refunded', 'charged_back'].includes(
+                payment.status ?? '',
+              )
+            ? PurchaseStatus.CANCELLED
+            : PurchaseStatus.PENDING_PAYMENT
+
+      return this.applyPurchaseStatus(purchaseId, status)
+    }
+
+    if (input.type === 'order' || input.action?.startsWith('order.')) {
+      const order = await new Order(client).get({
+        id: input.dataId,
+      })
+
+      const purchaseId = order.external_reference
+      if (!purchaseId) return { ignored: true }
+
+      const purchase = await this.prisma.purchaseOrder.findUnique({
+        where: { id: purchaseId },
+        select: { totalCents: true },
+      })
+      if (!purchase) return { ignored: true }
+
+      const amountCents = Math.round(Number(order.total_amount ?? '-1') * 100)
+      if (amountCents !== purchase.totalCents) {
+        return { ignored: true, reason: 'amount_mismatch' }
+      }
+
+      const status =
+        order.status === 'processed' && order.status_detail === 'accredited'
+          ? PurchaseStatus.PAID
+          : order.status === 'expired'
+            ? PurchaseStatus.EXPIRED
+            : ['canceled', 'failed', 'refunded'].includes(order.status ?? '')
+              ? PurchaseStatus.CANCELLED
+              : PurchaseStatus.PENDING_PAYMENT
+
+      return this.applyPurchaseStatus(purchaseId, status)
+    }
+
+    return { ignored: true }
+  }
+
   private paymentWebhookUrl() {
     const override =
       this.config.get<string>('MERCADO_PAGO_WEBHOOK_URL')?.trim()
