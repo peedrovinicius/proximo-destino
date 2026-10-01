@@ -37,6 +37,8 @@ export type PublicSeatMap = {
   availableCount: number | null
 }
 
+export type PurchasePaymentMethod = 'PIX' | 'CARD' | 'BOLETO' | 'TRANSFER'
+
 export type ReservationRequestResult = {
   reservation: {
     id: string
@@ -46,6 +48,15 @@ export type ReservationRequestResult = {
   }
   accessCode: string
   selectedSeats: number[]
+  purchaseOrder: {
+    id: string
+    status: 'PENDING_PAYMENT' | 'PAID' | 'CANCELLED' | 'EXPIRED'
+    paymentMethod: PurchasePaymentMethod
+    unitPriceCents: number
+    passengerCount: number
+    totalCents: number
+    createdAt: string
+  } | null
   message: string
 }
 
@@ -98,6 +109,8 @@ export async function requestReservation(input: {
   phone: string
   passengerCount: number
   selectedSeats?: number[]
+  intent?: 'RESERVATION' | 'PURCHASE'
+  paymentMethod?: PurchasePaymentMethod
 }) {
   const response = await fetch(`${API_BASE}/public/reservations/request`, {
     method: 'POST',

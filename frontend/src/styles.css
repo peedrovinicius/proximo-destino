@@ -7057,3 +7057,216 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
     width: 100%;
   }
 }
+
+
+/* Public purchase flow */
+
+.purchase-mode-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  margin-bottom: 2px;
+  padding: 4px;
+  border-radius: 13px;
+  background: #f2f4f7;
+}
+
+.trip-reservation-card .purchase-mode-switch button {
+  height: 38px;
+  border: 0;
+  border-radius: 10px;
+  color: #6f7882;
+  background: transparent;
+  font-size: 9px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.trip-reservation-card .purchase-mode-switch button.active {
+  color: #173f8a;
+  background: #fff;
+  box-shadow: 0 2px 10px rgba(23, 63, 138, .08);
+}
+
+.purchase-payment-methods {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  margin: 2px 0 0;
+  border: 0;
+  padding: 0;
+}
+
+.purchase-payment-methods legend {
+  grid-column: 1 / -1;
+  margin-bottom: 1px;
+  color: #42566a;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.trip-reservation-card .purchase-payment-methods label {
+  position: relative;
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #e0e6ec;
+  border-radius: 12px;
+  padding: 9px 10px;
+  color: #314a5f;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease, box-shadow .15s ease;
+}
+
+.trip-reservation-card .purchase-payment-methods label.active {
+  border-color: rgba(0, 113, 227, .34);
+  background: #f3f8ff;
+  box-shadow: 0 0 0 2px rgba(0, 113, 227, .06);
+}
+
+.trip-reservation-card .purchase-payment-methods input {
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  margin: 0;
+  padding: 0;
+  accent-color: #0071e3;
+}
+
+.purchase-payment-methods label > span {
+  display: grid;
+  gap: 2px;
+}
+
+.purchase-payment-methods strong {
+  color: #29465e;
+  font-size: 9px;
+}
+
+.purchase-payment-methods small {
+  color: #8a97a3;
+  font-size: 7px;
+  font-weight: 500;
+}
+
+.purchase-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 2px;
+  border: 1px solid #dce8f5;
+  border-radius: 14px;
+  padding: 13px 14px;
+  background: linear-gradient(180deg, #f6faff, #eef6ff);
+}
+
+.purchase-total > div {
+  display: grid;
+  gap: 3px;
+}
+
+.purchase-total span {
+  color: #516c83;
+  font-size: 9px;
+  font-weight: 750;
+}
+
+.purchase-total small {
+  color: #8796a4;
+  font-size: 7px;
+}
+
+.purchase-total > strong {
+  color: #0066cc;
+  font: 750 20px/1 -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  letter-spacing: -.025em;
+  white-space: nowrap;
+}
+
+.trip-reservation-card form > button.purchase-submit {
+  min-height: 50px;
+  border-radius: 14px;
+  background: #0071e3;
+  box-shadow: 0 9px 24px rgba(0, 113, 227, .2);
+  font-size: 10px;
+}
+
+.purchase-payment-note {
+  display: block;
+  margin-top: -3px;
+  color: #8a96a1;
+  font-size: 7px;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.purchase-success-summary {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  border: 1px solid #dbe7f3;
+  border-radius: 14px;
+  padding: 12px;
+  background: #f5f9fe;
+  text-align: left;
+}
+
+.purchase-success-summary > div {
+  display: grid;
+  gap: 3px;
+}
+
+.purchase-success-summary span {
+  color: #7d8c99;
+  font-size: 8px;
+}
+
+.purchase-success-summary strong {
+  color: #174d84;
+  font-size: 11px;
+}
+
+.purchase-success-summary > small {
+  grid-column: 1 / -1;
+  border-top: 1px solid #e4ecf4;
+  padding-top: 8px;
+  color: #7b8b98;
+  font-size: 7px;
+  line-height: 1.45;
+}
+
+@media (max-width: 620px) {
+  .purchase-payment-methods {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .trip-reservation-card .purchase-payment-methods label {
+    min-height: 62px;
+    padding: 10px;
+  }
+
+  .purchase-total {
+    padding: 14px;
+  }
+
+  .purchase-total > strong {
+    font-size: 19px;
+  }
+}
+
+@media (max-width: 390px) {
+  .purchase-payment-methods {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trip-reservation-card .purchase-payment-methods label {
+    transition: none;
+  }
+}

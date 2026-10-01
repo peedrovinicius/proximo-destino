@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config'
 import { JwtService } from '@nestjs/jwt'
 import {
   Prisma,
+  PurchasePaymentMethod,
   QuoteStatus,
   ReservationStatus,
   TripStatus,
@@ -37,10 +38,26 @@ export class PortalService {
         id: true,
         capacity: true,
         blockedSeats: true,
+        priceCents: true,
       },
     })
 
     if (!trip) throw new NotFoundException('Viagem indisponível')
+
+    const purchaseIntent = data.intent === 'PURCHASE'
+    if (purchaseIntent) {
+      if (trip.priceCents === null || trip.priceCents <= 0) {
+        throw new BadRequestException(
+          'Esta viagem ainda não possui preço disponível para compra online',
+        )
+      }
+
+      if (!data.paymentMethod) {
+        throw new BadRequestException(
+          'Escolha uma forma de pagamento para continuar a compra',
+        )
+      }
+    }
 
     const seatSelectionEnabled =
       trip.capacity !== null &&
@@ -158,6 +175,18 @@ export class PortalService {
           },
         })
 
+        if (purchaseIntent && trip.priceCents !== null && data.paymentMethod) {
+          await tx.purchaseOrder.create({
+            data: {
+              reservationId: created.id,
+              paymentMethod: data.paymentMethod as PurchasePaymentMethod,
+              unitPriceCents: trip.priceCents,
+              passengerCount: data.passengerCount,
+              totalCents: trip.priceCents * data.passengerCount,
+            },
+          })
+        }
+
         if (seatSelectionEnabled) {
           await tx.seatAssignment.createMany({
             data: selectedSeats.map((seatNumber) => ({
@@ -199,11 +228,29 @@ export class PortalService {
       throw cause
     }
 
+    const purchaseOrder = purchaseIntent
+      ? await this.prisma.purchaseOrder.findUnique({
+          where: { reservationId: reservation.id },
+          select: {
+            id: true,
+            status: true,
+            paymentMethod: true,
+            unitPriceCents: true,
+            passengerCount: true,
+            totalCents: true,
+            createdAt: true,
+          },
+        })
+      : null
+
     return {
       reservation,
       accessCode,
       selectedSeats,
-      message: 'Solicitação recebida. Guarde o código para acessar sua viagem.',
+      purchaseOrder,
+      message: purchaseIntent
+        ? 'Pedido criado. O pagamento está aguardando processamento.'
+        : 'Solicitação recebida. Guarde o código para acessar sua viagem.',
     }
   }
 
@@ -318,6 +365,18 @@ export class PortalService {
           },
           orderBy: { revision: 'desc' },
           take: 1,
+        },
+        purchaseOrder: {
+          select: {
+            id: true,
+            status: true,
+            paymentMethod: true,
+            unitPriceCents: true,
+            passengerCount: true,
+            totalCents: true,
+            createdAt: true,
+            updatedAt: true,
+          },
         },
         services: {
           select: {
