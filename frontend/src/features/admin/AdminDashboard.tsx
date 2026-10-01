@@ -17,6 +17,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Brand } from '../../components/Brand'
 import { FinanceWorkspace, QuotesWorkspace } from './CommercialWorkspace'
 import { AdminSeatMapDialog } from './AdminSeatMap'
+import { ReservationPassengersDialog } from './ReservationPassengersDialog'
 import {
   adminApi,
   type AdminClient,
@@ -270,6 +271,7 @@ export function AdminDashboard({ accessToken, onLogout }: AdminDashboardProps) {
             clients={clients}
             trips={trips}
             reservations={reservations}
+            canManagePassengers={isAdmin}
             onChanged={reload}
           />
         ) : null}
@@ -1263,17 +1265,20 @@ function ReservationsView({
   clients,
   trips,
   reservations,
+  canManagePassengers,
   onChanged,
 }: {
   accessToken: string
   clients: AdminClient[]
   trips: AdminTrip[]
   reservations: AdminReservation[]
+  canManagePassengers: boolean
   onChanged: () => Promise<void>
 }) {
   const [clientId, setClientId] = useState('')
   const [tripId, setTripId] = useState('')
   const [saving, setSaving] = useState(false)
+  const [passengersReservationId, setPassengersReservationId] = useState<string | null>(null)
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -1313,17 +1318,46 @@ function ReservationsView({
         <div className="admin-table">
           {reservations.length ? reservations.map((reservation) => (
             <div className="admin-table-row admin-table-row--reservation" key={reservation.id}>
-              <div><strong>{reservation.client.fullName}</strong><span>{reservation.trip.title} · {date.format(new Date(reservation.trip.departureDate))}</span></div>
-              <select value={reservation.status} onChange={(e) => void changeStatus(reservation.id, e.target.value as AdminReservation['status'])}>
-                <option value="PENDING">Pendente</option>
-                <option value="CONFIRMED">Confirmada</option>
-                <option value="COMPLETED">Concluída</option>
-                <option value="CANCELLED">Cancelada</option>
-              </select>
+              <div>
+                <strong>{reservation.client.fullName}</strong>
+                <span>
+                  {reservation.trip.title} · {date.format(new Date(reservation.trip.departureDate))}
+                  {' · '}
+                  {reservation.passengerCount} passageiro{reservation.passengerCount === 1 ? '' : 's'}
+                  {reservation.seatAssignments.length
+                    ? ' · Assentos ' + reservation.seatAssignments.map((seat) => seat.seatNumber).join(', ')
+                    : ''}
+                </span>
+              </div>
+              <div className="admin-reservation-actions">
+                <select value={reservation.status} onChange={(e) => void changeStatus(reservation.id, e.target.value as AdminReservation['status'])}>
+                  <option value="PENDING">Pendente</option>
+                  <option value="CONFIRMED">Confirmada</option>
+                  <option value="COMPLETED">Concluída</option>
+                  <option value="CANCELLED">Cancelada</option>
+                </select>
+                {canManagePassengers && reservation.status !== 'CANCELLED' ? (
+                  <button
+                    type="button"
+                    onClick={() => setPassengersReservationId(reservation.id)}
+                  >
+                    Passageiros
+                  </button>
+                ) : null}
+              </div>
             </div>
           )) : <p className="admin-empty">Nenhuma reserva cadastrada ainda.</p>}
         </div>
       </article>
+
+      {passengersReservationId ? (
+        <ReservationPassengersDialog
+          accessToken={accessToken}
+          reservationId={passengersReservationId}
+          onClose={() => setPassengersReservationId(null)}
+          onChanged={onChanged}
+        />
+      ) : null}
     </section>
   )
 }
