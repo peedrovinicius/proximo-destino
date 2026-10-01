@@ -12,6 +12,7 @@ import { JwtService } from '@nestjs/jwt'
 import {
   Prisma,
   PurchasePaymentMethod,
+  PurchaseStatus,
   QuoteStatus,
   ReservationStatus,
   TripStatus,
