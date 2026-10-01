@@ -4,6 +4,7 @@ import {
   ArrayMinSize,
   ArrayUnique,
   IsArray,
+  IsDate,
   IsEmail,
   IsIn,
   IsInt,
@@ -89,4 +90,35 @@ export class ClientPortalLoginDto {
   @MinLength(8)
   @MaxLength(20)
   code!: string
+}
+
+
+export class ClientPassengerUpdateDto {
+  @IsString()
+  @MaxLength(64)
+  id!: string
+
+  @IsString()
+  @MinLength(2)
+  @MaxLength(160)
+  fullName!: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  document?: string | null
+
+  @IsOptional()
+  @Type(() => Date)
+  @IsDate()
+  birthDate?: Date | null
+}
+
+export class UpdateClientPassengersDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => ClientPassengerUpdateDto)
+  passengers!: ClientPassengerUpdateDto[]
 }
