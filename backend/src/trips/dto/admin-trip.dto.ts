@@ -1,5 +1,7 @@
 import { Type } from 'class-transformer'
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
   ArrayUnique,
   IsArray,
   IsBoolean,
@@ -187,6 +189,19 @@ export class UpdateSeatBlockDto {
 
 
 export class UpdateBoardingStatusDto {
+  @IsEnum(BoardingStatus)
+  status!: BoardingStatus
+}
+
+
+export class BulkUpdateBoardingStatusDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(500)
+  @ArrayUnique()
+  @IsString({ each: true })
+  passengerIds!: string[]
+
   @IsEnum(BoardingStatus)
   status!: BoardingStatus
 }
