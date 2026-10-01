@@ -5,6 +5,7 @@ import {
   ArrayUnique,
   IsArray,
   IsEmail,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -48,6 +49,14 @@ export class RequestReservationDto {
   @Min(1, { each: true })
   @Max(80, { each: true })
   selectedSeats?: number[]
+
+  @IsOptional()
+  @IsIn(['RESERVATION', 'PURCHASE'])
+  intent?: 'RESERVATION' | 'PURCHASE'
+
+  @IsOptional()
+  @IsIn(['PIX', 'CARD', 'BOLETO', 'TRANSFER'])
+  paymentMethod?: 'PIX' | 'CARD' | 'BOLETO' | 'TRANSFER'
 }
 
 export class ClientPortalLoginDto {
