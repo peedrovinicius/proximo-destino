@@ -355,14 +355,25 @@ export function AdminSeatMapDialog({
                 ) : assignment ? (
                   <>
                     <span className="admin-seat-detail-kicker">Assento {selectedSeat}</span>
-                    <strong>{assignment.reservation.client.fullName}</strong>
+                    <strong>
+                      {assignment.passenger?.fullName || assignment.reservation.client.fullName}
+                    </strong>
                     <p>
+                      {assignment.passenger
+                        ? 'Passageiro ' + assignment.passenger.sequence + ' · '
+                        : ''}
                       Reserva #{assignment.reservation.id.slice(-8).toUpperCase()}
                       {' · '}
                       {assignment.reservation.status}
                     </p>
-                    <small>{assignment.reservation.client.email || 'Sem e-mail'}</small>
-                    <small>{assignment.reservation.client.phone || 'Sem telefone'}</small>
+                    <small>
+                      {assignment.passenger?.document
+                        ? 'Documento: ' + assignment.passenger.document
+                        : assignment.passenger
+                          ? 'Documento não informado'
+                          : 'Passageiro específico ainda não identificado'}
+                    </small>
+                    <small>{assignment.reservation.client.email || 'Sem e-mail'} · {assignment.reservation.client.phone || 'Sem telefone'}</small>
                   </>
                 ) : blocked.has(selectedSeat) ? (
                   <>
