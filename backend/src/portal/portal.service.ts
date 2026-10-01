@@ -236,6 +236,21 @@ export class PortalService {
           },
         })
 
+        const passengers = []
+        for (let index = 0; index < data.passengerCount; index += 1) {
+          passengers.push(
+            await tx.reservationPassenger.create({
+              data: {
+                reservationId: created.id,
+                sequence: index + 1,
+                fullName: index === 0 ? data.fullName.trim() : null,
+                isPrimary: index === 0,
+              },
+              select: { id: true },
+            }),
+          )
+        }
+
         if (purchaseIntent && trip.priceCents !== null && data.paymentMethod) {
           await tx.purchaseOrder.create({
             data: {
@@ -250,9 +265,10 @@ export class PortalService {
 
         if (seatSelectionEnabled) {
           await tx.seatAssignment.createMany({
-            data: selectedSeats.map((seatNumber) => ({
+            data: selectedSeats.map((seatNumber, index) => ({
               tripId: trip.id,
               reservationId: created.id,
+              passengerId: passengers[index]?.id,
               seatNumber,
             })),
           })
