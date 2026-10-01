@@ -393,6 +393,71 @@ export function TripDetailsPage({
                     </small>
                   </div>
                 ) : null}
+                {requestResult.payment?.kind === 'PIX' ? (
+                  <div className="purchase-pix-box">
+                    <div className="purchase-pix-heading">
+                      <div>
+                        <span>PIX gerado</span>
+                        <strong>Escaneie ou copie o código</strong>
+                      </div>
+                      <small>Aguardando pagamento</small>
+                    </div>
+
+                    {requestResult.payment.qrCodeBase64 ? (
+                      <img
+                        className="purchase-pix-qr"
+                        src={`data:image/png;base64,${requestResult.payment.qrCodeBase64}`}
+                        alt="QR Code PIX para pagamento"
+                      />
+                    ) : null}
+
+                    <div className="purchase-pix-copy">
+                      <code>{requestResult.payment.qrCode}</code>
+                      <button
+                        type="button"
+                        onClick={() => void copyPixCode()}
+                        aria-label="Copiar código PIX"
+                      >
+                        {pixCopied ? <Check size={16} /> : <Copy size={16} />}
+                        <span>{pixCopied ? 'Copiado' : 'Copiar PIX'}</span>
+                      </button>
+                    </div>
+
+                    {requestResult.payment.ticketUrl ? (
+                      <a
+                        className="purchase-provider-link"
+                        href={requestResult.payment.ticketUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Abrir instruções do PIX
+                      </a>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {requestResult.payment?.kind === 'CHECKOUT' ? (
+                  <div className="purchase-checkout-box">
+                    <span>Pagamento com cartão</span>
+                    <strong>Conclua no ambiente seguro do Mercado Pago</strong>
+                    <a
+                      className="purchase-provider-link purchase-provider-link--primary"
+                      href={requestResult.payment.checkoutUrl}
+                    >
+                      Continuar para o Mercado Pago
+                    </a>
+                  </div>
+                ) : null}
+
+                {requestResult.payment?.kind === 'UNAVAILABLE' ? (
+                  <div className="purchase-payment-unavailable">
+                    <strong>Pagamento temporariamente indisponível</strong>
+                    <span>
+                      Seu pedido foi preservado. Use “Minha viagem” para tentar novamente.
+                    </span>
+                  </div>
+                ) : null}
+
                 <div className="reservation-access-code">
                   <code>{requestResult.accessCode}</code>
                   <button
