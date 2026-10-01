@@ -74,9 +74,31 @@ export type AdminReservation = {
   id: string
   status: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED'
   passengerCount: number
+  seatAssignments: Array<{ seatNumber: number }>
   createdAt: string
   client: { id: string; fullName: string; email: string | null; phone: string | null }
   trip: { id: string; title: string; origin: string; destination: string; departureDate: string }
+}
+
+export type AdminReservationPassengers = {
+  id: string
+  status: AdminReservation['status']
+  passengerCount: number
+  client: AdminReservation['client']
+  trip: AdminReservation['trip']
+  passengers: Array<{
+    id: string
+    sequence: number
+    fullName: string | null
+    document: string | null
+    birthDate: string | null
+    isPrimary: boolean
+    seatAssignment: { seatNumber: number } | null
+  }>
+  seatAssignments: Array<{
+    seatNumber: number
+    passengerId: string | null
+  }>
 }
 
 export type QuoteStatus = 'DRAFT' | 'SENT' | 'APPROVED' | 'REJECTED' | 'EXPIRED'
@@ -234,6 +256,12 @@ export type AdminSeatMap = {
   availableCount: number | null
   assignments: Array<{
     seatNumber: number
+    passenger: {
+      id: string
+      sequence: number
+      fullName: string | null
+      document: string | null
+    } | null
     reservation: {
       id: string
       status: AdminReservation['status']
@@ -323,6 +351,32 @@ async function adminFetch<T>(
 }
 
 export const adminApi = {
+  reservationPassengers: (token: string, reservationId: string) =>
+    adminFetch<AdminReservationPassengers>(
+      token,
+      `/admin/reservations/${encodeURIComponent(reservationId)}/passengers`,
+    ),
+
+  updateReservationPassengers: (
+    token: string,
+    reservationId: string,
+    passengers: Array<{
+      id: string
+      fullName?: string | null
+      document?: string | null
+      birthDate?: string | null
+      seatNumber?: number | null
+    }>,
+  ) =>
+    adminFetch<AdminReservationPassengers>(
+      token,
+      `/admin/reservations/${encodeURIComponent(reservationId)}/passengers`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ passengers }),
+      },
+    ),
+
   seatMap: (token: string, tripId: string) =>
     adminFetch<AdminSeatMap>(
       token,
