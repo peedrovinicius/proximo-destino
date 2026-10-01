@@ -29,7 +29,11 @@ import {
 import { randomBytes } from 'node:crypto'
 import { PaymentConnectionService } from '../payments/payment-connection.service'
 import { PrismaService } from '../prisma/prisma.service'
-import { ClientPortalLoginDto, RequestReservationDto } from './dto/portal.dto'
+import {
+  ClientPortalLoginDto,
+  RequestReservationDto,
+  UpdateClientPassengersDto,
+} from './dto/portal.dto'
 
 @Injectable()
 export class PortalService {
@@ -735,7 +739,181 @@ export class PortalService {
     throw new UnauthorizedException('E-mail ou código da reserva inválido')
   }
 
+  private async ensurePortalPassengers(
+    clientId: string,
+    reservationId: string,
+  ) {
+    const reservation = await this.prisma.reservation.findFirst({
+      where: { id: reservationId, clientId },
+      select: {
+        id: true,
+        passengerCount: true,
+        client: { select: { fullName: true } },
+        seatAssignments: {
+          select: { id: true, passengerId: true },
+          orderBy: { seatNumber: 'asc' },
+        },
+      },
+    })
+
+    if (!reservation) throw new NotFoundException('Reserva não encontrada')
+
+    await this.prisma.$transaction(async (tx) => {
+      for (let sequence = 1; sequence <= reservation.passengerCount; sequence += 1) {
+        await tx.reservationPassenger.upsert({
+          where: {
+            reservationId_sequence: {
+              reservationId,
+              sequence,
+            },
+          },
+          update: {},
+          create: {
+            reservationId,
+            sequence,
+            fullName: sequence === 1 ? reservation.client.fullName : null,
+            isPrimary: sequence === 1,
+          },
+        })
+      }
+
+      const [passengers, assignments] = await Promise.all([
+        tx.reservationPassenger.findMany({
+          where: { reservationId },
+          select: { id: true },
+          orderBy: { sequence: 'asc' },
+        }),
+        tx.seatAssignment.findMany({
+          where: { reservationId },
+          select: { id: true, passengerId: true },
+          orderBy: { seatNumber: 'asc' },
+        }),
+      ])
+
+      const used = new Set(
+        assignments
+          .map((assignment) => assignment.passengerId)
+          .filter((value): value is string => Boolean(value)),
+      )
+      const freePassengers = passengers.filter((passenger) => !used.has(passenger.id))
+      const freeAssignments = assignments.filter(
+        (assignment) => assignment.passengerId === null,
+      )
+
+      for (let index = 0; index < freeAssignments.length; index += 1) {
+        const passenger = freePassengers[index]
+        if (!passenger) break
+
+        await tx.seatAssignment.update({
+          where: { id: freeAssignments[index].id },
+          data: { passengerId: passenger.id },
+        })
+      }
+    })
+  }
+
+  async updateClientPassengers(
+    clientId: string,
+    reservationId: string,
+    data: UpdateClientPassengersDto,
+  ) {
+    await this.ensurePortalPassengers(clientId, reservationId)
+
+    const reservation = await this.prisma.reservation.findFirst({
+      where: { id: reservationId, clientId },
+      select: {
+        status: true,
+        passengerCount: true,
+        trip: { select: { departureDate: true } },
+        passengers: {
+          select: { id: true, isPrimary: true },
+          orderBy: { sequence: 'asc' },
+        },
+      },
+    })
+
+    if (!reservation) throw new NotFoundException('Reserva não encontrada')
+
+    const editable =
+      reservation.trip.departureDate.getTime() > Date.now() &&
+      reservation.status !== ReservationStatus.CANCELLED &&
+      reservation.status !== ReservationStatus.COMPLETED
+
+    if (!editable) {
+      throw new ConflictException(
+        'Os dados dos passageiros não podem mais ser alterados nesta viagem',
+      )
+    }
+
+    if (data.passengers.length !== reservation.passengerCount) {
+      throw new BadRequestException(
+        `Informe exatamente ${reservation.passengerCount} passageiro(s)`,
+      )
+    }
+
+    const expectedIds = new Set(
+      reservation.passengers.map((passenger) => passenger.id),
+    )
+    const inputIds = data.passengers.map((passenger) => passenger.id)
+
+    if (
+      new Set(inputIds).size !== inputIds.length ||
+      inputIds.some((id) => !expectedIds.has(id))
+    ) {
+      throw new BadRequestException(
+        'A lista de passageiros não pertence a esta reserva',
+      )
+    }
+
+    if (data.passengers.some((passenger) => !passenger.fullName.trim())) {
+      throw new BadRequestException('Todos os passageiros devem ter nome')
+    }
+
+    if (
+      data.passengers.some(
+        (passenger) =>
+          passenger.birthDate &&
+          passenger.birthDate.getTime() > Date.now(),
+      )
+    ) {
+      throw new BadRequestException(
+        'A data de nascimento não pode estar no futuro',
+      )
+    }
+
+    const primary = reservation.passengers.find(
+      (passenger) => passenger.isPrimary,
+    )
+    const primaryInput = primary
+      ? data.passengers.find((passenger) => passenger.id === primary.id)
+      : null
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const passenger of data.passengers) {
+        await tx.reservationPassenger.update({
+          where: { id: passenger.id },
+          data: {
+            fullName: passenger.fullName.trim(),
+            document: passenger.document?.trim() || null,
+            birthDate: passenger.birthDate ?? null,
+          },
+        })
+      }
+
+      if (primaryInput) {
+        await tx.client.update({
+          where: { id: clientId },
+          data: { fullName: primaryInput.fullName.trim() },
+        })
+      }
+    })
+
+    return this.getPortal(clientId, reservationId)
+  }
+
   async getPortal(clientId: string, reservationId: string) {
+    await this.ensurePortalPassengers(clientId, reservationId)
+
     const reservation = await this.prisma.reservation.findFirst({
       where: {
         id: reservationId,
@@ -746,6 +924,18 @@ export class PortalService {
         status: true,
         passengerCount: true,
         createdAt: true,
+        passengers: {
+          select: {
+            id: true,
+            sequence: true,
+            fullName: true,
+            document: true,
+            birthDate: true,
+            isPrimary: true,
+            seatAssignment: { select: { seatNumber: true } },
+          },
+          orderBy: { sequence: 'asc' },
+        },
         seatAssignments: {
           select: { seatNumber: true },
           orderBy: { seatNumber: 'asc' },
@@ -861,7 +1051,14 @@ export class PortalService {
     })
 
     if (!reservation) throw new NotFoundException('Reserva não encontrada')
-    return reservation
+
+    return {
+      ...reservation,
+      canEditPassengers:
+        reservation.trip.departureDate.getTime() > Date.now() &&
+        reservation.status !== ReservationStatus.CANCELLED &&
+        reservation.status !== ReservationStatus.COMPLETED,
+    }
   }
 
   async approveQuote(
