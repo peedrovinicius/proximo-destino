@@ -11,7 +11,12 @@ import {
   TripStatus,
 } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
-import { CreateTripDto, UpdateTripDto, VehicleFeatureDto } from './dto/admin-trip.dto'
+import {
+  AssignSeatClientDto,
+  CreateTripDto,
+  UpdateTripDto,
+  VehicleFeatureDto,
+} from './dto/admin-trip.dto'
 import {
   describeBus,
   isSeatLayout,
@@ -306,6 +311,8 @@ export class TripsService {
             id: true,
             status: true,
             passengerCount: true,
+            accessCodeHash: true,
+            purchaseOrder: { select: { id: true } },
             client: {
               select: {
                 id: true,
@@ -320,7 +327,22 @@ export class TripsService {
       orderBy: { seatNumber: 'asc' },
     })
 
-    const occupiedSeats = assignments.map((assignment) => assignment.seatNumber)
+    const normalizedAssignments = assignments.map((assignment) => ({
+      seatNumber: assignment.seatNumber,
+      passenger: assignment.passenger,
+      reservation: {
+        id: assignment.reservation.id,
+        status: assignment.reservation.status,
+        passengerCount: assignment.reservation.passengerCount,
+        client: assignment.reservation.client,
+      },
+      source: assignment.reservation.purchaseOrder
+        ? 'ONLINE_PURCHASE'
+        : assignment.reservation.accessCodeHash
+          ? 'PUBLIC_RESERVATION'
+          : 'ADMIN_RESERVATION',
+    }))
+    const occupiedSeats = normalizedAssignments.map((assignment) => assignment.seatNumber)
     const unavailableSeats = new Set([...blockedSeats, ...occupiedSeats])
 
     return {
@@ -340,9 +362,253 @@ export class TripsService {
       vehicleFeatures,
       blockedSeats,
       occupiedSeats,
-      assignments,
+      assignments: normalizedAssignments,
       availableCount: Math.max(0, capacity - unavailableSeats.size),
     }
+  }
+
+  async assignClientToSeat(
+    id: string,
+    seatNumber: number,
+    data: AssignSeatClientDto,
+  ) {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        status: true,
+        capacity: true,
+        blockedSeats: true,
+      },
+    })
+
+    if (!trip) throw new NotFoundException('Viagem não encontrada')
+    if (trip.status === TripStatus.CANCELLED || trip.status === TripStatus.COMPLETED) {
+      throw new ConflictException('Não é possível cadastrar passageiros nesta viagem')
+    }
+    if (trip.capacity === null || trip.capacity < 1 || trip.capacity > 80) {
+      throw new BadRequestException('Esta viagem não possui mapa de assentos ativo')
+    }
+    if (!Number.isInteger(seatNumber) || seatNumber < 1 || seatNumber > trip.capacity) {
+      throw new BadRequestException('Assento fora da capacidade do veículo')
+    }
+    if (!data.clientId && !data.fullName?.trim()) {
+      throw new BadRequestException('Selecione um cliente ou informe o nome completo')
+    }
+
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        const occupied = await tx.seatAssignment.findUnique({
+          where: {
+            tripId_seatNumber: {
+              tripId: id,
+              seatNumber,
+            },
+          },
+          select: {
+            reservation: {
+              select: {
+                status: true,
+                purchaseOrder: { select: { id: true } },
+              },
+            },
+          },
+        })
+
+        if (occupied && occupied.reservation.status !== ReservationStatus.CANCELLED) {
+          if (occupied.reservation.purchaseOrder) {
+            throw new ConflictException(
+              'Esta poltrona foi comprada diretamente pelo site e está protegida',
+            )
+          }
+          throw new ConflictException('Esta poltrona já está ocupada')
+        }
+
+        let client:
+          | {
+              id: string
+              fullName: string
+              email: string | null
+              phone: string | null
+              document: string | null
+              birthDate: Date | null
+            }
+          | null = null
+
+        if (data.clientId) {
+          client = await tx.client.findUnique({
+            where: { id: data.clientId },
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              phone: true,
+              document: true,
+              birthDate: true,
+            },
+          })
+          if (!client) throw new NotFoundException('Cliente não encontrado')
+        } else {
+          const email = data.email?.trim().toLowerCase() || null
+          if (email) {
+            client = await tx.client.findUnique({
+              where: { email },
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+                phone: true,
+                document: true,
+                birthDate: true,
+              },
+            })
+          }
+
+          if (client) {
+            client = await tx.client.update({
+              where: { id: client.id },
+              data: {
+                fullName: data.fullName?.trim() || client.fullName,
+                phone: data.phone?.trim() || client.phone,
+                document: data.document?.trim() || client.document,
+                birthDate: data.birthDate ?? client.birthDate,
+              },
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+                phone: true,
+                document: true,
+                birthDate: true,
+              },
+            })
+          } else {
+            client = await tx.client.create({
+              data: {
+                fullName: data.fullName!.trim(),
+                email,
+                phone: data.phone?.trim() || null,
+                document: data.document?.trim() || null,
+                birthDate: data.birthDate ?? null,
+              },
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+                phone: true,
+                document: true,
+                birthDate: true,
+              },
+            })
+          }
+        }
+
+        const existing = await tx.reservation.findUnique({
+          where: {
+            clientId_tripId: {
+              clientId: client.id,
+              tripId: id,
+            },
+          },
+          select: {
+            id: true,
+            status: true,
+            accessCodeHash: true,
+            purchaseOrder: { select: { id: true } },
+            seatAssignments: { select: { seatNumber: true } },
+          },
+        })
+
+        if (existing?.purchaseOrder) {
+          throw new ConflictException(
+            'Este cliente já possui uma compra online nesta viagem',
+          )
+        }
+        if (existing?.accessCodeHash) {
+          throw new ConflictException(
+            'Este cliente já possui uma solicitação feita pelo site nesta viagem',
+          )
+        }
+        if (
+          existing &&
+          existing.status !== ReservationStatus.CANCELLED &&
+          existing.seatAssignments.length
+        ) {
+          throw new ConflictException(
+            `Este cliente já está na poltrona ${existing.seatAssignments[0].seatNumber}`,
+          )
+        }
+
+        let reservationId: string
+
+        if (existing) {
+          reservationId = existing.id
+          await tx.reservation.update({
+            where: { id: existing.id },
+            data: {
+              status: ReservationStatus.CONFIRMED,
+              passengerCount: 1,
+            },
+          })
+          await tx.reservationPassenger.deleteMany({
+            where: { reservationId: existing.id },
+          })
+        } else {
+          const reservation = await tx.reservation.create({
+            data: {
+              clientId: client.id,
+              tripId: id,
+              status: ReservationStatus.CONFIRMED,
+              passengerCount: 1,
+            },
+            select: { id: true },
+          })
+          reservationId = reservation.id
+        }
+
+        const passenger = await tx.reservationPassenger.create({
+          data: {
+            reservationId,
+            sequence: 1,
+            fullName: client.fullName,
+            document: client.document,
+            birthDate: client.birthDate,
+            isPrimary: true,
+          },
+          select: { id: true },
+        })
+
+        await tx.seatAssignment.create({
+          data: {
+            tripId: id,
+            reservationId,
+            passengerId: passenger.id,
+            seatNumber,
+          },
+        })
+
+        if (trip.blockedSeats.includes(seatNumber)) {
+          await tx.trip.update({
+            where: { id },
+            data: {
+              blockedSeats: trip.blockedSeats.filter((seat) => seat !== seatNumber),
+            },
+          })
+        }
+      })
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'A poltrona acabou de ser ocupada. Atualize o mapa e escolha outra.',
+        )
+      }
+      throw error
+    }
+
+    return this.findAdminSeatMap(id)
   }
 
   async setSeatBlocked(id: string, seatNumber: number, blocked: boolean) {
