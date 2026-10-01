@@ -188,7 +188,9 @@ export type AdminDocument = {
 export type PaymentConnectionStatus = {
   provider: 'MERCADO_PAGO'
   platformConfigured: boolean
+  webhookConfigured: boolean
   connected: boolean
+  readyForPayments: boolean
   externalUserId: string | null
   liveMode: boolean | null
   connectedAt: string | null
