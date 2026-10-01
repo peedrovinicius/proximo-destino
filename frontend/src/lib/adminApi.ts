@@ -262,6 +262,7 @@ export type AdminSeatMap = {
       fullName: string | null
       document: string | null
     } | null
+    source: 'ONLINE_PURCHASE' | 'PUBLIC_RESERVATION' | 'ADMIN_RESERVATION'
     reservation: {
       id: string
       status: AdminReservation['status']
@@ -476,6 +477,28 @@ export const adminApi = {
       },
     ),
 
+  assignClientToSeat: (
+    token: string,
+    tripId: string,
+    seatNumber: number,
+    data: {
+      clientId?: string
+      fullName?: string
+      email?: string
+      phone?: string
+      document?: string
+      birthDate?: string
+    },
+  ) =>
+    adminFetch<AdminSeatMap>(
+      token,
+      `/admin/trips/${encodeURIComponent(tripId)}/seats/${seatNumber}/assignment`,
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      },
+    ),
+
   purchaseOrders: (token: string) =>
     adminFetch<AdminPaymentsDashboard>(token, '/admin/payments/orders'),
 
@@ -504,7 +527,7 @@ export const adminApi = {
 
   createClient: (
     token: string,
-    data: { fullName: string; email?: string; phone?: string; birthDate?: string },
+    data: { fullName: string; email?: string; phone?: string; birthDate?: string; document?: string },
   ) =>
     adminFetch<AdminClient>(token, '/admin/clients', {
       method: 'POST',
