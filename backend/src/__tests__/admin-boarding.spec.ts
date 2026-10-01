@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, describe, it } from 'node:test'
-import { ConflictException } from '@nestjs/common'
+import { BadRequestException, ConflictException } from '@nestjs/common'
 import { BoardingStatus, TripStatus } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { TripsService } from '../trips/trips.service'
@@ -75,6 +75,36 @@ describe('lista de embarque administrativa', () => {
     const second = initial.passengers[1]
     assert.ok(first)
     assert.ok(second)
+
+    const bulkBoarded = await trips.bulkUpdateBoardingStatus(
+      tripId,
+      [first.id, second.id],
+      BoardingStatus.BOARDED,
+    )
+
+    assert.equal(bulkBoarded.summary.boarded, 2)
+    assert.equal(bulkBoarded.summary.pending, 0)
+    assert.ok(bulkBoarded.passengers.every((passenger) => passenger.boardedAt))
+
+    await assert.rejects(
+      () =>
+        trips.bulkUpdateBoardingStatus(
+          tripId,
+          [first.id, 'passageiro-de-outra-viagem'],
+          BoardingStatus.ABSENT,
+        ),
+      (error: unknown) =>
+        error instanceof BadRequestException &&
+        error.message.includes('outra viagem'),
+    )
+
+    const reset = await trips.bulkUpdateBoardingStatus(
+      tripId,
+      [first.id, second.id],
+      BoardingStatus.PENDING,
+    )
+    assert.equal(reset.summary.pending, 2)
+    assert.equal(reset.summary.boarded, 0)
 
     const boarded = await trips.updateBoardingStatus(
       tripId,
