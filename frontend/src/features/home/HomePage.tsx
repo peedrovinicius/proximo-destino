@@ -396,7 +396,7 @@ export function HomePage({ onClientAccess, onAdminAccess }: HomePageProps) {
       </footer>
 
       <WhatsAppButton
-        label="Falar no WhatsApp"
+        label="+55 85 99428-4379"
         message="Olá! Gostaria de informações sobre as viagens disponíveis."
       />
     </div>
