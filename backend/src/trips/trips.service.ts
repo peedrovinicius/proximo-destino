@@ -4,7 +4,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common'
-import { Prisma, ReservationStatus, TripStatus } from '@prisma/client'
+import {
+  BoardingStatus,
+  Prisma,
+  ReservationStatus,
+  TripStatus,
+} from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { CreateTripDto, UpdateTripDto, VehicleFeatureDto } from './dto/admin-trip.dto'
 import {
@@ -378,6 +383,217 @@ export class TripsService {
     })
 
     return this.findAdminSeatMap(id)
+  }
+
+  private async ensureTripPassengers(id: string) {
+    const reservations = await this.prisma.reservation.findMany({
+      where: {
+        tripId: id,
+        status: { not: ReservationStatus.CANCELLED },
+      },
+      select: {
+        id: true,
+        passengerCount: true,
+        client: { select: { fullName: true } },
+      },
+    })
+
+    for (const reservation of reservations) {
+      await this.prisma.$transaction(async (tx) => {
+        for (let sequence = 1; sequence <= reservation.passengerCount; sequence += 1) {
+          await tx.reservationPassenger.upsert({
+            where: {
+              reservationId_sequence: {
+                reservationId: reservation.id,
+                sequence,
+              },
+            },
+            update: {},
+            create: {
+              reservationId: reservation.id,
+              sequence,
+              fullName: sequence === 1 ? reservation.client.fullName : null,
+              isPrimary: sequence === 1,
+            },
+          })
+        }
+
+        const [passengers, assignments] = await Promise.all([
+          tx.reservationPassenger.findMany({
+            where: { reservationId: reservation.id },
+            select: { id: true },
+            orderBy: { sequence: 'asc' },
+          }),
+          tx.seatAssignment.findMany({
+            where: { reservationId: reservation.id },
+            select: { id: true, passengerId: true },
+            orderBy: { seatNumber: 'asc' },
+          }),
+        ])
+
+        const usedPassengerIds = new Set(
+          assignments
+            .map((assignment) => assignment.passengerId)
+            .filter((value): value is string => Boolean(value)),
+        )
+        const freePassengers = passengers.filter(
+          (passenger) => !usedPassengerIds.has(passenger.id),
+        )
+        const freeAssignments = assignments.filter(
+          (assignment) => assignment.passengerId === null,
+        )
+
+        for (let index = 0; index < freeAssignments.length; index += 1) {
+          const passenger = freePassengers[index]
+          if (!passenger) break
+
+          await tx.seatAssignment.update({
+            where: { id: freeAssignments[index].id },
+            data: { passengerId: passenger.id },
+          })
+        }
+      })
+    }
+  }
+
+  async boardingList(id: string) {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        title: true,
+        origin: true,
+        destination: true,
+        departureDate: true,
+        returnDate: true,
+        status: true,
+      },
+    })
+
+    if (!trip) throw new NotFoundException('Viagem não encontrada')
+
+    await this.ensureTripPassengers(id)
+
+    const passengers = await this.prisma.reservationPassenger.findMany({
+      where: {
+        reservation: {
+          tripId: id,
+          status: { not: ReservationStatus.CANCELLED },
+        },
+      },
+      select: {
+        id: true,
+        sequence: true,
+        fullName: true,
+        document: true,
+        birthDate: true,
+        isPrimary: true,
+        boardingStatus: true,
+        boardedAt: true,
+        seatAssignment: {
+          select: { seatNumber: true },
+        },
+        reservation: {
+          select: {
+            id: true,
+            status: true,
+            client: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+                phone: true,
+              },
+            },
+          },
+        },
+      },
+    })
+
+    const sortedPassengers = [...passengers].sort((a, b) => {
+      const seatA = a.seatAssignment?.seatNumber ?? Number.MAX_SAFE_INTEGER
+      const seatB = b.seatAssignment?.seatNumber ?? Number.MAX_SAFE_INTEGER
+      if (seatA !== seatB) return seatA - seatB
+      const reservationCompare = a.reservation.id.localeCompare(b.reservation.id)
+      if (reservationCompare !== 0) return reservationCompare
+      return a.sequence - b.sequence
+    })
+
+    const total = sortedPassengers.length
+    const boarded = sortedPassengers.filter(
+      (passenger) => passenger.boardingStatus === BoardingStatus.BOARDED,
+    ).length
+    const absent = sortedPassengers.filter(
+      (passenger) => passenger.boardingStatus === BoardingStatus.ABSENT,
+    ).length
+
+    return {
+      trip,
+      canUpdate:
+        trip.status !== TripStatus.CANCELLED &&
+        trip.status !== TripStatus.COMPLETED,
+      summary: {
+        total,
+        boarded,
+        absent,
+        pending: Math.max(0, total - boarded - absent),
+      },
+      passengers: sortedPassengers,
+    }
+  }
+
+  async updateBoardingStatus(
+    id: string,
+    passengerId: string,
+    status: BoardingStatus,
+  ) {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id },
+      select: { status: true },
+    })
+
+    if (!trip) throw new NotFoundException('Viagem não encontrada')
+    if (
+      trip.status === TripStatus.CANCELLED ||
+      trip.status === TripStatus.COMPLETED
+    ) {
+      throw new ConflictException(
+        'O embarque não pode ser alterado nesta viagem',
+      )
+    }
+
+    await this.ensureTripPassengers(id)
+
+    const passenger = await this.prisma.reservationPassenger.findFirst({
+      where: {
+        id: passengerId,
+        reservation: {
+          tripId: id,
+          status: { not: ReservationStatus.CANCELLED },
+        },
+      },
+      select: {
+        id: true,
+        boardedAt: true,
+      },
+    })
+
+    if (!passenger) {
+      throw new NotFoundException('Passageiro não encontrado nesta viagem')
+    }
+
+    await this.prisma.reservationPassenger.update({
+      where: { id: passenger.id },
+      data: {
+        boardingStatus: status,
+        boardedAt:
+          status === BoardingStatus.BOARDED
+            ? passenger.boardedAt ?? new Date()
+            : null,
+      },
+    })
+
+    return this.boardingList(id)
   }
 
   async findPublicById(id: string) {
