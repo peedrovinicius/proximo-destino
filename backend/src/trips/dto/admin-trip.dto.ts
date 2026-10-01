@@ -52,7 +52,7 @@ export class CreateTripDto {
   busTemplate?: string | null
 
   @IsOptional()
-  @IsIn(SEAT_LAYOUTS)
+  @IsIn([...SEAT_LAYOUTS])
   seatLayout?: string | null
 
   @IsOptional()
@@ -60,7 +60,7 @@ export class CreateTripDto {
   busTemplate?: string | null
 
   @IsOptional()
-  @IsIn(SEAT_LAYOUTS)
+  @IsIn([...SEAT_LAYOUTS])
   seatLayout?: string | null
 
   @IsOptional()
