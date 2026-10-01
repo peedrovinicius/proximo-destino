@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { ArrowLeft, ExternalLink, Mail, MessageCircle } from 'lucide-react'
 import { Brand } from '../../components/Brand'
 import {
@@ -521,6 +522,16 @@ export function InstitutionalPage({
   onAdminAccess,
 }: InstitutionalPageProps) {
   const current = content[page]
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' })
+    document.title = `${current.title} | Próximo Destino`
+
+    return () => {
+      document.title = 'Próximo Destino'
+    }
+  }, [current.title])
+
 
   return (
     <div className="institutional-page">
