@@ -1,7 +1,7 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { ReservationStatus, TripStatus } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
-import { CreateReservationDto } from './dto/reservation.dto'
+import { CreateReservationDto, UpdateReservationPassengersDto } from './dto/reservation.dto'
 
 @Injectable()
 export class AdminService {
@@ -87,6 +87,202 @@ export class AdminService {
       orderBy: { createdAt: 'desc' },
       take: 100,
     })
+  }
+
+  private async ensureReservationPassengers(id: string) {
+    const reservation = await this.prisma.reservation.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        passengerCount: true,
+        client: { select: { fullName: true } },
+        passengers: {
+          select: { id: true, sequence: true },
+          orderBy: { sequence: 'asc' },
+        },
+        seatAssignments: {
+          select: { id: true, seatNumber: true, passengerId: true },
+          orderBy: { seatNumber: 'asc' },
+        },
+      },
+    })
+
+    if (!reservation) throw new NotFoundException('Reserva não encontrada')
+
+    await this.prisma.$transaction(async (tx) => {
+      for (let sequence = 1; sequence <= reservation.passengerCount; sequence += 1) {
+        await tx.reservationPassenger.upsert({
+          where: {
+            reservationId_sequence: {
+              reservationId: reservation.id,
+              sequence,
+            },
+          },
+          update: {},
+          create: {
+            reservationId: reservation.id,
+            sequence,
+            fullName: sequence === 1 ? reservation.client.fullName : null,
+            isPrimary: sequence === 1,
+          },
+        })
+      }
+
+      const [passengers, assignments] = await Promise.all([
+        tx.reservationPassenger.findMany({
+          where: { reservationId: reservation.id },
+          select: { id: true, sequence: true },
+          orderBy: { sequence: 'asc' },
+        }),
+        tx.seatAssignment.findMany({
+          where: { reservationId: reservation.id },
+          select: { id: true, passengerId: true },
+          orderBy: { seatNumber: 'asc' },
+        }),
+      ])
+
+      const assignedPassengerIds = new Set(
+        assignments
+          .map((assignment) => assignment.passengerId)
+          .filter((value): value is string => Boolean(value)),
+      )
+      const freePassengers = passengers.filter(
+        (passenger) => !assignedPassengerIds.has(passenger.id),
+      )
+      const freeAssignments = assignments.filter(
+        (assignment) => assignment.passengerId === null,
+      )
+
+      for (let index = 0; index < freeAssignments.length; index += 1) {
+        const passenger = freePassengers[index]
+        if (!passenger) break
+        await tx.seatAssignment.update({
+          where: { id: freeAssignments[index].id },
+          data: { passengerId: passenger.id },
+        })
+      }
+    })
+  }
+
+  async reservationPassengers(id: string) {
+    await this.ensureReservationPassengers(id)
+
+    const reservation = await this.prisma.reservation.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        status: true,
+        passengerCount: true,
+        client: {
+          select: { id: true, fullName: true, email: true, phone: true },
+        },
+        trip: {
+          select: {
+            id: true,
+            title: true,
+            origin: true,
+            destination: true,
+            departureDate: true,
+          },
+        },
+        passengers: {
+          select: {
+            id: true,
+            sequence: true,
+            fullName: true,
+            document: true,
+            birthDate: true,
+            isPrimary: true,
+            seatAssignment: { select: { seatNumber: true } },
+          },
+          orderBy: { sequence: 'asc' },
+        },
+        seatAssignments: {
+          select: { seatNumber: true, passengerId: true },
+          orderBy: { seatNumber: 'asc' },
+        },
+      },
+    })
+
+    if (!reservation) throw new NotFoundException('Reserva não encontrada')
+    return reservation
+  }
+
+  async updateReservationPassengers(
+    id: string,
+    data: UpdateReservationPassengersDto,
+  ) {
+    const current = await this.reservationPassengers(id)
+
+    if (data.passengers.length !== current.passengerCount) {
+      throw new BadRequestException(
+        `A reserva exige exatamente ${current.passengerCount} passageiro(s)`,
+      )
+    }
+
+    const expectedIds = new Set(current.passengers.map((passenger) => passenger.id))
+    if (
+      new Set(data.passengers.map((passenger) => passenger.id)).size !==
+        data.passengers.length ||
+      data.passengers.some((passenger) => !expectedIds.has(passenger.id))
+    ) {
+      throw new BadRequestException('A lista de passageiros não pertence a esta reserva')
+    }
+
+    const seatNumbers = data.passengers
+      .map((passenger) => passenger.seatNumber)
+      .filter((seat): seat is number => seat !== null && seat !== undefined)
+
+    if (new Set(seatNumbers).size !== seatNumbers.length) {
+      throw new BadRequestException('Um assento não pode ser atribuído a dois passageiros')
+    }
+
+    const reservationSeats = new Set(
+      current.seatAssignments.map((assignment) => assignment.seatNumber),
+    )
+    if (seatNumbers.some((seat) => !reservationSeats.has(seat))) {
+      throw new BadRequestException('Só é possível vincular assentos desta reserva')
+    }
+
+    const primary = current.passengers.find((passenger) => passenger.isPrimary)
+    const primaryInput = primary
+      ? data.passengers.find((passenger) => passenger.id === primary.id)
+      : null
+    if (!primaryInput?.fullName?.trim()) {
+      throw new BadRequestException('O passageiro titular deve ter nome')
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.seatAssignment.updateMany({
+        where: { reservationId: id },
+        data: { passengerId: null },
+      })
+
+      for (const passenger of data.passengers) {
+        await tx.reservationPassenger.update({
+          where: { id: passenger.id },
+          data: {
+            fullName: passenger.fullName?.trim() || null,
+            document: passenger.document?.trim() || null,
+            birthDate: passenger.birthDate ?? null,
+          },
+        })
+
+        if (passenger.seatNumber !== null && passenger.seatNumber !== undefined) {
+          await tx.seatAssignment.update({
+            where: {
+              reservationId_seatNumber: {
+                reservationId: id,
+                seatNumber: passenger.seatNumber,
+              },
+            },
+            data: { passengerId: passenger.id },
+          })
+        }
+      }
+    })
+
+    return this.reservationPassengers(id)
   }
 
   async paymentsDashboard() {
