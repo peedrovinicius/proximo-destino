@@ -236,7 +236,7 @@ export class PortalService {
           },
         })
 
-        const passengers = []
+        const passengers: Array<{ id: string }> = []
         for (let index = 0; index < data.passengerCount; index += 1) {
           passengers.push(
             await tx.reservationPassenger.create({
