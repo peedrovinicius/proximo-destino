@@ -1,10 +1,14 @@
 import { Armchair, Bus, Check, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
+type SeatLayout = 'TWO_BY_TWO' | 'TWO_BY_ONE'
+
 type SeatSelectorProps = {
   origin: string
   destination: string
   capacity: number
+  busLabel?: string | null
+  seatLayout: SeatLayout
   occupiedSeats: number[]
   passengerCount: number
   selectedSeats: number[]
@@ -16,6 +20,8 @@ export function SeatSelector({
   origin,
   destination,
   capacity,
+  busLabel,
+  seatLayout,
   occupiedSeats,
   passengerCount,
   selectedSeats,
@@ -43,13 +49,22 @@ export function SeatSelector({
   }, [onClose])
 
   const rows = useMemo(() => {
+    if (seatLayout === 'TWO_BY_ONE') {
+      return Array.from({ length: Math.ceil(capacity / 3) }, (_, index) => {
+        const base = index * 3
+        return [base + 1, base + 2, null, base + 3].map((seat) =>
+          seat !== null && seat <= capacity ? seat : null,
+        )
+      })
+    }
+
     return Array.from({ length: Math.ceil(capacity / 4) }, (_, index) => {
       const base = index * 4
       return [base + 1, base + 2, null, base + 4, base + 3].map((seat) =>
         seat !== null && seat <= capacity ? seat : null,
       )
     })
-  }, [capacity])
+  }, [capacity, seatLayout])
 
   function toggleSeat(seat: number) {
     if (occupied.has(seat)) return
@@ -65,6 +80,7 @@ export function SeatSelector({
   }
 
   const complete = draft.length === passengerCount
+  const layoutLabel = seatLayout === 'TWO_BY_ONE' ? 'Disposição 2+1' : 'Disposição 2+2'
 
   return (
     <div className="seat-selector-overlay" role="presentation" onMouseDown={onClose}>
@@ -90,10 +106,11 @@ export function SeatSelector({
           <div className="seat-bus">
             <div className="seat-bus-front" aria-hidden="true">
               <Bus size={34} />
-              <span>Frente do veículo</span>
+              <strong>{busLabel || 'Veículo da viagem'}</strong>
+              <span>{layoutLabel} · {capacity} lugares</span>
             </div>
 
-            <div className="seat-grid">
+            <div className={`seat-grid ${seatLayout === 'TWO_BY_ONE' ? 'seat-grid--two-by-one' : 'seat-grid--two-by-two'}`}>
               {rows.flatMap((row, rowIndex) =>
                 row.map((seat, columnIndex) => {
                   if (seat === null) {

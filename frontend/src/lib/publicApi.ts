@@ -8,6 +8,8 @@ export type PublicTrip = {
   departureDate: string
   returnDate: string | null
   capacity: number | null
+  busTemplate: string | null
+  seatLayout: 'TWO_BY_TWO' | 'TWO_BY_ONE' | null
   priceCents: number | null
   summary: string | null
   imageUrl: string | null
@@ -17,6 +19,9 @@ export type PublicTrip = {
 export type PublicSeatMap = {
   enabled: boolean
   capacity: number | null
+  busTemplate: string | null
+  busLabel: string | null
+  seatLayout: 'TWO_BY_TWO' | 'TWO_BY_ONE'
   occupiedSeats: number[]
   availableCount: number | null
 }

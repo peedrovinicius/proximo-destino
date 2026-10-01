@@ -341,7 +341,7 @@ export function TripDetailsPage({
                         {seatMapLoading
                           ? 'Atualizando disponibilidade...'
                           : seatMap
-                            ? `${seatMap.availableCount ?? 0} lugares disponíveis`
+                            ? `${seatMap.busLabel ? `${seatMap.busLabel} · ` : ''}${seatMap.availableCount ?? 0} lugares disponíveis`
                             : 'Disponibilidade indisponível no momento'}
                       </small>
                     </div>
@@ -372,6 +372,8 @@ export function TripDetailsPage({
           origin={trip.origin}
           destination={trip.destination}
           capacity={seatMap.capacity}
+          busLabel={seatMap.busLabel}
+          seatLayout={seatMap.seatLayout}
           occupiedSeats={seatMap.occupiedSeats}
           passengerCount={passengerCount}
           selectedSeats={selectedSeats}
