@@ -354,8 +354,7 @@ export function HomePage({ onClientAccess, onAdminAccess }: HomePageProps) {
         </div>
 
         <div className="public-footer-legal" aria-label="Dados institucionais">
-          <span><strong>CNPJ</strong> 12.750.321/0001-92</span>
-          <span><strong>Cadastur</strong> 12.750.321/0001-92</span>
+          <span><strong>CNPJ</strong> 59.239.955/0001-49</span>
           <a
             className="public-footer-instagram"
             href="https://www.instagram.com/proximodestino02/"
