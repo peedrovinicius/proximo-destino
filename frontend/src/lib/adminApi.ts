@@ -276,6 +276,48 @@ export type AdminSeatMap = {
   }>
 }
 
+export type BoardingStatus = 'PENDING' | 'BOARDED' | 'ABSENT'
+
+export type AdminBoardingList = {
+  trip: {
+    id: string
+    title: string
+    origin: string
+    destination: string
+    departureDate: string
+    returnDate: string | null
+    status: AdminTrip['status']
+  }
+  canUpdate: boolean
+  summary: {
+    total: number
+    boarded: number
+    absent: number
+    pending: number
+  }
+  passengers: Array<{
+    id: string
+    sequence: number
+    fullName: string | null
+    document: string | null
+    birthDate: string | null
+    isPrimary: boolean
+    boardingStatus: BoardingStatus
+    boardedAt: string | null
+    seatAssignment: { seatNumber: number } | null
+    reservation: {
+      id: string
+      status: AdminReservation['status']
+      client: {
+        id: string
+        fullName: string
+        email: string | null
+        phone: string | null
+      }
+    }
+  }>
+}
+
 export type AdminPaymentsDashboard = {
   summary: {
     totalOrders: number
@@ -351,6 +393,27 @@ async function adminFetch<T>(
 }
 
 export const adminApi = {
+  boardingList: (token: string, tripId: string) =>
+    adminFetch<AdminBoardingList>(
+      token,
+      `/admin/trips/${encodeURIComponent(tripId)}/boarding`,
+    ),
+
+  updateBoardingStatus: (
+    token: string,
+    tripId: string,
+    passengerId: string,
+    status: BoardingStatus,
+  ) =>
+    adminFetch<AdminBoardingList>(
+      token,
+      `/admin/trips/${encodeURIComponent(tripId)}/boarding/${encodeURIComponent(passengerId)}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      },
+    ),
+
   reservationPassengers: (token: string, reservationId: string) =>
     adminFetch<AdminReservationPassengers>(
       token,
