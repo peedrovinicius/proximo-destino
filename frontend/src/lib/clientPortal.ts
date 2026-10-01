@@ -5,6 +5,9 @@ export type ClientPortalData = {
   status: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED'
   passengerCount: number
   createdAt: string
+  seatAssignments: Array<{
+    seatNumber: number
+  }>
   client: {
     id: string
     fullName: string
