@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common'
@@ -214,6 +215,161 @@ export class TripsService {
       occupiedSeats,
       availableCount: Math.max(0, capacity - unavailableSeats.size),
     }
+  }
+
+  async findAdminSeatMap(id: string) {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        title: true,
+        origin: true,
+        destination: true,
+        departureDate: true,
+        capacity: true,
+        busTemplate: true,
+        seatLayout: true,
+        deckCount: true,
+        lowerDeckCapacity: true,
+        vehicleFeatures: true,
+        blockedSeats: true,
+      },
+    })
+
+    if (!trip) throw new NotFoundException('Viagem não encontrada')
+
+    const capacity = trip.capacity
+    const seatLayout = isSeatLayout(trip.seatLayout)
+      ? trip.seatLayout
+      : 'TWO_BY_TWO'
+    const deckCount = trip.deckCount === 2 ? 2 : 1
+    const lowerDeckCapacity =
+      deckCount === 2 &&
+      trip.lowerDeckCapacity !== null &&
+      capacity !== null &&
+      trip.lowerDeckCapacity > 0 &&
+      trip.lowerDeckCapacity < capacity
+        ? trip.lowerDeckCapacity
+        : null
+    const vehicleFeatures = parseStoredFeatures(trip.vehicleFeatures)
+      .filter((feature) => feature.deck <= deckCount)
+
+    if (capacity === null || capacity < 1 || capacity > 80) {
+      return {
+        enabled: false,
+        trip: {
+          id: trip.id,
+          title: trip.title,
+          origin: trip.origin,
+          destination: trip.destination,
+          departureDate: trip.departureDate,
+        },
+        capacity,
+        busLabel: describeBus(trip.busTemplate, capacity),
+        seatLayout,
+        deckCount,
+        lowerDeckCapacity,
+        vehicleFeatures,
+        blockedSeats: [] as number[],
+        occupiedSeats: [] as number[],
+        assignments: [] as Array<unknown>,
+        availableCount: capacity,
+      }
+    }
+
+    const blockedSeats = trip.blockedSeats
+      .filter((seat) => seat >= 1 && seat <= capacity)
+      .sort((a, b) => a - b)
+
+    const assignments = await this.prisma.seatAssignment.findMany({
+      where: {
+        tripId: trip.id,
+        reservation: { status: { not: ReservationStatus.CANCELLED } },
+      },
+      select: {
+        seatNumber: true,
+        reservation: {
+          select: {
+            id: true,
+            status: true,
+            passengerCount: true,
+            client: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+                phone: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { seatNumber: 'asc' },
+    })
+
+    const occupiedSeats = assignments.map((assignment) => assignment.seatNumber)
+    const unavailableSeats = new Set([...blockedSeats, ...occupiedSeats])
+
+    return {
+      enabled: true,
+      trip: {
+        id: trip.id,
+        title: trip.title,
+        origin: trip.origin,
+        destination: trip.destination,
+        departureDate: trip.departureDate,
+      },
+      capacity,
+      busLabel: describeBus(trip.busTemplate, capacity),
+      seatLayout,
+      deckCount,
+      lowerDeckCapacity,
+      vehicleFeatures,
+      blockedSeats,
+      occupiedSeats,
+      assignments,
+      availableCount: Math.max(0, capacity - unavailableSeats.size),
+    }
+  }
+
+  async setSeatBlocked(id: string, seatNumber: number, blocked: boolean) {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id },
+      select: { capacity: true, blockedSeats: true },
+    })
+
+    if (!trip) throw new NotFoundException('Viagem não encontrada')
+    if (trip.capacity === null || trip.capacity < 1 || trip.capacity > 80) {
+      throw new BadRequestException('Esta viagem não possui mapa de assentos ativo')
+    }
+    if (!Number.isInteger(seatNumber) || seatNumber < 1 || seatNumber > trip.capacity) {
+      throw new BadRequestException('Assento fora da capacidade do veículo')
+    }
+
+    if (blocked) {
+      const occupied = await this.prisma.seatAssignment.findFirst({
+        where: {
+          tripId: id,
+          seatNumber,
+          reservation: { status: { not: ReservationStatus.CANCELLED } },
+        },
+        select: { reservationId: true },
+      })
+      if (occupied) {
+        throw new ConflictException('Não é possível bloquear um assento ocupado')
+      }
+    }
+
+    const nextBlocked = blocked
+      ? [...new Set([...trip.blockedSeats, seatNumber])].sort((a, b) => a - b)
+      : trip.blockedSeats.filter((seat) => seat !== seatNumber)
+
+    await this.prisma.trip.update({
+      where: { id },
+      data: { blockedSeats: nextBlocked },
+    })
+
+    return this.findAdminSeatMap(id)
   }
 
   async findPublicById(id: string) {
