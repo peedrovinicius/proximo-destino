@@ -1,6 +1,8 @@
 import {
   Check,
   Clock3,
+  Download,
+  Printer,
   Search,
   UserCheck,
   UserX,
@@ -25,6 +27,29 @@ const statusLabel: Record<BoardingStatus, string> = {
   ABSENT: 'Ausente',
 }
 
+function csvCell(value: string | number | null | undefined) {
+  const normalized = String(value ?? '')
+  return '"' + normalized.replace(/"/g, '""') + '"'
+}
+
+function html(value: string | number | null | undefined) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+}
+
+function safeFileName(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9-_]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase()
+}
+
 export function TripBoardingDialog({
   accessToken,
   tripId,
@@ -36,6 +61,8 @@ export function TripBoardingDialog({
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<'ALL' | BoardingStatus>('ALL')
   const [savingPassengerId, setSavingPassengerId] = useState<string | null>(null)
+  const [savingBulk, setSavingBulk] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     let active = true
@@ -96,11 +123,41 @@ export function TripBoardingDialog({
     })
   }, [data, filter, query])
 
+  const selectedCount = selectedIds.size
+  const filteredIds = useMemo(
+    () => filteredPassengers.map((passenger) => passenger.id),
+    [filteredPassengers],
+  )
+  const allFilteredSelected =
+    filteredIds.length > 0 &&
+    filteredIds.every((id) => selectedIds.has(id))
+
+  function toggleSelection(id: string) {
+    setSelectedIds((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleAllFiltered() {
+    setSelectedIds((current) => {
+      const next = new Set(current)
+      if (allFilteredSelected) {
+        filteredIds.forEach((id) => next.delete(id))
+      } else {
+        filteredIds.forEach((id) => next.add(id))
+      }
+      return next
+    })
+  }
+
   async function updateStatus(
     passengerId: string,
     status: BoardingStatus,
   ) {
-    if (!data?.canUpdate || savingPassengerId) return
+    if (!data?.canUpdate || savingPassengerId || savingBulk) return
 
     setSavingPassengerId(passengerId)
     setError('')
@@ -123,6 +180,166 @@ export function TripBoardingDialog({
     } finally {
       setSavingPassengerId(null)
     }
+  }
+
+  async function bulkUpdate(status: BoardingStatus) {
+    if (!data?.canUpdate || !selectedIds.size || savingBulk) return
+
+    setSavingBulk(true)
+    setError('')
+
+    try {
+      setData(
+        await adminApi.bulkUpdateBoardingStatus(
+          accessToken,
+          tripId,
+          [...selectedIds],
+          status,
+        ),
+      )
+      setSelectedIds(new Set())
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'Não foi possível atualizar os passageiros selecionados.',
+      )
+    } finally {
+      setSavingBulk(false)
+    }
+  }
+
+  function exportCsv() {
+    if (!data) return
+
+    const date = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'medium' })
+      .format(new Date(data.trip.departureDate))
+    const time = new Intl.DateTimeFormat('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+
+    const rows = [
+      ['Viagem', data.trip.title],
+      ['Rota', data.trip.origin + ' → ' + data.trip.destination],
+      ['Data', date],
+      ['Total', data.summary.total],
+      ['Embarcaram', data.summary.boarded],
+      ['Ausentes', data.summary.absent],
+      ['Aguardando', data.summary.pending],
+      [],
+      ['Assento', 'Passageiro', 'Tipo', 'Documento', 'Reserva', 'Telefone', 'Status', 'Horário do embarque'],
+      ...data.passengers.map((passenger) => [
+        passenger.seatAssignment?.seatNumber ?? '',
+        passenger.fullName?.trim() ||
+          'Passageiro ' + passenger.sequence + ' · ' + passenger.reservation.client.fullName,
+        passenger.isPrimary ? 'Titular' : 'Acompanhante',
+        passenger.document ?? '',
+        passenger.reservation.id,
+        passenger.reservation.client.phone ?? '',
+        statusLabel[passenger.boardingStatus],
+        passenger.boardedAt ? time.format(new Date(passenger.boardedAt)) : '',
+      ]),
+    ]
+
+    const csv = '\ufeff' + rows
+      .map((row) => row.map((cell) => csvCell(cell)).join(';'))
+      .join('\r\n')
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download =
+      'embarque-' +
+      (safeFileName(data.trip.title) || 'viagem') +
+      '-' +
+      new Date(data.trip.departureDate).toISOString().slice(0, 10) +
+      '.csv'
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    URL.revokeObjectURL(url)
+  }
+
+  function printList() {
+    if (!data) return
+
+    const popup = window.open('', '_blank', 'width=1000,height=760')
+    if (!popup) {
+      setError('O navegador bloqueou a janela de impressão.')
+      return
+    }
+
+    const date = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'long' })
+      .format(new Date(data.trip.departureDate))
+    const time = new Intl.DateTimeFormat('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+
+    const rows = data.passengers.map((passenger) => {
+      const name =
+        passenger.fullName?.trim() ||
+        'Passageiro ' + passenger.sequence + ' · ' + passenger.reservation.client.fullName
+      return `
+        <tr>
+          <td>${html(passenger.seatAssignment?.seatNumber ?? '—')}</td>
+          <td><strong>${html(name)}</strong><br><small>${html(passenger.isPrimary ? 'Titular' : 'Acompanhante')}</small></td>
+          <td>${html(passenger.document || '—')}</td>
+          <td>${html(passenger.reservation.id.slice(-8).toUpperCase())}</td>
+          <td>${html(statusLabel[passenger.boardingStatus])}</td>
+          <td>${html(passenger.boardedAt ? time.format(new Date(passenger.boardedAt)) : '—')}</td>
+        </tr>
+      `
+    }).join('')
+
+    popup.document.write(`<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Lista de embarque - ${html(data.trip.title)}</title>
+<style>
+  @page { size: A4 portrait; margin: 14mm; }
+  * { box-sizing: border-box; }
+  body { margin: 0; color: #172b3a; font: 12px Arial, sans-serif; }
+  header { border-bottom: 2px solid #172b3a; padding-bottom: 12px; margin-bottom: 16px; }
+  h1 { margin: 0 0 5px; font-size: 22px; }
+  p { margin: 3px 0; color: #52697c; }
+  .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 14px 0 18px; }
+  .summary div { border: 1px solid #d8e0e6; border-radius: 7px; padding: 9px; text-align: center; }
+  .summary strong { display: block; font-size: 18px; }
+  .summary span { color: #647787; font-size: 9px; text-transform: uppercase; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #eef3f6; text-align: left; font-size: 9px; text-transform: uppercase; }
+  th, td { border: 1px solid #d9e1e7; padding: 7px; vertical-align: top; }
+  td:first-child { text-align: center; font-weight: 700; }
+  small { color: #6f8190; }
+  footer { margin-top: 14px; color: #7b8995; font-size: 9px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Lista de embarque</h1>
+  <p><strong>${html(data.trip.title)}</strong></p>
+  <p>${html(data.trip.origin)} → ${html(data.trip.destination)} · ${html(date)}</p>
+</header>
+<section class="summary">
+  <div><strong>${data.summary.total}</strong><span>Total</span></div>
+  <div><strong>${data.summary.boarded}</strong><span>Embarcaram</span></div>
+  <div><strong>${data.summary.absent}</strong><span>Ausentes</span></div>
+  <div><strong>${data.summary.pending}</strong><span>Aguardando</span></div>
+</section>
+<table>
+  <thead><tr><th>Assento</th><th>Passageiro</th><th>Documento</th><th>Reserva</th><th>Status</th><th>Horário</th></tr></thead>
+  <tbody>${rows}</tbody>
+</table>
+<footer>Gerado pela plataforma Próximo Destino em ${html(new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date()))}.</footer>
+</body>
+</html>`)
+    popup.document.close()
+    popup.focus()
+    window.setTimeout(() => popup.print(), 250)
   }
 
   return (
@@ -200,7 +417,7 @@ export function TripBoardingDialog({
         ) : null}
 
         <div className="boarding-toolbar">
-          <label>
+          <label className="boarding-search">
             <Search size={15} />
             <input
               value={query}
@@ -209,12 +426,70 @@ export function TripBoardingDialog({
             />
           </label>
 
+          <div className="boarding-document-actions">
+            <button type="button" onClick={exportCsv} disabled={!data?.passengers.length}>
+              <Download size={14} />
+              CSV
+            </button>
+            <button type="button" onClick={printList} disabled={!data?.passengers.length}>
+              <Printer size={14} />
+              Imprimir
+            </button>
+          </div>
+
           {data && !data.canUpdate ? (
             <span className="boarding-readonly">
               Operação encerrada
             </span>
           ) : null}
         </div>
+
+        {data?.canUpdate && filteredPassengers.length ? (
+          <div className="boarding-selection-bar">
+            <label>
+              <input
+                type="checkbox"
+                checked={allFilteredSelected}
+                onChange={toggleAllFiltered}
+              />
+              <span>
+                {allFilteredSelected
+                  ? 'Desmarcar filtrados'
+                  : 'Selecionar ' + filteredPassengers.length + ' filtrado(s)'}
+              </span>
+            </label>
+
+            {selectedCount ? (
+              <div>
+                <strong>{selectedCount} selecionado(s)</strong>
+                <button
+                  type="button"
+                  className="board"
+                  disabled={savingBulk}
+                  onClick={() => void bulkUpdate('BOARDED')}
+                >
+                  Embarcar
+                </button>
+                <button
+                  type="button"
+                  className="absent"
+                  disabled={savingBulk}
+                  onClick={() => void bulkUpdate('ABSENT')}
+                >
+                  Ausente
+                </button>
+                <button
+                  type="button"
+                  className="pending"
+                  disabled={savingBulk}
+                  onClick={() => void bulkUpdate('PENDING')}
+                >
+                  Aguardando
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="boarding-list">
           {loading ? (
@@ -228,9 +503,22 @@ export function TripBoardingDialog({
 
               return (
                 <article
-                  className={'boarding-row boarding-row--' + passenger.boardingStatus.toLowerCase()}
+                  className={
+                    'boarding-row boarding-row--' +
+                    passenger.boardingStatus.toLowerCase() +
+                    (selectedIds.has(passenger.id) ? ' boarding-row--selected' : '')
+                  }
                   key={passenger.id}
                 >
+                  <label className="boarding-select-one" aria-label={'Selecionar ' + displayName}>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(passenger.id)}
+                      onChange={() => toggleSelection(passenger.id)}
+                      disabled={!data?.canUpdate || savingBulk}
+                    />
+                  </label>
+
                   <div className="boarding-seat">
                     <span>Assento</span>
                     <strong>{passenger.seatAssignment?.seatNumber ?? '—'}</strong>
@@ -274,7 +562,7 @@ export function TripBoardingDialog({
                     <button
                       type="button"
                       className="board"
-                      disabled={!data?.canUpdate || saving}
+                      disabled={!data?.canUpdate || saving || savingBulk}
                       onClick={() => void updateStatus(passenger.id, 'BOARDED')}
                     >
                       <Check size={14} />
@@ -283,7 +571,7 @@ export function TripBoardingDialog({
                     <button
                       type="button"
                       className="absent"
-                      disabled={!data?.canUpdate || saving}
+                      disabled={!data?.canUpdate || saving || savingBulk}
                       onClick={() => void updateStatus(passenger.id, 'ABSENT')}
                     >
                       <UserX size={14} />
@@ -293,7 +581,7 @@ export function TripBoardingDialog({
                       <button
                         type="button"
                         className="pending"
-                        disabled={!data?.canUpdate || saving}
+                        disabled={!data?.canUpdate || saving || savingBulk}
                         onClick={() => void updateStatus(passenger.id, 'PENDING')}
                       >
                         <Clock3 size={14} />
