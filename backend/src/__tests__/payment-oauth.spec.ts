@@ -70,10 +70,30 @@ describe('conexão OAuth do Mercado Pago', () => {
     assert.ok((persisted?.expiresAt.getTime() ?? 0) > Date.now())
   })
 
-  it('informa que a aplicação está pronta e a conta ainda não está conectada', async () => {
+  it('distingue plataforma configurada de pagamentos prontos', async () => {
     const status = await service.status()
     assert.equal(status.platformConfigured, true)
+    assert.equal(status.webhookConfigured, true)
     assert.equal(status.connected, false)
+    assert.equal(status.readyForPayments, false)
     assert.equal('accessToken' in status, false)
+  })
+
+  it('permite preparar OAuth mesmo antes do webhook central', async () => {
+    const withoutWebhook = new PaymentConnectionService(
+      prisma,
+      new ConfigService({
+        MERCADO_PAGO_CLIENT_ID: 'app-test-123',
+        MERCADO_PAGO_CLIENT_SECRET: 'secret-test',
+        RAILWAY_PUBLIC_DOMAIN: 'api.example.test',
+        FRONTEND_ORIGIN: 'https://app.example.test',
+        MFA_ENCRYPTION_KEY: encryptionKey,
+      }),
+    )
+
+    const status = await withoutWebhook.status()
+    assert.equal(status.platformConfigured, true)
+    assert.equal(status.webhookConfigured, false)
+    assert.equal(status.readyForPayments, false)
   })
 })
