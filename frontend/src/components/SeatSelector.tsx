@@ -147,7 +147,7 @@ export function SeatSelector({
   const deckFeatures = vehicleFeatures.filter(
     (feature) => feature.deck === activeDeck,
   )
-  const middleRow = Math.ceil(rows.length / 2)
+  const middleRow = Math.max(0, Math.floor(rows.length / 2))
 
   function toggleSeat(seat: number) {
     if (occupied.has(seat) || blocked.has(seat)) return
