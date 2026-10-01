@@ -7350,3 +7350,242 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
     min-width: 0;
   }
 }
+
+
+/* Mercado Pago payment states */
+
+.purchase-mode-switch button:disabled {
+  color: #a0a7af;
+  cursor: not-allowed;
+  opacity: .72;
+}
+
+.purchase-pix-box,
+.purchase-checkout-box,
+.purchase-payment-unavailable {
+  display: grid;
+  width: 100%;
+  gap: 12px;
+  border: 1px solid #dce7f2;
+  border-radius: 16px;
+  padding: 14px;
+  background: #f8fbff;
+}
+
+.purchase-pix-heading,
+.client-payment-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.purchase-pix-heading > div,
+.purchase-checkout-box {
+  min-width: 0;
+}
+
+.purchase-pix-heading span,
+.purchase-checkout-box > span,
+.purchase-payment-unavailable span {
+  color: #7e8d99;
+  font-size: 8px;
+}
+
+.purchase-pix-heading strong,
+.purchase-checkout-box > strong,
+.purchase-payment-unavailable strong {
+  color: #29465e;
+  font-size: 10px;
+}
+
+.purchase-pix-heading small {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 5px 8px;
+  color: #8a6518;
+  background: #fff7dc;
+  font-size: 7px;
+  font-weight: 750;
+}
+
+.purchase-pix-qr {
+  width: 184px;
+  max-width: 100%;
+  aspect-ratio: 1;
+  justify-self: center;
+  border: 10px solid #fff;
+  border-radius: 14px;
+  object-fit: contain;
+  box-shadow: 0 6px 24px rgba(28, 63, 91, .08);
+}
+
+.purchase-pix-copy {
+  display: grid;
+  gap: 8px;
+}
+
+.purchase-pix-copy code {
+  display: block;
+  overflow: hidden;
+  border: 1px solid #e1e7ed;
+  border-radius: 10px;
+  padding: 10px;
+  color: #435a6d;
+  background: #fff;
+  font: 600 8px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow-wrap: anywhere;
+}
+
+.trip-reservation-card .purchase-pix-copy button,
+.purchase-provider-link {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid #d7e1ea;
+  border-radius: 10px;
+  padding: 0 12px;
+  color: #174d84;
+  background: #fff;
+  font-size: 8px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.purchase-provider-link--primary {
+  border-color: #0071e3;
+  color: #fff;
+  background: #0071e3;
+}
+
+.purchase-payment-unavailable {
+  border-color: #eadfbf;
+  background: #fffaf0;
+}
+
+.client-payment-panel {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  border: 1px solid #e1e8ef;
+  border-radius: 20px;
+  padding: 20px;
+  background: #fff;
+  box-shadow: 0 10px 32px rgba(26, 50, 74, .05);
+}
+
+.client-payment-heading h2 {
+  margin: 3px 0 4px;
+}
+
+.client-payment-heading p {
+  margin: 0;
+  color: #73808d;
+  font-size: 12px;
+}
+
+.client-payment-status {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 7px 10px;
+  font-size: 10px;
+}
+
+.client-payment-status--paid {
+  color: #157347;
+  background: #eaf8f0;
+}
+
+.client-payment-status--pending_payment {
+  color: #8a6518;
+  background: #fff7dc;
+}
+
+.client-payment-status--cancelled,
+.client-payment-status--expired {
+  color: #8a3c3c;
+  background: #fff0f0;
+}
+
+.client-payment-actions button {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 11px;
+  padding: 0 14px;
+  color: #fff;
+  background: #0071e3;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.client-payment-actions button:disabled {
+  opacity: .55;
+  cursor: default;
+}
+
+.client-payment-pix {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+  border-top: 1px solid #edf1f4;
+  padding-top: 14px;
+}
+
+.client-payment-pix img {
+  width: 150px;
+  aspect-ratio: 1;
+  border-radius: 12px;
+  object-fit: contain;
+}
+
+.client-payment-pix > div {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.client-payment-pix code {
+  overflow-wrap: anywhere;
+  color: #53697b;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.client-payment-pix button {
+  justify-self: start;
+  border: 1px solid #d8e1ea;
+  border-radius: 9px;
+  padding: 8px 11px;
+  color: #174d84;
+  background: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+@media (max-width: 620px) {
+  .client-payment-panel {
+    padding: 16px;
+  }
+
+  .client-payment-heading {
+    display: grid;
+  }
+
+  .client-payment-status {
+    justify-self: start;
+  }
+
+  .client-payment-pix {
+    grid-template-columns: 1fr;
+  }
+
+  .client-payment-pix img {
+    justify-self: center;
+  }
+}
