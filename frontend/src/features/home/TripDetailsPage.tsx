@@ -1,7 +1,9 @@
 import {
   ArrowLeft,
   CalendarDays,
+  Check,
   CheckCircle2,
+  Copy,
   MapPin,
   Plane,
   ShieldCheck,
@@ -46,13 +48,17 @@ export function TripDetailsPage({
   const [passengerCount, setPassengerCount] = useState(defaultPassengers)
   const [submitting, setSubmitting] = useState(false)
   const [requestResult, setRequestResult] = useState<ReservationRequestResult | null>(null)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     let active = true
 
     void fetchPublicTrip(tripId)
       .then((result) => {
-        if (active) setTrip(result)
+        if (!active) return
+        setTrip(result)
+        window.scrollTo({ top: 0, behavior: 'auto' })
+        document.title = `${result.destination} | Próximo Destino`
       })
       .catch((cause) => {
         if (active) setError(cause instanceof Error ? cause.message : 'Viagem indisponível.')
@@ -60,8 +66,21 @@ export function TripDetailsPage({
 
     return () => {
       active = false
+      document.title = 'Próximo Destino'
     }
   }, [tripId])
+
+  async function copyAccessCode() {
+    if (!requestResult) return
+
+    try {
+      await navigator.clipboard.writeText(requestResult.accessCode)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1800)
+    } catch {
+      setCopied(false)
+    }
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -96,7 +115,13 @@ export function TripDetailsPage({
   }
 
   if (!trip) {
-    return <div className="admin-loading">Carregando viagem...</div>
+    return (
+      <div className="trip-details-loading" role="status" aria-live="polite">
+        <span className="trip-details-loading-mark" aria-hidden="true" />
+        <strong>Carregando sua viagem</strong>
+        <span>Consultando as informações publicadas pela agência.</span>
+      </div>
+    )
   }
 
   const nights = trip.returnDate
@@ -169,7 +194,18 @@ export function TripDetailsPage({
                 <CheckCircle2 size={30} />
                 <span className="eyebrow">Solicitação registrada</span>
                 <h2>Guarde seu código de acesso</h2>
-                <code>{requestResult.accessCode}</code>
+                <div className="reservation-access-code">
+                  <code>{requestResult.accessCode}</code>
+                  <button
+                    type="button"
+                    className="reservation-copy-code"
+                    onClick={() => void copyAccessCode()}
+                    aria-label="Copiar código de acesso"
+                  >
+                    {copied ? <Check size={16} /> : <Copy size={16} />}
+                    <span>{copied ? 'Copiado' : 'Copiar'}</span>
+                  </button>
+                </div>
                 <p>Use este código junto com <strong>{email}</strong> em “Minha viagem”. Ele não será exibido novamente.</p>
                 <button type="button" onClick={onClientAccess}>Acessar minha viagem</button>
               </div>
@@ -181,15 +217,35 @@ export function TripDetailsPage({
 
                 <label>
                   Nome completo
-                  <input value={fullName} onChange={(e) => setFullName(e.target.value)} required />
+                  <input
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    autoComplete="name"
+                    placeholder="Seu nome completo"
+                    required
+                  />
                 </label>
                 <label>
                   E-mail
-                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    autoComplete="email"
+                    placeholder="voce@exemplo.com"
+                    required
+                  />
                 </label>
                 <label>
                   WhatsApp
-                  <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(85) 99999-9999" required />
+                  <input
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    autoComplete="tel"
+                    inputMode="tel"
+                    placeholder="(85) 99999-9999"
+                    required
+                  />
                 </label>
                 <label>
                   Passageiros
