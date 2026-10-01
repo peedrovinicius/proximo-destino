@@ -20,14 +20,19 @@ function App() {
     const status = new URLSearchParams(window.location.search).get('paymentConnection')
     if (!status || !window.opener) return
 
-    window.opener.postMessage(
-      {
-        type: 'MERCADO_PAGO_OAUTH',
-        status: status === 'success' ? 'success' : 'error',
-      },
-      window.location.origin,
-    )
+    const payload = {
+      type: 'MERCADO_PAGO_OAUTH',
+      status: status === 'success' ? 'success' : 'error',
+      at: Date.now(),
+    }
 
+    try {
+      localStorage.setItem('mercado-pago-oauth-result', JSON.stringify(payload))
+    } catch {
+      // armazenamento indisponível
+    }
+
+    window.opener.postMessage(payload, window.location.origin)
     window.setTimeout(() => window.close(), 250)
   }, [])
 
