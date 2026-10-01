@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { Brand } from '../../components/Brand'
 import { PublicFooter, type InstitutionalPageKey } from '../../components/PublicFooter'
+import { TravelAiAssistant } from '../../components/TravelAiAssistant'
 import { WhatsAppButton } from '../../components/WhatsAppButton'
 import { fetchPublicTrips, type PublicTrip } from '../../lib/publicApi'
 import { openWhatsApp } from '../../lib/whatsapp'
@@ -353,6 +354,8 @@ export function HomePage({
         onNavigate={onInstitutionalNavigate}
         onAdminAccess={onAdminAccess}
       />
+
+      <TravelAiAssistant />
 
       <WhatsAppButton
         label="+55 85 99428-4379"
