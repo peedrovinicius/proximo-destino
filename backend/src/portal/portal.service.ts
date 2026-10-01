@@ -445,6 +445,48 @@ export class PortalService {
     throw new BadRequestException('Forma de pagamento online inválida')
   }
 
+  private async applyPurchaseStatus(
+    purchaseOrderId: string,
+    status: PurchaseStatus,
+  ) {
+    const purchase = await this.prisma.purchaseOrder.findUnique({
+      where: { id: purchaseOrderId },
+      select: { reservationId: true },
+    })
+
+    if (!purchase) return { ignored: true }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.purchaseOrder.update({
+        where: { id: purchaseOrderId },
+        data: { status },
+      })
+
+      if (status === PurchaseStatus.PAID) {
+        await tx.reservation.update({
+          where: { id: purchase.reservationId },
+          data: { status: ReservationStatus.CONFIRMED },
+        })
+        return
+      }
+
+      if (
+        status === PurchaseStatus.CANCELLED ||
+        status === PurchaseStatus.EXPIRED
+      ) {
+        await tx.seatAssignment.deleteMany({
+          where: { reservationId: purchase.reservationId },
+        })
+        await tx.reservation.update({
+          where: { id: purchase.reservationId },
+          data: { status: ReservationStatus.CANCELLED },
+        })
+      }
+    })
+
+    return { updated: true, status }
+  }
+
   private paymentWebhookUrl() {
     const override =
       this.config.get<string>('MERCADO_PAGO_WEBHOOK_URL')?.trim()
