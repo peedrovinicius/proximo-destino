@@ -1093,19 +1093,37 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
   useEffect(() => {
     void load()
 
-    function onMessage(event: MessageEvent) {
-      if (event.origin !== window.location.origin) return
-      if (event.data?.type !== 'MERCADO_PAGO_OAUTH') return
+    function applyOAuthResult(status: string | undefined) {
       setMessage(
-        event.data.status === 'success'
+        status === 'success'
           ? 'Mercado Pago conectado com sucesso.'
           : 'Não foi possível concluir a conexão.',
       )
       void load()
     }
 
+    function onMessage(event: MessageEvent) {
+      if (event.origin !== window.location.origin) return
+      if (event.data?.type !== 'MERCADO_PAGO_OAUTH') return
+      applyOAuthResult(event.data.status)
+    }
+
+    function onStorage(event: StorageEvent) {
+      if (event.key !== 'mercado-pago-oauth-result' || !event.newValue) return
+      try {
+        const payload = JSON.parse(event.newValue) as { type?: string; status?: string }
+        if (payload.type === 'MERCADO_PAGO_OAUTH') applyOAuthResult(payload.status)
+      } catch {
+        // sinal inválido
+      }
+    }
+
     window.addEventListener('message', onMessage)
-    return () => window.removeEventListener('message', onMessage)
+    window.addEventListener('storage', onStorage)
+    return () => {
+      window.removeEventListener('message', onMessage)
+      window.removeEventListener('storage', onStorage)
+    }
   }, [accessToken])
 
   async function connect() {
