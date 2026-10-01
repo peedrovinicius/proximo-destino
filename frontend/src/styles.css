@@ -5963,3 +5963,28 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
     animation: none;
   }
 }
+
+
+/* Floating support actions spacing fix */
+
+.public-home .whatsapp-float {
+  right: 22px;
+  bottom: calc(22px + env(safe-area-inset-bottom));
+}
+
+.public-home .ai-assistant {
+  right: 22px;
+  bottom: calc(100px + env(safe-area-inset-bottom));
+}
+
+@media (max-width: 700px) {
+  .public-home .whatsapp-float {
+    right: 16px;
+    bottom: calc(18px + env(safe-area-inset-bottom));
+  }
+
+  .public-home .ai-assistant {
+    right: 16px;
+    bottom: calc(96px + env(safe-area-inset-bottom));
+  }
+}
