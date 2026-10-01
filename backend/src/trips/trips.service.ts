@@ -82,6 +82,117 @@ export class TripsService {
     return listBusTemplates()
   }
 
+  async findAdminSeatMap(id: string) {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        title: true,
+        capacity: true,
+        busTemplate: true,
+        seatLayout: true,
+        deckCount: true,
+        lowerDeckCapacity: true,
+        vehicleFeatures: true,
+        blockedSeats: true,
+        seatAssignments: {
+          where: {
+            reservation: {
+              status: { not: ReservationStatus.CANCELLED },
+            },
+          },
+          select: {
+            seatNumber: true,
+            reservation: {
+              select: {
+                id: true,
+                status: true,
+                client: {
+                  select: {
+                    id: true,
+                    fullName: true,
+                    email: true,
+                    phone: true,
+                  },
+                },
+              },
+            },
+          },
+          orderBy: { seatNumber: 'asc' },
+        },
+      },
+    })
+
+    if (!trip) throw new NotFoundException('Viagem não encontrada')
+
+    const capacity = trip.capacity
+    const seatLayout = isSeatLayout(trip.seatLayout)
+      ? trip.seatLayout
+      : 'TWO_BY_TWO'
+    const deckCount = trip.deckCount === 2 ? 2 : 1
+    const lowerDeckCapacity =
+      deckCount === 2 &&
+      trip.lowerDeckCapacity !== null &&
+      capacity !== null &&
+      trip.lowerDeckCapacity > 0 &&
+      trip.lowerDeckCapacity < capacity
+        ? trip.lowerDeckCapacity
+        : null
+    const vehicleFeatures = parseStoredFeatures(trip.vehicleFeatures)
+      .filter((feature) => feature.deck <= deckCount)
+    const blockedSeats =
+      capacity === null
+        ? []
+        : trip.blockedSeats
+            .filter((seat) => seat >= 1 && seat <= capacity)
+            .sort((a, b) => a - b)
+    const occupiedSeats = trip.seatAssignments.map((assignment) => ({
+      seatNumber: assignment.seatNumber,
+      reservationId: assignment.reservation.id,
+      reservationStatus: assignment.reservation.status,
+      client: assignment.reservation.client,
+    }))
+
+    if (capacity === null || capacity < 1 || capacity > 80) {
+      return {
+        enabled: false,
+        tripId: trip.id,
+        title: trip.title,
+        capacity,
+        busTemplate: trip.busTemplate,
+        busLabel: describeBus(trip.busTemplate, capacity),
+        seatLayout,
+        deckCount,
+        lowerDeckCapacity,
+        vehicleFeatures,
+        blockedSeats,
+        occupiedSeats,
+        availableCount: capacity,
+      }
+    }
+
+    const unavailable = new Set([
+      ...blockedSeats,
+      ...occupiedSeats.map((seat) => seat.seatNumber),
+    ])
+
+    return {
+      enabled: true,
+      tripId: trip.id,
+      title: trip.title,
+      capacity,
+      busTemplate: trip.busTemplate,
+      busLabel: describeBus(trip.busTemplate, capacity),
+      seatLayout,
+      deckCount,
+      lowerDeckCapacity,
+      vehicleFeatures,
+      blockedSeats,
+      occupiedSeats,
+      availableCount: Math.max(0, capacity - unavailable.size),
+    }
+  }
+
   async searchPublic(origin?: string, destination?: string, departureDate?: string) {
     let dateFilter: { gte: Date; lt?: Date }
 
