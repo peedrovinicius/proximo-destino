@@ -17,7 +17,9 @@ import {
   type AdminClient,
   type AdminReservation,
   type AdminTrip,
+  type BusTemplateOption,
   type DashboardData,
+  type SeatLayout,
   type SearchResult,
 } from '../../lib/adminApi'
 import { openWhatsApp } from '../../lib/whatsapp'
@@ -316,11 +318,38 @@ function TripsView({
   const [destination, setDestination] = useState('')
   const [departureDate, setDepartureDate] = useState('')
   const [price, setPrice] = useState('')
+  const [busTemplates, setBusTemplates] = useState<BusTemplateOption[]>([])
+  const [busTemplate, setBusTemplate] = useState('')
   const [capacity, setCapacity] = useState('')
+  const [seatLayout, setSeatLayout] = useState<SeatLayout>('TWO_BY_TWO')
   const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    let active = true
+
+    void adminApi.busTemplates(accessToken)
+      .then((templates) => {
+        if (active) setBusTemplates(templates)
+      })
+      .catch(() => {
+        if (active) setBusTemplates([])
+      })
+
+    return () => {
+      active = false
+    }
+  }, [accessToken])
+
+  const selectedTemplate = busTemplates.find((template) => template.key === busTemplate)
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+
+    if (busTemplate === 'CUSTOM') {
+      const parsed = Number(capacity)
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > 80) return
+    }
+
     setSaving(true)
     try {
       await adminApi.createTrip(accessToken, {
@@ -329,7 +358,9 @@ function TripsView({
         destination,
         departureDate: new Date(`${departureDate}T12:00:00`).toISOString(),
         status: 'SCHEDULED',
-        capacity: capacity ? Number(capacity) : undefined,
+        busTemplate: busTemplate || undefined,
+        capacity: busTemplate === 'CUSTOM' ? Number(capacity) : undefined,
+        seatLayout: busTemplate === 'CUSTOM' ? seatLayout : undefined,
         priceCents: price ? Math.round(Number(price.replace(',', '.')) * 100) : undefined,
       })
       setTitle('')
@@ -337,7 +368,9 @@ function TripsView({
       setDestination('')
       setDepartureDate('')
       setPrice('')
+      setBusTemplate('')
       setCapacity('')
+      setSeatLayout('TWO_BY_TWO')
       await onChanged()
     } finally {
       setSaving(false)
@@ -353,16 +386,68 @@ function TripsView({
         <input placeholder="Destino" value={destination} onChange={(e) => setDestination(e.target.value)} required />
         <input type="date" value={departureDate} onChange={(e) => setDepartureDate(e.target.value)} required />
         <input inputMode="decimal" placeholder="Preço por pessoa em R$" value={price} onChange={(e) => setPrice(e.target.value)} />
-        <input
-          type="number"
-          min="1"
-          max="80"
-          inputMode="numeric"
-          placeholder="Assentos do veículo (opcional)"
-          value={capacity}
-          onChange={(e) => setCapacity(e.target.value)}
-        />
-        <small className="admin-form-hint">De 1 a 80 ativa a escolha de assentos no site público.</small>
+
+        <div className="admin-bus-field">
+          <label htmlFor="trip-bus-template">Ônibus e mapa de assentos</label>
+          <select
+            id="trip-bus-template"
+            value={busTemplate}
+            onChange={(event) => {
+              setBusTemplate(event.target.value)
+              setCapacity('')
+              setSeatLayout('TWO_BY_TWO')
+            }}
+          >
+            <option value="">Sem escolha de assentos</option>
+            {busTemplates.map((template) => (
+              <option value={template.key} key={template.key}>{template.label}</option>
+            ))}
+          </select>
+
+          {selectedTemplate ? (
+            <div className="admin-bus-preview">
+              <div>
+                <strong>{selectedTemplate.shortLabel}</strong>
+                <span>{selectedTemplate.description}</span>
+              </div>
+              {selectedTemplate.capacity ? (
+                <small>
+                  {selectedTemplate.capacity} lugares · {selectedTemplate.seatLayout === 'TWO_BY_ONE' ? '2+1' : '2+2'}
+                </small>
+              ) : (
+                <small>Configuração manual</small>
+              )}
+            </div>
+          ) : (
+            <small className="admin-form-hint">
+              Se o pacote não usar ônibus com assento marcado, deixe esta opção desativada.
+            </small>
+          )}
+
+          {busTemplate === 'CUSTOM' ? (
+            <div className="admin-bus-custom">
+              <input
+                type="number"
+                min="1"
+                max="80"
+                inputMode="numeric"
+                placeholder="Quantidade de assentos"
+                value={capacity}
+                onChange={(event) => setCapacity(event.target.value)}
+                required
+              />
+              <select
+                value={seatLayout}
+                onChange={(event) => setSeatLayout(event.target.value as SeatLayout)}
+                aria-label="Disposição dos assentos"
+              >
+                <option value="TWO_BY_TWO">2+2 · dois de cada lado</option>
+                <option value="TWO_BY_ONE">2+1 · dois de um lado e um do outro</option>
+              </select>
+            </div>
+          ) : null}
+        </div>
+
         <button type="submit" disabled={saving}>{saving ? 'Salvando...' : 'Criar viagem'}</button>
       </form>
 
@@ -377,9 +462,10 @@ function TripsView({
               </div>
               <span>{trip.status}</span>
               <span>{trip.priceCents == null ? 'Sem preço' : money.format(trip.priceCents / 100)}</span>
-              <TripCapacityControl
+              <TripBusControl
                 accessToken={accessToken}
                 trip={trip}
+                templates={busTemplates}
                 onChanged={onChanged}
               />
             </div>
@@ -390,33 +476,72 @@ function TripsView({
   )
 }
 
-function TripCapacityControl({
+function TripBusControl({
   accessToken,
   trip,
+  templates,
   onChanged,
 }: {
   accessToken: string
   trip: AdminTrip
+  templates: BusTemplateOption[]
   onChanged: () => Promise<void>
 }) {
-  const [value, setValue] = useState(trip.capacity?.toString() ?? '')
+  const initialTemplate = trip.busTemplate ?? (trip.capacity ? 'CUSTOM' : '')
+  const [templateKey, setTemplateKey] = useState(initialTemplate)
+  const [capacity, setCapacity] = useState(trip.capacity?.toString() ?? '')
+  const [seatLayout, setSeatLayout] = useState<SeatLayout>(trip.seatLayout ?? 'TWO_BY_TWO')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    setValue(trip.capacity?.toString() ?? '')
-  }, [trip.capacity])
+    setTemplateKey(trip.busTemplate ?? (trip.capacity ? 'CUSTOM' : ''))
+    setCapacity(trip.capacity?.toString() ?? '')
+    setSeatLayout(trip.seatLayout ?? 'TWO_BY_TWO')
+  }, [trip.busTemplate, trip.capacity, trip.seatLayout])
+
+  const selected = templates.find((template) => template.key === templateKey)
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const parsed = value ? Number(value) : null
 
-    if (parsed !== null && (!Number.isInteger(parsed) || parsed < 1 || parsed > 80)) {
+    if (!templateKey) {
+      setSaving(true)
+      try {
+        await adminApi.updateTrip(accessToken, trip.id, {
+          busTemplate: null,
+          capacity: null,
+          seatLayout: null,
+        })
+        await onChanged()
+      } finally {
+        setSaving(false)
+      }
+      return
+    }
+
+    if (templateKey === 'CUSTOM') {
+      const parsed = Number(capacity)
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > 80) return
+
+      setSaving(true)
+      try {
+        await adminApi.updateTrip(accessToken, trip.id, {
+          busTemplate: 'CUSTOM',
+          capacity: parsed,
+          seatLayout,
+        })
+        await onChanged()
+      } finally {
+        setSaving(false)
+      }
       return
     }
 
     setSaving(true)
     try {
-      await adminApi.updateTrip(accessToken, trip.id, { capacity: parsed })
+      await adminApi.updateTrip(accessToken, trip.id, {
+        busTemplate: templateKey,
+      })
       await onChanged()
     } finally {
       setSaving(false)
@@ -424,23 +549,59 @@ function TripCapacityControl({
   }
 
   return (
-    <form className="admin-seat-capacity" onSubmit={save}>
-      <div>
-        <strong>{trip.capacity ? `${trip.capacity} assentos` : 'Assentos desativados'}</strong>
-        <span>{trip.capacity ? 'Mapa disponível no site' : 'Defina a lotação do veículo'}</span>
+    <form className="admin-bus-control" onSubmit={save}>
+      <div className="admin-bus-control-summary">
+        <strong>
+          {selected?.shortLabel ??
+            (trip.capacity ? `Personalizado · ${trip.capacity}` : 'Assentos desativados')}
+        </strong>
+        <span>
+          {trip.capacity
+            ? `${trip.capacity} lugares · ${trip.seatLayout === 'TWO_BY_ONE' ? '2+1' : '2+2'}`
+            : 'Mapa não exibido ao viajante'}
+        </span>
       </div>
-      <input
-        type="number"
-        min="1"
-        max="80"
-        inputMode="numeric"
-        value={value}
-        onChange={(event) => setValue(event.target.value)}
-        placeholder="1–80"
-        aria-label={`Capacidade de assentos de ${trip.title}`}
-      />
+
+      <select
+        value={templateKey}
+        onChange={(event) => {
+          const next = event.target.value
+          setTemplateKey(next)
+          const option = templates.find((template) => template.key === next)
+          if (option?.capacity) setCapacity(option.capacity.toString())
+          if (option?.seatLayout) setSeatLayout(option.seatLayout)
+        }}
+        aria-label={`Modelo de ônibus de ${trip.title}`}
+      >
+        <option value="">Sem assentos</option>
+        {templates.map((template) => (
+          <option value={template.key} key={template.key}>{template.shortLabel}</option>
+        ))}
+      </select>
+
+      {templateKey === 'CUSTOM' ? (
+        <div className="admin-bus-control-custom">
+          <input
+            type="number"
+            min="1"
+            max="80"
+            value={capacity}
+            onChange={(event) => setCapacity(event.target.value)}
+            aria-label={`Lotação de ${trip.title}`}
+          />
+          <select
+            value={seatLayout}
+            onChange={(event) => setSeatLayout(event.target.value as SeatLayout)}
+            aria-label={`Disposição de assentos de ${trip.title}`}
+          >
+            <option value="TWO_BY_TWO">2+2</option>
+            <option value="TWO_BY_ONE">2+1</option>
+          </select>
+        </div>
+      ) : null}
+
       <button type="submit" disabled={saving}>
-        {saving ? 'Salvando' : 'Salvar'}
+        {saving ? 'Salvando' : 'Aplicar'}
       </button>
     </form>
   )
