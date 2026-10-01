@@ -14,6 +14,8 @@ import {
 import { TripStatus } from '@prisma/client'
 import { BUS_TEMPLATES, SEAT_LAYOUTS } from '../bus-templates'
 
+const busTemplateKeys = [...BUS_TEMPLATES.map((template) => template.key), 'CUSTOM']
+
 export class CreateTripDto {
   @IsString()
   @MaxLength(180)
@@ -45,18 +47,10 @@ export class CreateTripDto {
   @IsInt()
   @Min(1)
   @Max(10000)
-  capacity?: number | null
+  capacity?: number
 
   @IsOptional()
-  @IsIn([...BUS_TEMPLATES.map((template) => template.key), 'CUSTOM'])
-  busTemplate?: string | null
-
-  @IsOptional()
-  @IsIn([...SEAT_LAYOUTS])
-  seatLayout?: string | null
-
-  @IsOptional()
-  @IsIn([...BUS_TEMPLATES.map((template) => template.key), 'CUSTOM'])
+  @IsIn(busTemplateKeys)
   busTemplate?: string | null
 
   @IsOptional()
@@ -115,7 +109,15 @@ export class UpdateTripDto {
   @IsInt()
   @Min(1)
   @Max(10000)
-  capacity?: number
+  capacity?: number | null
+
+  @IsOptional()
+  @IsIn(busTemplateKeys)
+  busTemplate?: string | null
+
+  @IsOptional()
+  @IsIn([...SEAT_LAYOUTS])
+  seatLayout?: string | null
 
   @IsOptional()
   @Type(() => Number)
