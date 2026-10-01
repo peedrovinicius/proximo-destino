@@ -264,6 +264,76 @@ export function ClientPortal({ accessToken, onLogout }: ClientPortalProps) {
           </article>
         </section>
 
+        {data.purchaseOrder ? (
+          <section className="client-payment-panel">
+            <div className="client-payment-heading">
+              <div>
+                <span className="eyebrow">Pagamento da compra</span>
+                <h2>
+                  {data.purchaseOrder.status === 'PAID'
+                    ? 'Pagamento confirmado'
+                    : data.purchaseOrder.status === 'PENDING_PAYMENT'
+                      ? 'Pagamento pendente'
+                      : 'Pagamento encerrado'}
+                </h2>
+                <p>
+                  {data.purchaseOrder.paymentMethod === 'PIX'
+                    ? 'PIX'
+                    : data.purchaseOrder.paymentMethod === 'CARD'
+                      ? 'Cartão'
+                      : data.purchaseOrder.paymentMethod}
+                  {' · '}
+                  {money.format(data.purchaseOrder.totalCents / 100)}
+                </p>
+              </div>
+              <strong className={'client-payment-status client-payment-status--' + data.purchaseOrder.status.toLowerCase()}>
+                {data.purchaseOrder.status === 'PAID'
+                  ? 'Pago'
+                  : data.purchaseOrder.status === 'PENDING_PAYMENT'
+                    ? 'Aguardando'
+                    : data.purchaseOrder.status === 'EXPIRED'
+                      ? 'Expirado'
+                      : 'Cancelado'}
+              </strong>
+            </div>
+
+            {data.purchaseOrder.status === 'PENDING_PAYMENT' ? (
+              <div className="client-payment-actions">
+                <button
+                  type="button"
+                  onClick={() => void resumePayment()}
+                  disabled={paymentStarting}
+                >
+                  <CircleDollarSign size={16} />
+                  {paymentStarting
+                    ? 'Preparando pagamento...'
+                    : data.purchaseOrder.paymentMethod === 'PIX'
+                      ? 'Gerar PIX'
+                      : 'Continuar pagamento'}
+                </button>
+              </div>
+            ) : null}
+
+            {paymentResult?.kind === 'PIX' ? (
+              <div className="client-payment-pix">
+                {paymentResult.qrCodeBase64 ? (
+                  <img
+                    src={`data:image/png;base64,${paymentResult.qrCodeBase64}`}
+                    alt="QR Code PIX para pagamento"
+                  />
+                ) : null}
+                <div>
+                  <strong>PIX copia e cola</strong>
+                  <code>{paymentResult.qrCode}</code>
+                  <button type="button" onClick={() => void copyPixCode()}>
+                    {pixCopied ? 'Copiado' : 'Copiar código PIX'}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
         {quote ? (
           <section className="client-quote-panel">
             <div className="client-quote-heading">
