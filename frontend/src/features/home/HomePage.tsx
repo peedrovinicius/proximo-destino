@@ -372,23 +372,23 @@ export function HomePage({ onClientAccess, onAdminAccess }: HomePageProps) {
           </a>
 
           <a
-            className="public-footer-contact"
+            className="public-footer-contact public-footer-contact--link"
             href="mailto:proximodestinoviagens7@gmail.com"
-            aria-label="E-mail da Próximo Destino"
+            aria-label="Enviar e-mail para a Próximo Destino"
           >
             <Mail size={15} />
-            <span>proximodestinoviagens7@gmail.com</span>
+            <span>E-mail</span>
           </a>
 
           <a
-            className="public-footer-contact"
+            className="public-footer-contact public-footer-contact--link"
             href="https://wa.me/5585994284379"
             target="_blank"
             rel="noreferrer"
-            aria-label="WhatsApp da Próximo Destino"
+            aria-label="Falar com a Próximo Destino no WhatsApp"
           >
             <MessageCircle size={15} />
-            <span>+55 85 99428-4379</span>
+            <span>WhatsApp</span>
           </a>
         </div>
 
