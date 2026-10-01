@@ -358,7 +358,6 @@ export function HomePage({
       <TravelAiAssistant />
 
       <WhatsAppButton
-        label="+55 85 99428-4379"
         message="Olá! Gostaria de informações sobre as viagens disponíveis."
       />
     </div>
