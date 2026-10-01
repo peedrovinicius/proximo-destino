@@ -15,6 +15,7 @@ import { RolesGuard } from '../auth/roles.guard'
 import { AdminService } from './admin.service'
 import {
   CreateReservationDto,
+  UpdateReservationPassengersDto,
   UpdateReservationStatusDto,
 } from './dto/reservation.dto'
 
@@ -50,6 +51,21 @@ export class AdminController {
   @Roles(UserRole.ADMIN, UserRole.AGENT)
   createReservation(@Body() body: CreateReservationDto) {
     return this.admin.createReservation(body)
+  }
+
+  @Get('reservations/:id/passengers')
+  @Roles(UserRole.ADMIN)
+  reservationPassengers(@Param('id') id: string) {
+    return this.admin.reservationPassengers(id)
+  }
+
+  @Patch('reservations/:id/passengers')
+  @Roles(UserRole.ADMIN)
+  updateReservationPassengers(
+    @Param('id') id: string,
+    @Body() body: UpdateReservationPassengersDto,
+  ) {
+    return this.admin.updateReservationPassengers(id, body)
   }
 
   @Patch('reservations/:id/status')
