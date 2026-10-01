@@ -1221,16 +1221,31 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
           </>
         ) : (
           <>
+            <div className="payment-onboarding-steps" aria-label="Etapas para ativar pagamentos">
+              <div>
+                <span>1</span>
+                <p><strong>Conectar conta</strong><small>Use sua conta Mercado Pago.</small></p>
+              </div>
+              <div>
+                <span>2</span>
+                <p><strong>Autorizar</strong><small>Confirme a permissão no Mercado Pago.</small></p>
+              </div>
+              <div>
+                <span>3</span>
+                <p><strong>Começar a receber</strong><small>PIX e cartão ficam disponíveis.</small></p>
+              </div>
+            </div>
+
             <div className="payment-connection-copy">
               <strong>
                 {status?.platformConfigured
-                  ? 'Ativação em um clique'
-                  : 'Integração aguardando configuração inicial'}
+                  ? 'Pronto para conectar'
+                  : 'Recurso sendo preparado pela plataforma'}
               </strong>
               <span>
                 {status?.platformConfigured
-                  ? 'Clique em Conectar Mercado Pago, entre na sua conta e autorize. Nenhuma chave técnica será solicitada.'
-                  : 'A plataforma ainda precisa das credenciais da aplicação Mercado Pago uma única vez. Depois disso, cada administrador conecta a própria conta pelo botão abaixo.'}
+                  ? 'Você não precisa copiar chaves, tokens ou códigos. A autorização acontece diretamente no Mercado Pago.'
+                  : 'Nenhuma ação técnica é necessária nesta tela. Quando a integração central estiver habilitada, o botão será liberado automaticamente.'}
               </span>
             </div>
             <div className="payment-connection-actions">
