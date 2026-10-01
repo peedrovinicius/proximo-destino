@@ -214,6 +214,40 @@ export type AdminPurchaseOrder = {
   }
 }
 
+export type AdminSeatMap = {
+  enabled: boolean
+  trip: {
+    id: string
+    title: string
+    origin: string
+    destination: string
+    departureDate: string
+  }
+  capacity: number | null
+  busLabel: string | null
+  seatLayout: SeatLayout
+  deckCount: 1 | 2
+  lowerDeckCapacity: number | null
+  vehicleFeatures: VehicleFeature[]
+  blockedSeats: number[]
+  occupiedSeats: number[]
+  availableCount: number | null
+  assignments: Array<{
+    seatNumber: number
+    reservation: {
+      id: string
+      status: AdminReservation['status']
+      passengerCount: number
+      client: {
+        id: string
+        fullName: string
+        email: string | null
+        phone: string | null
+      }
+    }
+  }>
+}
+
 export type AdminPaymentsDashboard = {
   summary: {
     totalOrders: number
@@ -289,6 +323,27 @@ async function adminFetch<T>(
 }
 
 export const adminApi = {
+  seatMap: (token: string, tripId: string) =>
+    adminFetch<AdminSeatMap>(
+      token,
+      `/admin/trips/${encodeURIComponent(tripId)}/seats`,
+    ),
+
+  setSeatBlocked: (
+    token: string,
+    tripId: string,
+    seatNumber: number,
+    blocked: boolean,
+  ) =>
+    adminFetch<AdminSeatMap>(
+      token,
+      `/admin/trips/${encodeURIComponent(tripId)}/seats/${seatNumber}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ blocked }),
+      },
+    ),
+
   purchaseOrders: (token: string) =>
     adminFetch<AdminPaymentsDashboard>(token, '/admin/payments/orders'),
 
