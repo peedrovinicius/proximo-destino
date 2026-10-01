@@ -503,6 +503,8 @@ export class TripsService {
           }
         }
 
+        if (!client) throw new NotFoundException('Cliente não encontrado')
+
         const existing = await tx.reservation.findUnique({
           where: {
             clientId_tripId: {
