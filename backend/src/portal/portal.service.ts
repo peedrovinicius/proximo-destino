@@ -311,6 +311,123 @@ export class PortalService {
     }
   }
 
+  private async initializePurchasePayment(purchaseOrderId: string) {
+    const purchase = await this.prisma.purchaseOrder.findUnique({
+      where: { id: purchaseOrderId },
+      include: {
+        reservation: {
+          include: {
+            client: true,
+            trip: true,
+          },
+        },
+      },
+    })
+
+    if (!purchase) {
+      throw new NotFoundException('Pedido de compra não encontrado')
+    }
+
+    const client = this.mercadoPagoClient()
+    const webhookUrl = this.paymentWebhookUrl()
+
+    if (purchase.paymentMethod === PurchasePaymentMethod.PIX) {
+      const payment = new Payment(client)
+      const response = await payment.create({
+        body: {
+          transaction_amount: purchase.totalCents / 100,
+          description: purchase.reservation.trip.title.slice(0, 120),
+          payment_method_id: 'pix',
+          external_reference: purchase.id,
+          notification_url: webhookUrl,
+          date_of_expiration: new Date(Date.now() + 30 * 60_000).toISOString(),
+          payer: {
+            email: purchase.reservation.client.email ?? undefined,
+          },
+        },
+        requestOptions: {
+          idempotencyKey: `${purchase.id}-pix`,
+        },
+      })
+
+      const transaction = response.point_of_interaction?.transaction_data
+      if (!transaction?.qr_code) {
+        throw new BadGatewayException('O PIX não pôde ser gerado')
+      }
+
+      return {
+        provider: 'MERCADO_PAGO' as const,
+        kind: 'PIX' as const,
+        status: response.status ?? 'pending',
+        qrCode: transaction.qr_code,
+        qrCodeBase64: transaction.qr_code_base64 ?? null,
+        ticketUrl: transaction.ticket_url ?? null,
+        expiresAt: response.date_of_expiration ?? null,
+      }
+    }
+
+    if (purchase.paymentMethod === PurchasePaymentMethod.CARD) {
+      const order = new Order(client)
+      const total = (purchase.totalCents / 100).toFixed(2)
+      const unit = (purchase.unitPriceCents / 100).toFixed(2)
+      const frontend = this.frontendOrigin()
+      const response = await order.create({
+        body: {
+          type: 'online',
+          processing_mode: 'manual',
+          capture_mode: 'automatic_async',
+          total_amount: total,
+          external_reference: purchase.id,
+          expiration_time: 'PT30M',
+          description: purchase.reservation.trip.title.slice(0, 120),
+          payer: {
+            email: purchase.reservation.client.email ?? undefined,
+          },
+          items: [
+            {
+              title: purchase.reservation.trip.title.slice(0, 120),
+              unit_price: unit,
+              quantity: purchase.passengerCount,
+              unit_measure: 'unit',
+              total_amount: total,
+              category_id: 'travels',
+              type: 'travel',
+              event_date: purchase.reservation.trip.departureDate.toISOString(),
+            },
+          ],
+          config: {
+            online: {
+              callback_url: webhookUrl,
+              success_url: `${frontend}/?payment=success`,
+              pending_url: `${frontend}/?payment=pending`,
+              failure_url: `${frontend}/?payment=failure`,
+              auto_return: 'approved',
+            },
+            payment_method: {
+              not_allowed_types: ['ticket', 'bank_transfer'],
+            },
+          },
+        },
+        requestOptions: {
+          idempotencyKey: `${purchase.id}-checkout`,
+        },
+      })
+
+      if (!response.checkout_url) {
+        throw new BadGatewayException('O checkout não pôde ser iniciado')
+      }
+
+      return {
+        provider: 'MERCADO_PAGO' as const,
+        kind: 'CHECKOUT' as const,
+        status: response.status ?? 'created',
+        checkoutUrl: response.checkout_url,
+      }
+    }
+
+    throw new BadRequestException('Forma de pagamento online inválida')
+  }
+
   private paymentWebhookUrl() {
     const override =
       this.config.get<string>('MERCADO_PAGO_WEBHOOK_URL')?.trim()
