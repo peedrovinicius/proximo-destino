@@ -1,5 +1,7 @@
 import {
   Injectable,
+  Logger,
+  OnModuleInit,
   ServiceUnavailableException,
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
@@ -17,14 +19,27 @@ type ResponsesApiPayload = {
 }
 
 @Injectable()
-export class AssistantService {
+export class AssistantService implements OnModuleInit {
+  private readonly logger = new Logger(AssistantService.name)
+
   constructor(
     private readonly config: ConfigService,
     private readonly trips: TripsService,
   ) {}
 
+  onModuleInit() {
+    const configured = Boolean(
+      process.env.OPENAI_API_KEY?.trim() ||
+      this.config.get<string>('OPENAI_API_KEY')?.trim(),
+    )
+    this.logger.log(`OpenAI provider configured: ${configured ? 'yes' : 'no'}`)
+  }
+
   async ask(data: AskAssistantDto) {
-    const apiKey = this.config.get<string>('OPENAI_API_KEY')
+    const apiKey =
+      process.env.OPENAI_API_KEY?.trim() ||
+      this.config.get<string>('OPENAI_API_KEY')?.trim()
+
     if (!apiKey) {
       throw new ServiceUnavailableException(
         'Assistente de IA ainda não está configurado.',
@@ -32,7 +47,7 @@ export class AssistantService {
     }
 
     const catalog = await this.trips.searchPublic()
-    const model = this.config.get<string>('OPENAI_MODEL', 'gpt-5.6-luna')
+    const model = process.env.OPENAI_MODEL?.trim() || this.config.get<string>('OPENAI_MODEL', 'gpt-5.6-luna')
 
     const catalogContext = catalog.length
       ? catalog.map((trip) => ({
