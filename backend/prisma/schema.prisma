@@ -79,6 +79,12 @@ enum TravelDocumentType {
   PURCHASE_RECEIPT
 }
 
+enum BoardingStatus {
+  PENDING
+  BOARDED
+  ABSENT
+}
+
 model User {
   id                        String    @id @default(cuid())
   email                     String    @unique
@@ -247,9 +253,11 @@ model ReservationPassenger {
   fullName      String?
   document      String?
   birthDate     DateTime?
-  isPrimary     Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  isPrimary     Boolean        @default(false)
+  boardingStatus BoardingStatus @default(PENDING)
+  boardedAt     DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
   reservation  Reservation    @relation(fields: [reservationId], references: [id], onDelete: Cascade)
   seatAssignment SeatAssignment?
