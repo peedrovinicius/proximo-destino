@@ -21,6 +21,11 @@ import { TripsService } from './trips.service'
 export class AdminTripsController {
   constructor(private readonly trips: TripsService) {}
 
+  @Get('bus-templates')
+  busTemplates() {
+    return this.trips.busTemplates()
+  }
+
   @Get()
   list(@Query('q') query?: string) {
     return this.trips.listAdmin(query)
