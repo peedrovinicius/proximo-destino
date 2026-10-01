@@ -56,7 +56,10 @@ function roleFromToken(token: string) {
 }
 
 export function AdminDashboard({ accessToken, onLogout }: AdminDashboardProps) {
-  const [tab, setTab] = useState<Tab>('overview')
+  const [tab, setTab] = useState<Tab>(() => {
+    const params = new URLSearchParams(window.location.search)
+    return params.has('paymentConnection') ? 'settings' : 'overview'
+  })
   const [dashboard, setDashboard] = useState<DashboardData | null>(null)
   const [clients, setClients] = useState<AdminClient[]>([])
   const [trips, setTrips] = useState<AdminTrip[]>([])
@@ -91,6 +94,13 @@ export function AdminDashboard({ accessToken, onLogout }: AdminDashboardProps) {
   useEffect(() => {
     void reload()
   }, [accessToken])
+
+  useEffect(() => {
+    if (tab !== 'settings') return
+    const params = new URLSearchParams(window.location.search)
+    if (!params.has('paymentConnection')) return
+    window.history.replaceState({}, '', window.location.pathname + window.location.hash)
+  }, [tab])
 
   async function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -1145,17 +1155,9 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
     setMessage('')
     try {
       const result = await adminApi.connectMercadoPago(accessToken)
-      const popup = window.open(
-        result.authorizationUrl,
-        'mercado-pago-connect',
-        'popup=yes,width=720,height=760',
-      )
-      if (!popup) {
-        setMessage('Permita pop-ups para conectar o Mercado Pago.')
-      }
+      window.location.assign(result.authorizationUrl)
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : 'Falha ao iniciar conexão.')
-    } finally {
       setWorking(false)
     }
   }
