@@ -19,6 +19,8 @@ import { FinanceWorkspace, QuotesWorkspace } from './CommercialWorkspace'
 import {
   adminApi,
   type AdminClient,
+  type AdminPaymentsDashboard,
+  type AdminPurchaseOrder,
   type AdminReservation,
   type AdminTrip,
   type BusTemplateOption,
@@ -35,7 +37,7 @@ type AdminDashboardProps = {
   onLogout: () => void
 }
 
-type Tab = 'overview' | 'clients' | 'trips' | 'reservations' | 'quotes' | 'finance' | 'settings'
+type Tab = 'overview' | 'clients' | 'trips' | 'reservations' | 'quotes' | 'payments' | 'finance' | 'settings'
 
 const money = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -68,7 +70,9 @@ export function AdminDashboard({ accessToken, onLogout }: AdminDashboardProps) {
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const isAdmin = useMemo(() => roleFromToken(accessToken) === 'ADMIN', [accessToken])
+  const userRole = useMemo(() => roleFromToken(accessToken), [accessToken])
+  const isAdmin = userRole === 'ADMIN'
+  const canViewPayments = userRole === 'ADMIN' || userRole === 'FINANCE'
 
   async function reload() {
     setLoading(true)
@@ -134,6 +138,9 @@ export function AdminDashboard({ accessToken, onLogout }: AdminDashboardProps) {
           <button className={tab === 'trips' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => setTab('trips')} type="button">Viagens</button>
           <button className={tab === 'reservations' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => setTab('reservations')} type="button">Reservas</button>
           <button className={tab === 'quotes' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => setTab('quotes')} type="button">Cotações</button>
+          {canViewPayments ? (
+            <button className={tab === 'payments' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => setTab('payments')} type="button">Pagamentos</button>
+          ) : null}
           <button className={tab === 'finance' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => setTab('finance')} type="button">Financeiro</button>
           {isAdmin ? (
             <button className={tab === 'settings' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => setTab('settings')} type="button">Configurações</button>
@@ -265,6 +272,10 @@ export function AdminDashboard({ accessToken, onLogout }: AdminDashboardProps) {
           <QuotesWorkspace accessToken={accessToken} reservations={reservations} />
         ) : null}
 
+        {tab === 'payments' && canViewPayments ? (
+          <PaymentsWorkspace accessToken={accessToken} />
+        ) : null}
+
         {tab === 'finance' ? (
           <FinanceWorkspace accessToken={accessToken} />
         ) : null}
@@ -274,6 +285,194 @@ export function AdminDashboard({ accessToken, onLogout }: AdminDashboardProps) {
         ) : null}
       </main>
     </div>
+  )
+}
+
+function paymentStatusLabel(status: AdminPurchaseOrder['status']) {
+  if (status === 'PAID') return 'Pago'
+  if (status === 'PENDING_PAYMENT') return 'Aguardando'
+  if (status === 'EXPIRED') return 'Expirado'
+  return 'Cancelado'
+}
+
+function paymentMethodLabel(method: AdminPurchaseOrder['paymentMethod']) {
+  if (method === 'CARD') return 'Cartão'
+  if (method === 'PIX') return 'PIX'
+  if (method === 'BOLETO') return 'Boleto'
+  return 'Transferência'
+}
+
+function PaymentsWorkspace({ accessToken }: { accessToken: string }) {
+  const [data, setData] = useState<AdminPaymentsDashboard | null>(null)
+  const [statusFilter, setStatusFilter] = useState<'ALL' | AdminPurchaseOrder['status']>('ALL')
+  const [methodFilter, setMethodFilter] = useState<'ALL' | AdminPurchaseOrder['paymentMethod']>('ALL')
+  const [query, setQuery] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  async function load() {
+    setLoading(true)
+    setError('')
+    try {
+      setData(await adminApi.purchaseOrders(accessToken))
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Falha ao carregar pagamentos.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void load()
+  }, [accessToken])
+
+  const orders = useMemo(() => {
+    const normalized = query.trim().toLowerCase()
+    return (data?.orders ?? []).filter((order) => {
+      if (statusFilter !== 'ALL' && order.status !== statusFilter) return false
+      if (methodFilter !== 'ALL' && order.paymentMethod !== methodFilter) return false
+      if (!normalized) return true
+
+      return [
+        order.id,
+        order.reservation.id,
+        order.reservation.client.fullName,
+        order.reservation.client.email ?? '',
+        order.reservation.client.phone ?? '',
+        order.reservation.trip.title,
+        order.reservation.trip.origin,
+        order.reservation.trip.destination,
+      ].some((value) => value.toLowerCase().includes(normalized))
+    })
+  }, [data, methodFilter, query, statusFilter])
+
+  const summary = data?.summary
+
+  return (
+    <section className="admin-payments-workspace">
+      <div className="admin-payments-heading">
+        <div>
+          <span className="eyebrow">Compra online</span>
+          <h2>Pagamentos</h2>
+          <p>Pedidos criados pelo fluxo de compra com PIX e cartão.</p>
+        </div>
+        <button type="button" onClick={() => void load()} disabled={loading}>
+          {loading ? 'Atualizando...' : 'Atualizar'}
+        </button>
+      </div>
+
+      {error ? <div className="admin-error" role="alert">{error}</div> : null}
+
+      <div className="admin-payment-metrics">
+        <article>
+          <small>Recebido</small>
+          <strong>{money.format((summary?.paidCents ?? 0) / 100)}</strong>
+          <span>{summary?.paidOrders ?? 0} pagos</span>
+        </article>
+        <article>
+          <small>Pendente</small>
+          <strong>{money.format((summary?.pendingCents ?? 0) / 100)}</strong>
+          <span>{summary?.pendingOrders ?? 0} aguardando</span>
+        </article>
+        <article>
+          <small>Pedidos</small>
+          <strong>{summary?.totalOrders ?? 0}</strong>
+          <span>{(summary?.cancelledOrders ?? 0) + (summary?.expiredOrders ?? 0)} encerrados</span>
+        </article>
+      </div>
+
+      <div className="admin-payment-filters">
+        <label>
+          <span>Buscar</span>
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Cliente, viagem, reserva ou pedido"
+          />
+        </label>
+
+        <label>
+          <span>Status</span>
+          <select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
+          >
+            <option value="ALL">Todos</option>
+            <option value="PENDING_PAYMENT">Aguardando</option>
+            <option value="PAID">Pago</option>
+            <option value="CANCELLED">Cancelado</option>
+            <option value="EXPIRED">Expirado</option>
+          </select>
+        </label>
+
+        <label>
+          <span>Método</span>
+          <select
+            value={methodFilter}
+            onChange={(event) => setMethodFilter(event.target.value as typeof methodFilter)}
+          >
+            <option value="ALL">Todos</option>
+            <option value="PIX">PIX</option>
+            <option value="CARD">Cartão</option>
+            <option value="BOLETO">Boleto</option>
+            <option value="TRANSFER">Transferência</option>
+          </select>
+        </label>
+      </div>
+
+      <article className="admin-payment-list">
+        <div className="admin-payment-list-head">
+          <span>Cliente / viagem</span>
+          <span>Pagamento</span>
+          <span>Reserva</span>
+          <span>Valor</span>
+          <span>Status</span>
+        </div>
+
+        {loading ? (
+          <p className="admin-empty">Carregando pagamentos...</p>
+        ) : orders.length ? orders.map((order) => (
+          <div className="admin-payment-row" key={order.id}>
+            <div className="admin-payment-main">
+              <strong>{order.reservation.client.fullName}</strong>
+              <span>{order.reservation.trip.title}</span>
+              <small>
+                {date.format(new Date(order.reservation.trip.departureDate))}
+                {' · '}
+                {order.reservation.trip.origin} → {order.reservation.trip.destination}
+              </small>
+            </div>
+
+            <div>
+              <strong>{paymentMethodLabel(order.paymentMethod)}</strong>
+              <span>{order.passengerCount} passageiro{order.passengerCount === 1 ? '' : 's'}</span>
+              <small>{date.format(new Date(order.createdAt))}</small>
+            </div>
+
+            <div>
+              <strong>#{order.reservation.id.slice(-8).toUpperCase()}</strong>
+              <span>
+                {order.reservation.seatAssignments.length
+                  ? 'Assentos ' + order.reservation.seatAssignments.map((seat) => seat.seatNumber).join(', ')
+                  : 'Sem assento definido'}
+              </span>
+              <small>{order.reservation.status}</small>
+            </div>
+
+            <div className="admin-payment-value">
+              <strong>{money.format(order.totalCents / 100)}</strong>
+              <span>{money.format(order.unitPriceCents / 100)} por passageiro</span>
+            </div>
+
+            <span className={'admin-payment-status admin-payment-status--' + order.status.toLowerCase()}>
+              {paymentStatusLabel(order.status)}
+            </span>
+          </div>
+        )) : (
+          <p className="admin-empty">Nenhum pagamento encontrado.</p>
+        )}
+      </article>
+    </section>
   )
 }
 
