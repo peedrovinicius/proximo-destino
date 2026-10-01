@@ -613,6 +613,33 @@ export class PortalService {
       .replace(/\/$/, '')
   }
 
+  async retryPayment(clientId: string, reservationId: string) {
+    const purchase = await this.prisma.purchaseOrder.findFirst({
+      where: {
+        reservationId,
+        reservation: { clientId },
+      },
+      select: {
+        id: true,
+        status: true,
+      },
+    })
+
+    if (!purchase) {
+      throw new NotFoundException('Pedido de compra não encontrado')
+    }
+
+    if (purchase.status === PurchaseStatus.PAID) {
+      return {
+        provider: 'MERCADO_PAGO' as const,
+        kind: 'PAID' as const,
+        status: 'approved',
+      }
+    }
+
+    return this.initializePurchasePayment(purchase.id)
+  }
+
   async login(data: ClientPortalLoginDto) {
     const email = data.email.trim().toLowerCase()
     const reservations = await this.prisma.reservation.findMany({
