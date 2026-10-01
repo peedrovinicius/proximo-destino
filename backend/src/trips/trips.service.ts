@@ -288,6 +288,14 @@ export class TripsService {
       },
       select: {
         seatNumber: true,
+        passenger: {
+          select: {
+            id: true,
+            sequence: true,
+            fullName: true,
+            document: true,
+          },
+        },
         reservation: {
           select: {
             id: true,
