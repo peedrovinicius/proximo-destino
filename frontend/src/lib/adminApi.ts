@@ -185,6 +185,16 @@ export type AdminDocument = {
   issuedAt: string
 }
 
+export type PaymentConnectionStatus = {
+  provider: 'MERCADO_PAGO'
+  platformConfigured: boolean
+  connected: boolean
+  externalUserId: string | null
+  liveMode: boolean | null
+  connectedAt: string | null
+  expiresAt: string | null
+}
+
 export type SearchResult = {
   clients: Array<{ id: string; fullName: string; email: string | null; phone: string | null }>
   trips: Array<{
@@ -235,6 +245,23 @@ async function adminFetch<T>(
 }
 
 export const adminApi = {
+  paymentConnection: (token: string) =>
+    adminFetch<PaymentConnectionStatus>(token, '/admin/payments/mercado-pago'),
+
+  connectMercadoPago: (token: string) =>
+    adminFetch<{ authorizationUrl: string }>(
+      token,
+      '/admin/payments/mercado-pago/connect',
+      { method: 'POST' },
+    ),
+
+  disconnectMercadoPago: (token: string) =>
+    adminFetch<{ disconnected: boolean }>(
+      token,
+      '/admin/payments/mercado-pago/disconnect',
+      { method: 'POST' },
+    ),
+
   dashboard: (token: string) =>
     adminFetch<DashboardData>(token, '/admin/dashboard'),
 
