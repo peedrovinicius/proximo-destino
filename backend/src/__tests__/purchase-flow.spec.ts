@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, describe, it } from 'node:test'
+import { ServiceUnavailableException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { JwtService } from '@nestjs/jwt'
 import { TripStatus } from '@prisma/client'
@@ -74,25 +75,41 @@ describe('compra pública da viagem', () => {
     await prisma.$disconnect()
   })
 
-  it('cria pedido pendente com total calculado pela quantidade de passageiros', async () => {
-    const result = await portal.requestReservation({
-      tripId: purchaseTripId,
-      fullName: 'Cliente comprador',
-      email: purchaseEmail,
-      phone: '85999999999',
-      passengerCount: 2,
-      selectedSeats: [1, 2],
-      intent: 'PURCHASE',
-      paymentMethod: 'PIX',
-    })
+  it('não cria compra quando o gateway não está configurado', async () => {
+    await assert.rejects(
+      () =>
+        portal.requestReservation({
+          tripId: purchaseTripId,
+          fullName: 'Cliente comprador',
+          email: purchaseEmail,
+          phone: '85999999999',
+          passengerCount: 2,
+          selectedSeats: [1, 2],
+          intent: 'PURCHASE',
+          paymentMethod: 'PIX',
+        }),
+      (error: unknown) =>
+        error instanceof ServiceUnavailableException &&
+        error.message.includes('Pagamento online'),
+    )
 
-    assert.ok(result.purchaseOrder)
-    assert.equal(result.purchaseOrder?.status, 'PENDING_PAYMENT')
-    assert.equal(result.purchaseOrder?.paymentMethod, 'PIX')
-    assert.equal(result.purchaseOrder?.unitPriceCents, 12_500)
-    assert.equal(result.purchaseOrder?.passengerCount, 2)
-    assert.equal(result.purchaseOrder?.totalCents, 25_000)
-    assert.deepEqual(result.selectedSeats, [1, 2])
+    assert.equal(
+      await prisma.reservation.count({ where: { tripId: purchaseTripId } }),
+      0,
+    )
+    assert.equal(
+      await prisma.purchaseOrder.count({
+        where: { reservation: { tripId: purchaseTripId } },
+      }),
+      0,
+    )
+  })
+
+  it('expõe o gateway como indisponível sem credenciais', () => {
+    const config = portal.paymentConfig()
+    assert.equal(config.configured, false)
+    assert.equal(config.methods.PIX, false)
+    assert.equal(config.methods.CARD, false)
   })
 
   it('mantém a solicitação de reserva sem criar pedido de compra', async () => {
