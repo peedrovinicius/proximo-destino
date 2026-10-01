@@ -27,6 +27,17 @@ export type AdminClient = {
   _count: { companions: number; reservations: number }
 }
 
+export type SeatLayout = 'TWO_BY_TWO' | 'TWO_BY_ONE'
+
+export type BusTemplateOption = {
+  key: string
+  label: string
+  shortLabel: string
+  capacity: number | null
+  seatLayout: SeatLayout | null
+  description: string
+}
+
 export type AdminTrip = {
   id: string
   title: string
@@ -36,6 +47,8 @@ export type AdminTrip = {
   returnDate: string | null
   status: 'DRAFT' | 'SCHEDULED' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED'
   capacity: number | null
+  busTemplate: string | null
+  seatLayout: SeatLayout | null
   priceCents: number | null
   _count: { reservations: number }
 }
@@ -223,6 +236,9 @@ export const adminApi = {
   trips: (token: string, query = '') =>
     adminFetch<AdminTrip[]>(token, `/admin/trips${query ? `?q=${encodeURIComponent(query)}` : ''}`),
 
+  busTemplates: (token: string) =>
+    adminFetch<BusTemplateOption[]>(token, '/admin/trips/bus-templates'),
+
   createTrip: (
     token: string,
     data: {
@@ -233,6 +249,8 @@ export const adminApi = {
       returnDate?: string
       status?: AdminTrip['status']
       capacity?: number
+      busTemplate?: string | null
+      seatLayout?: SeatLayout | null
       priceCents?: number
     },
   ) =>
@@ -244,7 +262,11 @@ export const adminApi = {
   updateTrip: (
     token: string,
     id: string,
-    data: { capacity: number | null },
+    data: {
+      capacity?: number | null
+      busTemplate?: string | null
+      seatLayout?: SeatLayout | null
+    },
   ) =>
     adminFetch<AdminTrip>(token, `/admin/trips/${encodeURIComponent(id)}`, {
       method: 'PATCH',
