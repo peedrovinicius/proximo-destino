@@ -67,17 +67,14 @@ export class TripsService {
 
     if (!trip) throw new NotFoundException('Viagem não encontrada')
 
-    const enabled =
-      trip.capacity !== null &&
-      trip.capacity >= 1 &&
-      trip.capacity <= 80
+    const capacity = trip.capacity
 
-    if (!enabled) {
+    if (capacity === null || capacity < 1 || capacity > 80) {
       return {
         enabled: false,
-        capacity: trip.capacity,
+        capacity,
         occupiedSeats: [] as number[],
-        availableCount: trip.capacity,
+        availableCount: capacity,
       }
     }
 
@@ -96,9 +93,9 @@ export class TripsService {
 
     return {
       enabled: true,
-      capacity: trip.capacity,
+      capacity,
       occupiedSeats,
-      availableCount: Math.max(0, trip.capacity - occupiedSeats.length),
+      availableCount: Math.max(0, capacity - occupiedSeats.length),
     }
   }
 
