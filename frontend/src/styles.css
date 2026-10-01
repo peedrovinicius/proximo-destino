@@ -3210,3 +3210,12 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
     text-align: center;
   }
 }
+
+.public-footer-contact--link {
+  color: #46657e;
+  font-weight: 800;
+}
+
+.public-footer-contact--link span {
+  border-bottom: 1px solid rgba(70, 101, 126, .28);
+}
