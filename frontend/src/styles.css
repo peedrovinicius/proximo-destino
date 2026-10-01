@@ -5001,3 +5001,489 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
     transition: none;
   }
 }
+
+
+/* Trip details refinement */
+
+.trip-details-page {
+  --trip-blue: #0071e3;
+  --trip-blue-dark: #0066cc;
+  --trip-ink: #1d1d1f;
+  --trip-muted: #6e6e73;
+  --trip-line: rgba(0, 0, 0, .075);
+  min-height: 100vh;
+  color: var(--trip-ink);
+  background:
+    radial-gradient(circle at 50% -10%, rgba(0, 113, 227, .05), transparent 28%),
+    #f5f5f7;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.trip-details-page .public-header {
+  min-height: 68px;
+  padding: 0 clamp(20px, 4.4vw, 72px);
+  border-bottom: 1px solid rgba(0, 0, 0, .065);
+  background: rgba(250, 250, 252, .82);
+  backdrop-filter: saturate(180%) blur(22px);
+  -webkit-backdrop-filter: saturate(180%) blur(22px);
+}
+
+.trip-details-shell {
+  max-width: 1240px;
+  padding: 34px 28px 96px;
+}
+
+.trip-details-back {
+  min-height: 38px;
+  border-radius: 999px;
+  padding: 0 12px;
+  color: #55555a;
+  font-size: 12px;
+  font-weight: 600;
+  transition: background .18s ease, color .18s ease;
+}
+
+.trip-details-back:hover {
+  color: var(--trip-ink);
+  background: rgba(0, 0, 0, .045);
+}
+
+.trip-details-back:focus-visible,
+.trip-reservation-card input:focus-visible,
+.trip-reservation-card select:focus-visible,
+.trip-reservation-card button:focus-visible,
+.reservation-copy-code:focus-visible {
+  outline: 3px solid rgba(0, 113, 227, .22);
+  outline-offset: 3px;
+}
+
+.trip-details-hero {
+  min-height: 430px;
+  margin-top: 22px;
+  padding: 52px;
+  border-radius: 30px;
+  box-shadow:
+    0 2px 5px rgba(0, 0, 0, .04),
+    0 24px 60px rgba(7, 31, 51, .13);
+}
+
+.trip-details-hero > div {
+  max-width: 760px;
+}
+
+.trip-details-hero .public-kicker {
+  color: rgba(255, 255, 255, .72);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .09em;
+}
+
+.trip-details-hero h1 {
+  margin: 13px 0 16px;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  font-size: clamp(48px, 6vw, 78px);
+  font-weight: 700;
+  line-height: .98;
+  letter-spacing: -.055em;
+  text-wrap: balance;
+}
+
+.trip-details-hero p {
+  max-width: 650px;
+  color: rgba(255, 255, 255, .78);
+  font-size: 16px;
+  line-height: 1.55;
+  letter-spacing: -.01em;
+}
+
+.trip-details-grid {
+  grid-template-columns: minmax(0, 1fr) 400px;
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.trip-details-info,
+.trip-reservation-card {
+  border: 1px solid var(--trip-line);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, .92);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, .025),
+    0 14px 36px rgba(0, 0, 0, .04);
+}
+
+.trip-details-info {
+  padding: 30px;
+}
+
+.trip-route-large {
+  gap: 22px;
+  padding-bottom: 26px;
+  border-color: rgba(0, 0, 0, .065);
+}
+
+.trip-route-large small {
+  color: #86868b;
+  font-size: 11px;
+}
+
+.trip-route-large strong {
+  margin-top: 5px;
+  color: var(--trip-ink);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  font-size: 26px;
+  font-weight: 650;
+  letter-spacing: -.035em;
+}
+
+.trip-route-large svg {
+  color: var(--trip-blue);
+}
+
+.trip-detail-facts {
+  gap: 12px;
+  margin-top: 22px;
+}
+
+.trip-detail-facts span {
+  min-height: 86px;
+  gap: 5px 10px;
+  padding: 18px;
+  border: 1px solid rgba(0, 0, 0, .045);
+  border-radius: 18px;
+  color: #66666b;
+  background: #f8f8fa;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.trip-detail-facts span svg {
+  color: var(--trip-blue);
+}
+
+.trip-detail-facts strong {
+  color: #3a3a3c;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.trip-details-price {
+  margin-top: 22px;
+  padding: 24px;
+  border: 1px solid rgba(0, 113, 227, .08);
+  border-radius: 20px;
+  background: linear-gradient(180deg, #eef7ff, #f6fbff);
+}
+
+.trip-details-price span {
+  color: #6e6e73;
+  font-size: 11px;
+}
+
+.trip-details-price strong {
+  margin-top: 5px;
+  color: var(--trip-ink);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -.035em;
+}
+
+.trip-details-price small {
+  max-width: 560px;
+  margin-top: 7px;
+  color: #77777d;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.trip-details-info > .availability-note {
+  margin: 18px 0 0;
+  padding: 14px 4px 2px;
+}
+
+.trip-reservation-card {
+  position: sticky;
+  top: 86px;
+  align-self: start;
+  padding: 28px;
+}
+
+.trip-reservation-card form {
+  gap: 14px;
+}
+
+.trip-reservation-card .eyebrow {
+  color: var(--trip-blue);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.trip-reservation-card h2,
+.reservation-success h2 {
+  margin: 3px 0 2px;
+  color: var(--trip-ink);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.08;
+  letter-spacing: -.04em;
+}
+
+.trip-reservation-card form > p,
+.reservation-success p {
+  margin: 0 0 8px;
+  color: #6e6e73;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.trip-reservation-card label {
+  gap: 7px;
+  color: #3a3a3c;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.trip-reservation-card input,
+.trip-reservation-card select {
+  height: 48px;
+  border: 1px solid rgba(0, 0, 0, .1);
+  border-radius: 13px;
+  padding: 0 13px;
+  color: var(--trip-ink);
+  background: #fff;
+  font-size: 13px;
+  outline: none;
+  transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
+}
+
+.trip-reservation-card input::placeholder {
+  color: #aaaab0;
+}
+
+.trip-reservation-card input:hover,
+.trip-reservation-card select:hover {
+  border-color: rgba(0, 0, 0, .16);
+}
+
+.trip-reservation-card input:focus,
+.trip-reservation-card select:focus {
+  border-color: rgba(0, 113, 227, .5);
+  box-shadow: 0 0 0 4px rgba(0, 113, 227, .08);
+}
+
+.trip-reservation-card form > button,
+.reservation-success > button {
+  height: 48px;
+  border-radius: 999px;
+  background: var(--trip-blue);
+  box-shadow: 0 7px 18px rgba(0, 113, 227, .18);
+  font-size: 12px;
+  font-weight: 650;
+  transition: transform .18s ease, background .18s ease, box-shadow .18s ease;
+}
+
+.trip-reservation-card form > button:hover,
+.reservation-success > button:hover {
+  background: var(--trip-blue-dark);
+  box-shadow: 0 9px 22px rgba(0, 113, 227, .22);
+}
+
+.trip-reservation-card form > button:active,
+.reservation-success > button:active {
+  transform: scale(.985);
+}
+
+.trip-reservation-card button:disabled {
+  opacity: .52;
+}
+
+.reservation-success {
+  gap: 14px;
+  padding: 4px 0;
+}
+
+.reservation-success > svg {
+  width: 38px;
+  height: 38px;
+  color: #1a9c68;
+}
+
+.reservation-access-code {
+  display: grid;
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.reservation-access-code code {
+  display: flex;
+  min-width: 0;
+  min-height: 54px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(0, 0, 0, .075);
+  border-radius: 14px;
+  padding: 10px 14px;
+  color: var(--trip-ink);
+  background: #f7f7f9;
+  font: 700 18px ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .06em;
+  word-break: break-all;
+  user-select: all;
+}
+
+.reservation-copy-code {
+  display: inline-flex;
+  min-width: 92px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid rgba(0, 0, 0, .085);
+  border-radius: 14px;
+  padding: 0 12px;
+  color: #3a3a3c;
+  background: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .18s ease, border-color .18s ease;
+}
+
+.reservation-copy-code:hover {
+  border-color: rgba(0, 0, 0, .14);
+  background: #f7f7f9;
+}
+
+.trip-details-loading {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  align-content: center;
+  gap: 9px;
+  padding: 32px;
+  color: #1d1d1f;
+  background: #f5f5f7;
+  text-align: center;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+}
+
+.trip-details-loading strong {
+  margin-top: 6px;
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.trip-details-loading > span:last-child {
+  color: #7a7a80;
+  font-size: 12px;
+}
+
+.trip-details-loading-mark {
+  width: 28px;
+  height: 28px;
+  border: 3px solid rgba(0, 113, 227, .16);
+  border-top-color: #0071e3;
+  border-radius: 50%;
+  animation: trip-loading-spin .8s linear infinite;
+}
+
+@keyframes trip-loading-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 900px) {
+  .trip-details-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .trip-reservation-card {
+    position: static;
+  }
+}
+
+@media (max-width: 620px) {
+  .trip-details-page .public-header {
+    min-height: 62px;
+    padding-inline: 16px;
+  }
+
+  .trip-details-page .trip-details-back {
+    padding-inline: 8px;
+  }
+
+  .trip-details-shell {
+    padding: 22px 16px 72px;
+  }
+
+  .trip-details-hero {
+    min-height: 360px;
+    margin-top: 14px;
+    padding: 30px 24px;
+    border-radius: 24px;
+  }
+
+  .trip-details-hero h1 {
+    font-size: clamp(42px, 13vw, 60px);
+  }
+
+  .trip-details-hero p {
+    font-size: 14px;
+  }
+
+  .trip-details-info,
+  .trip-reservation-card {
+    border-radius: 20px;
+  }
+
+  .trip-details-info {
+    padding: 22px 18px;
+  }
+
+  .trip-route-large {
+    gap: 10px;
+  }
+
+  .trip-route-large strong {
+    font-size: 19px;
+  }
+
+  .trip-detail-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .trip-detail-facts span {
+    min-height: 74px;
+  }
+
+  .trip-reservation-card {
+    padding: 24px 20px;
+  }
+
+  .reservation-access-code {
+    grid-template-columns: 1fr;
+  }
+
+  .reservation-copy-code {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trip-details-back,
+  .trip-reservation-card input,
+  .trip-reservation-card select,
+  .trip-reservation-card button,
+  .reservation-copy-code {
+    transition: none;
+  }
+
+  .trip-details-loading-mark {
+    animation: none;
+  }
+}
