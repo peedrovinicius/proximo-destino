@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
 import { AdminModule } from './admin/admin.module'
+import { AssistantModule } from './assistant/assistant.module'
 import { AppController } from './app.controller'
 import { AuthModule } from './auth/auth.module'
 import { ClientsModule } from './clients/clients.module'
@@ -30,6 +31,7 @@ import { UsersModule } from './users/users.module'
     IntegrityModule,
     TripsModule,
     AdminModule,
+    AssistantModule,
     PortalModule,
     PrivacyModule,
   ],
