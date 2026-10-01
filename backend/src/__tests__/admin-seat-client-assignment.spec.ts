@@ -96,6 +96,9 @@ describe('cadastro manual de cliente por poltrona', () => {
   })
 
   after(async () => {
+    await prisma.purchaseOrder.deleteMany({
+      where: { reservation: { tripId } },
+    })
     await prisma.reservation.deleteMany({ where: { tripId } })
     await prisma.trip.deleteMany({ where: { id: tripId } })
     await prisma.client.deleteMany({
