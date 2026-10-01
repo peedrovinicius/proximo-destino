@@ -406,7 +406,6 @@ export class PortalService {
               unit_price: unit,
               quantity: purchase.passengerCount,
               unit_measure: 'unit',
-              total_amount: total,
               category_id: 'travels',
               type: 'travel',
               event_date: purchase.reservation.trip.departureDate.toISOString(),
