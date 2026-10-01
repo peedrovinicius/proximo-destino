@@ -7692,6 +7692,16 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
   gap: 3px;
 }
 
+.payment-connection-success--pending {
+  color: #9a721b;
+  border-color: #eadfbf;
+  background: #fffaf0;
+}
+
+.payment-connection-success--pending strong {
+  color: #7a5a16;
+}
+
 .payment-connection-success strong {
   color: #146d4f;
   font-size: 11px;

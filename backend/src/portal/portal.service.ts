@@ -41,12 +41,12 @@ export class PortalService {
   ) {}
 
   async paymentConfig() {
-    const connected = this.paymentConnection
-      ? (await this.paymentConnection.status()).connected
-      : Boolean(this.config.get<string>('MERCADO_PAGO_ACCESS_TOKEN')?.trim())
-    const configured =
-      connected &&
-      Boolean(this.config.get<string>('MERCADO_PAGO_WEBHOOK_SECRET')?.trim())
+    const configured = this.paymentConnection
+      ? (await this.paymentConnection.status()).readyForPayments
+      : Boolean(
+          this.config.get<string>('MERCADO_PAGO_ACCESS_TOKEN')?.trim() &&
+          this.config.get<string>('MERCADO_PAGO_WEBHOOK_SECRET')?.trim(),
+        )
 
     return {
       provider: 'MERCADO_PAGO',

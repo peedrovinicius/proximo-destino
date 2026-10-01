@@ -1201,12 +1201,25 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
           <div className="payment-connection-state">Verificando conexão...</div>
         ) : status?.connected ? (
           <>
-            <div className="payment-connection-success">
+            <div
+              className={
+                status.readyForPayments
+                  ? 'payment-connection-success'
+                  : 'payment-connection-success payment-connection-success--pending'
+              }
+            >
               <CheckCircle2 size={20} />
               <div>
-                <strong>Conectado</strong>
+                <strong>
+                  {status.readyForPayments
+                    ? 'Conectado e pronto para receber'
+                    : 'Conta conectada'}
+                </strong>
                 <span>
-                  Conta autorizada{status.liveMode === false ? ' em modo de teste' : ''}.
+                  {status.readyForPayments
+                    ? 'PIX e cartão estão liberados para compra online.'
+                    : 'Sua conta já foi autorizada. A ativação central dos pagamentos ainda está sendo concluída pela plataforma; você não precisa fazer nada.'}
+                  {status.liveMode === false ? ' Conta em modo de teste.' : ''}
                   {status.connectedAt
                     ? ' Conectada em ' + new Intl.DateTimeFormat('pt-BR', { dateStyle: 'medium' }).format(new Date(status.connectedAt)) + '.'
                     : ''}
