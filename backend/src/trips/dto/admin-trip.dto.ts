@@ -6,6 +6,7 @@ import {
   IsArray,
   IsBoolean,
   IsDate,
+  IsEmail,
   IsEnum,
   IsIn,
   IsInt,
@@ -204,4 +205,37 @@ export class BulkUpdateBoardingStatusDto {
 
   @IsEnum(BoardingStatus)
   status!: BoardingStatus
+}
+
+
+export class AssignSeatClientDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  clientId?: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  fullName?: string
+
+  @IsOptional()
+  @IsEmail()
+  @MaxLength(254)
+  email?: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  phone?: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  document?: string
+
+  @IsOptional()
+  @Type(() => Date)
+  @IsDate()
+  birthDate?: Date
 }
