@@ -4,6 +4,10 @@ import {
   CircleDollarSign,
   FileText,
   Gift,
+  CreditCard,
+  ExternalLink,
+  Settings,
+  CheckCircle2,
   Plane,
   Search,
   ShieldCheck,
@@ -20,6 +24,7 @@ import {
   type BusTemplateOption,
   type DashboardData,
   type SeatLayout,
+  type PaymentConnectionStatus,
   type SearchResult,
   type VehicleFeature,
 } from '../../lib/adminApi'
@@ -30,7 +35,7 @@ type AdminDashboardProps = {
   onLogout: () => void
 }
 
-type Tab = 'overview' | 'clients' | 'trips' | 'reservations' | 'quotes' | 'finance'
+type Tab = 'overview' | 'clients' | 'trips' | 'reservations' | 'quotes' | 'finance' | 'settings'
 
 const money = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -108,6 +113,7 @@ export function AdminDashboard({ accessToken, onLogout }: AdminDashboardProps) {
           <button className={tab === 'reservations' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => setTab('reservations')} type="button">Reservas</button>
           <button className={tab === 'quotes' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => setTab('quotes')} type="button">Cotações</button>
           <button className={tab === 'finance' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => setTab('finance')} type="button">Financeiro</button>
+          <button className={tab === 'settings' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => setTab('settings')} type="button">Configurações</button>
         </nav>
 
         <div className="admin-actions">
@@ -237,6 +243,10 @@ export function AdminDashboard({ accessToken, onLogout }: AdminDashboardProps) {
 
         {tab === 'finance' ? (
           <FinanceWorkspace accessToken={accessToken} />
+        ) : null}
+
+        {tab === 'settings' ? (
+          <PaymentSettings accessToken={accessToken} />
         ) : null}
       </main>
     </div>
@@ -1059,6 +1069,151 @@ function ReservationsView({
             </div>
           )) : <p className="admin-empty">Nenhuma reserva cadastrada ainda.</p>}
         </div>
+      </article>
+    </section>
+  )
+}
+
+
+function PaymentSettings({ accessToken }: { accessToken: string }) {
+  const [status, setStatus] = useState<PaymentConnectionStatus | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [working, setWorking] = useState(false)
+  const [message, setMessage] = useState('')
+
+  async function load() {
+    setLoading(true)
+    try {
+      setStatus(await adminApi.paymentConnection(accessToken))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void load()
+
+    function onMessage(event: MessageEvent) {
+      if (event.origin !== window.location.origin) return
+      if (event.data?.type !== 'MERCADO_PAGO_OAUTH') return
+      setMessage(
+        event.data.status === 'success'
+          ? 'Mercado Pago conectado com sucesso.'
+          : 'Não foi possível concluir a conexão.',
+      )
+      void load()
+    }
+
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [accessToken])
+
+  async function connect() {
+    setWorking(true)
+    setMessage('')
+    try {
+      const result = await adminApi.connectMercadoPago(accessToken)
+      const popup = window.open(
+        result.authorizationUrl,
+        'mercado-pago-connect',
+        'popup=yes,width=720,height=760',
+      )
+      if (!popup) {
+        setMessage('Permita pop-ups para conectar o Mercado Pago.')
+      }
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : 'Falha ao iniciar conexão.')
+    } finally {
+      setWorking(false)
+    }
+  }
+
+  async function disconnect() {
+    if (!window.confirm('Desconectar o Mercado Pago desta plataforma?')) return
+    setWorking(true)
+    setMessage('')
+    try {
+      await adminApi.disconnectMercadoPago(accessToken)
+      setMessage('Mercado Pago desconectado.')
+      await load()
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : 'Falha ao desconectar.')
+    } finally {
+      setWorking(false)
+    }
+  }
+
+  return (
+    <section className="admin-settings-workspace">
+      <div className="admin-settings-heading">
+        <div>
+          <span className="eyebrow">Configurações da plataforma</span>
+          <h2>Pagamentos</h2>
+          <p>Conecte a conta que receberá PIX e pagamentos com cartão.</p>
+        </div>
+        <Settings size={22} />
+      </div>
+
+      <article className="payment-connection-card">
+        <div className="payment-connection-brand">
+          <span className="payment-connection-icon"><CreditCard size={20} /></span>
+          <div>
+            <strong>Mercado Pago</strong>
+            <span>PIX e cartão com autorização segura</span>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="payment-connection-state">Verificando conexão...</div>
+        ) : status?.connected ? (
+          <>
+            <div className="payment-connection-success">
+              <CheckCircle2 size={20} />
+              <div>
+                <strong>Conectado</strong>
+                <span>
+                  Conta autorizada{status.liveMode === false ? ' em modo de teste' : ''}.
+                  {status.connectedAt
+                    ? ' Conectada em ' + new Intl.DateTimeFormat('pt-BR', { dateStyle: 'medium' }).format(new Date(status.connectedAt)) + '.'
+                    : ''}
+                </span>
+              </div>
+            </div>
+            <div className="payment-connection-actions">
+              <button type="button" className="payment-secondary-action" onClick={() => void disconnect()} disabled={working}>
+                Desconectar
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="payment-connection-copy">
+              <strong>
+                {status?.platformConfigured
+                  ? 'Ativação em um clique'
+                  : 'Integração aguardando configuração inicial'}
+              </strong>
+              <span>
+                {status?.platformConfigured
+                  ? 'Clique em Conectar Mercado Pago, entre na sua conta e autorize. Nenhuma chave técnica será solicitada.'
+                  : 'A plataforma ainda precisa das credenciais da aplicação Mercado Pago uma única vez. Depois disso, cada administrador conecta a própria conta pelo botão abaixo.'}
+              </span>
+            </div>
+            <div className="payment-connection-actions">
+              <button
+                type="button"
+                className="payment-primary-action"
+                onClick={() => void connect()}
+                disabled={working || !status?.platformConfigured}
+              >
+                {working ? 'Abrindo Mercado Pago...' : 'Conectar Mercado Pago'}
+                <ExternalLink size={15} />
+              </button>
+            </div>
+          </>
+        )}
+
+        {message ? <p className="payment-connection-message">{message}</p> : null}
       </article>
     </section>
   )
