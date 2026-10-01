@@ -9,9 +9,10 @@ export type InstitutionalPageKey =
   | 'about'
   | 'culture'
   | 'purpose'
-  | 'careers'
   | 'contact'
   | 'sales'
+  | 'payments'
+  | 'cancellation'
   | 'terms'
   | 'privacy'
   | 'cookies'
@@ -30,12 +31,13 @@ const companyLinks: Array<[InstitutionalPageKey, string]> = [
   ['about', 'Sobre nós'],
   ['culture', 'Cultura'],
   ['purpose', 'Propósito'],
-  ['careers', 'Trabalhe conosco'],
   ['contact', 'Fale conosco'],
 ]
 
 const usefulLinks: Array<[InstitutionalPageKey, string]> = [
   ['sales', 'Canais de vendas'],
+  ['payments', 'Formas de pagamento'],
+  ['cancellation', 'Cancelamento e reembolso'],
   ['terms', 'Termos de Uso'],
   ['privacy', 'Política de Privacidade'],
   ['cookies', 'Política de Cookies'],
