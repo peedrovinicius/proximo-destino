@@ -18,7 +18,7 @@ function App() {
 
   useEffect(() => {
     const status = new URLSearchParams(window.location.search).get('paymentConnection')
-    if (!status || !window.opener) return
+    if (!status) return
 
     const payload = {
       type: 'MERCADO_PAGO_OAUTH',
@@ -32,8 +32,10 @@ function App() {
       // armazenamento indisponível
     }
 
-    window.opener.postMessage(payload, window.location.origin)
-    window.setTimeout(() => window.close(), 250)
+    if (window.opener) {
+      window.opener.postMessage(payload, window.location.origin)
+      window.setTimeout(() => window.close(), 250)
+    }
   }, [])
 
   if (screen === 'home') {
