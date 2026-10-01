@@ -14,7 +14,13 @@ export function originProtection(
     response: Response,
     next: NextFunction,
   ) => {
-    if (SAFE_METHODS.has(request.method)) {
+    if (
+      SAFE_METHODS.has(request.method) ||
+      (
+        request.method === 'POST' &&
+        request.path === '/api/v1/payments/mercado-pago/webhook'
+      )
+    ) {
       next()
       return
     }
