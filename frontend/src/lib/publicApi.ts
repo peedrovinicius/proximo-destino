@@ -16,12 +16,23 @@ export type PublicTrip = {
   status: 'ACTIVE' | 'SCHEDULED'
 }
 
+export type VehicleFeature = {
+  type: 'RESTROOM' | 'DOOR' | 'STAIRS'
+  deck: 1 | 2
+  position: 'FRONT' | 'MIDDLE' | 'REAR'
+  side: 'LEFT' | 'CENTER' | 'RIGHT'
+}
+
 export type PublicSeatMap = {
   enabled: boolean
   capacity: number | null
   busTemplate: string | null
   busLabel: string | null
   seatLayout: 'TWO_BY_TWO' | 'TWO_BY_ONE'
+  deckCount: 1 | 2
+  lowerDeckCapacity: number | null
+  vehicleFeatures: VehicleFeature[]
+  blockedSeats: number[]
   occupiedSeats: number[]
   availableCount: number | null
 }
