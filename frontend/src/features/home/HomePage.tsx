@@ -5,8 +5,6 @@ import {
   ChevronRight,
   MapPin,
   MessageCircle,
-  Instagram,
-  Mail,
   Plane,
   Search,
   ShieldCheck,
@@ -14,6 +12,7 @@ import {
   Users,
 } from 'lucide-react'
 import { Brand } from '../../components/Brand'
+import { PublicFooter, type InstitutionalPageKey } from '../../components/PublicFooter'
 import { WhatsAppButton } from '../../components/WhatsAppButton'
 import { fetchPublicTrips, type PublicTrip } from '../../lib/publicApi'
 import { openWhatsApp } from '../../lib/whatsapp'
@@ -22,6 +21,7 @@ import { TripDetailsPage } from './TripDetailsPage'
 type HomePageProps = {
   onClientAccess: () => void
   onAdminAccess: () => void
+  onInstitutionalNavigate: (page: InstitutionalPageKey) => void
 }
 
 const fallbackImage =
@@ -33,7 +33,11 @@ const money = new Intl.NumberFormat('pt-BR', {
   maximumFractionDigits: 0,
 })
 
-export function HomePage({ onClientAccess, onAdminAccess }: HomePageProps) {
+export function HomePage({
+  onClientAccess,
+  onAdminAccess,
+  onInstitutionalNavigate,
+}: HomePageProps) {
   const [catalog, setCatalog] = useState<PublicTrip[]>([])
   const [results, setResults] = useState<PublicTrip[]>([])
   const [origin, setOrigin] = useState('')
@@ -345,55 +349,10 @@ export function HomePage({ onClientAccess, onAdminAccess }: HomePageProps) {
         </section>
       </main>
 
-      <footer className="public-footer">
-        <div className="public-footer-brand">
-          <Brand compact />
-          <div>
-            <strong>Próximo Destino</strong>
-            <span>Turismo e viagens</span>
-          </div>
-        </div>
-
-        <div className="public-footer-legal" aria-label="Dados institucionais">
-          <span className="public-footer-contact">
-            <strong>CNPJ</strong>
-            <span>59.239.955/0001-49</span>
-          </span>
-
-          <a
-            className="public-footer-contact"
-            href="https://www.instagram.com/proximodestino02/"
-            target="_blank"
-            rel="noreferrer"
-            aria-label="Instagram da Próximo Destino"
-          >
-            <Instagram size={15} />
-            <span>@proximodestino02</span>
-          </a>
-
-          <a
-            className="public-footer-contact public-footer-contact--link"
-            href="mailto:proximodestinoviagens7@gmail.com"
-            aria-label="Enviar e-mail para a Próximo Destino"
-          >
-            <Mail size={15} />
-            <span>E-mail</span>
-          </a>
-
-          <a
-            className="public-footer-contact public-footer-contact--link"
-            href="https://wa.me/5585994284379"
-            target="_blank"
-            rel="noreferrer"
-            aria-label="Falar com a Próximo Destino no WhatsApp"
-          >
-            <MessageCircle size={15} />
-            <span>WhatsApp</span>
-          </a>
-        </div>
-
-        <button type="button" onClick={onAdminAccess}>Área administrativa</button>
-      </footer>
+      <PublicFooter
+        onNavigate={onInstitutionalNavigate}
+        onAdminAccess={onAdminAccess}
+      />
 
       <WhatsAppButton
         label="+55 85 99428-4379"
