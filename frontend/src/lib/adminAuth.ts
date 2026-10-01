@@ -91,6 +91,16 @@ export async function verifyMfa(
   return response.json() as Promise<AuthenticatedResult>
 }
 
+export async function refreshAdminSession(): Promise<AuthenticatedResult> {
+  const response = await fetch(`${API_BASE}/auth/refresh`, {
+    method: 'POST',
+    credentials: 'include',
+  })
+
+  if (!response.ok) throw new Error(await parseError(response))
+  return response.json() as Promise<AuthenticatedResult>
+}
+
 export async function logoutAdmin(accessToken: string) {
   await fetch(`${API_BASE}/auth/logout`, {
     method: 'POST',
