@@ -316,6 +316,7 @@ function TripsView({
   const [destination, setDestination] = useState('')
   const [departureDate, setDepartureDate] = useState('')
   const [price, setPrice] = useState('')
+  const [capacity, setCapacity] = useState('')
   const [saving, setSaving] = useState(false)
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -328,6 +329,7 @@ function TripsView({
         destination,
         departureDate: new Date(`${departureDate}T12:00:00`).toISOString(),
         status: 'SCHEDULED',
+        capacity: capacity ? Number(capacity) : undefined,
         priceCents: price ? Math.round(Number(price.replace(',', '.')) * 100) : undefined,
       })
       setTitle('')
@@ -335,6 +337,7 @@ function TripsView({
       setDestination('')
       setDepartureDate('')
       setPrice('')
+      setCapacity('')
       await onChanged()
     } finally {
       setSaving(false)
@@ -350,6 +353,16 @@ function TripsView({
         <input placeholder="Destino" value={destination} onChange={(e) => setDestination(e.target.value)} required />
         <input type="date" value={departureDate} onChange={(e) => setDepartureDate(e.target.value)} required />
         <input inputMode="decimal" placeholder="Preço por pessoa em R$" value={price} onChange={(e) => setPrice(e.target.value)} />
+        <input
+          type="number"
+          min="1"
+          max="80"
+          inputMode="numeric"
+          placeholder="Assentos do veículo (opcional)"
+          value={capacity}
+          onChange={(e) => setCapacity(e.target.value)}
+        />
+        <small className="admin-form-hint">De 1 a 80 ativa a escolha de assentos no site público.</small>
         <button type="submit" disabled={saving}>{saving ? 'Salvando...' : 'Criar viagem'}</button>
       </form>
 
@@ -357,15 +370,79 @@ function TripsView({
         <div className="admin-panel-heading"><div><span className="eyebrow">Operação</span><h2>Viagens</h2></div><strong>{trips.length}</strong></div>
         <div className="admin-table">
           {trips.length ? trips.map((trip) => (
-            <div className="admin-table-row" key={trip.id}>
-              <div><strong>{trip.title}</strong><span>{trip.origin} → {trip.destination} · {date.format(new Date(trip.departureDate))}</span></div>
+            <div className="admin-table-row admin-trip-row" key={trip.id}>
+              <div>
+                <strong>{trip.title}</strong>
+                <span>{trip.origin} → {trip.destination} · {date.format(new Date(trip.departureDate))}</span>
+              </div>
               <span>{trip.status}</span>
               <span>{trip.priceCents == null ? 'Sem preço' : money.format(trip.priceCents / 100)}</span>
+              <TripCapacityControl
+                accessToken={accessToken}
+                trip={trip}
+                onChanged={onChanged}
+              />
             </div>
           )) : <p className="admin-empty">Nenhuma viagem cadastrada no banco.</p>}
         </div>
       </article>
     </section>
+  )
+}
+
+function TripCapacityControl({
+  accessToken,
+  trip,
+  onChanged,
+}: {
+  accessToken: string
+  trip: AdminTrip
+  onChanged: () => Promise<void>
+}) {
+  const [value, setValue] = useState(trip.capacity?.toString() ?? '')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    setValue(trip.capacity?.toString() ?? '')
+  }, [trip.capacity])
+
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const parsed = value ? Number(value) : null
+
+    if (parsed !== null && (!Number.isInteger(parsed) || parsed < 1 || parsed > 80)) {
+      return
+    }
+
+    setSaving(true)
+    try {
+      await adminApi.updateTrip(accessToken, trip.id, { capacity: parsed })
+      await onChanged()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form className="admin-seat-capacity" onSubmit={save}>
+      <div>
+        <strong>{trip.capacity ? `${trip.capacity} assentos` : 'Assentos desativados'}</strong>
+        <span>{trip.capacity ? 'Mapa disponível no site' : 'Defina a lotação do veículo'}</span>
+      </div>
+      <input
+        type="number"
+        min="1"
+        max="80"
+        inputMode="numeric"
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        placeholder="1–80"
+        aria-label={`Capacidade de assentos de ${trip.title}`}
+      />
+      <button type="submit" disabled={saving}>
+        {saving ? 'Salvando' : 'Salvar'}
+      </button>
+    </form>
   )
 }
 
