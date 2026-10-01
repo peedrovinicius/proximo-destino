@@ -596,6 +596,58 @@ export class TripsService {
     return this.boardingList(id)
   }
 
+  async bulkUpdateBoardingStatus(
+    id: string,
+    passengerIds: string[],
+    status: BoardingStatus,
+  ) {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id },
+      select: { status: true },
+    })
+
+    if (!trip) throw new NotFoundException('Viagem não encontrada')
+    if (
+      trip.status === TripStatus.CANCELLED ||
+      trip.status === TripStatus.COMPLETED
+    ) {
+      throw new ConflictException(
+        'O embarque não pode ser alterado nesta viagem',
+      )
+    }
+
+    await this.ensureTripPassengers(id)
+
+    const validPassengers = await this.prisma.reservationPassenger.count({
+      where: {
+        id: { in: passengerIds },
+        reservation: {
+          tripId: id,
+          status: { not: ReservationStatus.CANCELLED },
+        },
+      },
+    })
+
+    if (validPassengers !== passengerIds.length) {
+      throw new BadRequestException(
+        'Há passageiros inválidos ou de outra viagem na seleção',
+      )
+    }
+
+    await this.prisma.reservationPassenger.updateMany({
+      where: { id: { in: passengerIds } },
+      data: {
+        boardingStatus: status,
+        boardedAt:
+          status === BoardingStatus.BOARDED
+            ? new Date()
+            : null,
+      },
+    })
+
+    return this.boardingList(id)
+  }
+
   async findPublicById(id: string) {
     const trip = await this.prisma.trip.findFirst({
       where: {
