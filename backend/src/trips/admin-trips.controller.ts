@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
   Param,
   Patch,
@@ -60,15 +59,6 @@ export class AdminTripsController {
     @Body() body: AssignSeatClientDto,
   ) {
     return this.trips.assignClientToSeat(id, seatNumber, body)
-  }
-
-  @Delete(':id/seats/:seatNumber/assignment')
-  @Roles(UserRole.ADMIN)
-  removeManualSeatAssignment(
-    @Param('id') id: string,
-    @Param('seatNumber', ParseIntPipe) seatNumber: number,
-  ) {
-    return this.trips.removeManualSeatAssignment(id, seatNumber)
   }
 
   @Patch(':id/seats/:seatNumber')
