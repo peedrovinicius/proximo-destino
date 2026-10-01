@@ -1,25 +1,22 @@
-import { MessageCircle } from 'lucide-react'
+import { Phone } from 'lucide-react'
 import { openWhatsApp } from '../lib/whatsapp'
 
 type WhatsAppButtonProps = {
   message?: string
-  label?: string
 }
 
 export function WhatsAppButton({
   message = 'Olá! Preciso de ajuda com minha viagem.',
-  label = 'Falar no WhatsApp',
 }: WhatsAppButtonProps) {
   return (
     <button
       className="whatsapp-float"
       type="button"
-      aria-label={label}
-      title={label}
+      aria-label="Falar no WhatsApp"
+      title="WhatsApp"
       onClick={() => openWhatsApp(message)}
     >
-      <MessageCircle size={24} strokeWidth={2.2} />
-      <span>{label}</span>
+      <Phone size={23} strokeWidth={2.15} aria-hidden="true" />
     </button>
   )
 }
