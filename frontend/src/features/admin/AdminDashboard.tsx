@@ -738,7 +738,6 @@ function TripsView({
   const [vehicleFeatures, setVehicleFeatures] = useState<VehicleFeature[]>([])
   const [blockedSeats, setBlockedSeats] = useState('')
   const [saving, setSaving] = useState(false)
-  const [showSeatMap, setShowSeatMap] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -1020,6 +1019,7 @@ function TripBusControl({
     trip.blockedSeats.join(', '),
   )
   const [saving, setSaving] = useState(false)
+  const [showSeatMap, setShowSeatMap] = useState(false)
 
   useEffect(() => {
     setTemplateKey(trip.busTemplate ?? (trip.capacity ? 'CUSTOM' : ''))
