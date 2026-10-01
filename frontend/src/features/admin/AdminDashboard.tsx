@@ -44,6 +44,17 @@ const money = new Intl.NumberFormat('pt-BR', {
 
 const date = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'medium' })
 
+function roleFromToken(token: string) {
+  try {
+    const payload = token.split('.')[1]
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/')
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
+    return (JSON.parse(atob(padded)) as { role?: string }).role ?? null
+  } catch {
+    return null
+  }
+}
+
 export function AdminDashboard({ accessToken, onLogout }: AdminDashboardProps) {
   const [tab, setTab] = useState<Tab>('overview')
   const [dashboard, setDashboard] = useState<DashboardData | null>(null)
@@ -54,6 +65,7 @@ export function AdminDashboard({ accessToken, onLogout }: AdminDashboardProps) {
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const isAdmin = useMemo(() => roleFromToken(accessToken) === 'ADMIN', [accessToken])
 
   async function reload() {
     setLoading(true)
@@ -113,7 +125,9 @@ export function AdminDashboard({ accessToken, onLogout }: AdminDashboardProps) {
           <button className={tab === 'reservations' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => setTab('reservations')} type="button">Reservas</button>
           <button className={tab === 'quotes' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => setTab('quotes')} type="button">Cotações</button>
           <button className={tab === 'finance' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => setTab('finance')} type="button">Financeiro</button>
-          <button className={tab === 'settings' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => setTab('settings')} type="button">Configurações</button>
+          {isAdmin ? (
+            <button className={tab === 'settings' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => setTab('settings')} type="button">Configurações</button>
+          ) : null}
         </nav>
 
         <div className="admin-actions">
@@ -245,7 +259,7 @@ export function AdminDashboard({ accessToken, onLogout }: AdminDashboardProps) {
           <FinanceWorkspace accessToken={accessToken} />
         ) : null}
 
-        {tab === 'settings' ? (
+        {tab === 'settings' && isAdmin ? (
           <PaymentSettings accessToken={accessToken} />
         ) : null}
       </main>
