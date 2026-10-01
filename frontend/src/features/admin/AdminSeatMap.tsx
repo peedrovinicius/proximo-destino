@@ -1,7 +1,8 @@
-import { Armchair, Bus, Lock, Unlock, X } from 'lucide-react'
+import { Armchair, Bus, Lock, Search, Unlock, UserPlus, X } from 'lucide-react'
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import {
   adminApi,
+  type AdminClient,
   type AdminSeatMap,
   type SeatLayout,
   type VehicleFeature,
@@ -86,6 +87,17 @@ export function AdminSeatMapDialog({
   const [activeDeck, setActiveDeck] = useState<1 | 2>(1)
   const [selectedSeat, setSelectedSeat] = useState<number | null>(null)
   const [savingSeat, setSavingSeat] = useState<number | null>(null)
+  const [assignOpen, setAssignOpen] = useState(false)
+  const [assignMode, setAssignMode] = useState<'existing' | 'new'>('existing')
+  const [clientQuery, setClientQuery] = useState('')
+  const [clients, setClients] = useState<AdminClient[]>([])
+  const [clientsLoading, setClientsLoading] = useState(false)
+  const [selectedClientId, setSelectedClientId] = useState('')
+  const [newClientName, setNewClientName] = useState('')
+  const [newClientEmail, setNewClientEmail] = useState('')
+  const [newClientPhone, setNewClientPhone] = useState('')
+  const [newClientDocument, setNewClientDocument] = useState('')
+  const [assigning, setAssigning] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -115,6 +127,36 @@ export function AdminSeatMapDialog({
     }
   }, [accessToken, onClose, tripId])
 
+  useEffect(() => {
+    if (!assignOpen || assignMode !== 'existing') return
+
+    let active = true
+    const timer = window.setTimeout(() => {
+      setClientsLoading(true)
+      void adminApi.clients(accessToken, clientQuery.trim())
+        .then((result) => {
+          if (active) setClients(result)
+        })
+        .catch((cause) => {
+          if (active) {
+            setError(
+              cause instanceof Error
+                ? cause.message
+                : 'Falha ao buscar clientes.',
+            )
+          }
+        })
+        .finally(() => {
+          if (active) setClientsLoading(false)
+        })
+    }, 220)
+
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+    }
+  }, [accessToken, assignMode, assignOpen, clientQuery])
+
   const occupied = useMemo(
     () => new Set(data?.occupiedSeats ?? []),
     [data?.occupiedSeats],
@@ -139,11 +181,16 @@ export function AdminSeatMapDialog({
     )
   }
 
-  async function toggleSeat(seatNumber: number) {
-    if (!data || savingSeat !== null) return
-
+  function selectSeat(seatNumber: number) {
     setSelectedSeat(seatNumber)
-    if (occupied.has(seatNumber)) return
+    setAssignOpen(false)
+    setSelectedClientId('')
+    setClientQuery('')
+    setError('')
+  }
+
+  async function toggleSeatBlock(seatNumber: number) {
+    if (!data || savingSeat !== null || occupied.has(seatNumber)) return
 
     setSavingSeat(seatNumber)
     setError('')
@@ -165,6 +212,59 @@ export function AdminSeatMapDialog({
       }
     } finally {
       setSavingSeat(null)
+    }
+  }
+
+  async function assignClient() {
+    if (selectedSeat === null || assigning) return
+
+    if (assignMode === 'existing' && !selectedClientId) {
+      setError('Selecione um cliente.')
+      return
+    }
+    if (assignMode === 'new' && newClientName.trim().length < 2) {
+      setError('Informe o nome completo do cliente.')
+      return
+    }
+
+    setAssigning(true)
+    setError('')
+
+    try {
+      const result = await adminApi.assignClientToSeat(
+        accessToken,
+        tripId,
+        selectedSeat,
+        assignMode === 'existing'
+          ? { clientId: selectedClientId }
+          : {
+              fullName: newClientName.trim(),
+              email: newClientEmail.trim() || undefined,
+              phone: newClientPhone.trim() || undefined,
+              document: newClientDocument.trim() || undefined,
+            },
+      )
+      setData(result)
+      setAssignOpen(false)
+      setSelectedClientId('')
+      setNewClientName('')
+      setNewClientEmail('')
+      setNewClientPhone('')
+      setNewClientDocument('')
+      await onChanged()
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'Falha ao cadastrar o cliente nesta poltrona.',
+      )
+      try {
+        setData(await adminApi.seatMap(accessToken, tripId))
+      } catch {
+        // mantém o último estado visível
+      }
+    } finally {
+      setAssigning(false)
     }
   }
 
@@ -308,14 +408,14 @@ export function AdminSeatMapDialog({
                                 state +
                                 (isFocused ? ' admin-seat-item--focused' : '')
                               }
-                              onClick={() => void toggleSeat(seat)}
+                              onClick={() => selectSeat(seat)}
                               disabled={savingSeat === seat}
                               aria-label={
                                 isOccupied
                                   ? 'Assento ' + seat + ', ocupado. Ver passageiro.'
                                   : isBlocked
-                                    ? 'Assento ' + seat + ', bloqueado. Clique para liberar.'
-                                    : 'Assento ' + seat + ', disponível. Clique para bloquear.'
+                                    ? 'Assento ' + seat + ', bloqueado. Clique para gerenciar.'
+                                    : 'Assento ' + seat + ', disponível. Clique para gerenciar.'
                               }
                             >
                               <Armchair size={22} aria-hidden="true" />
@@ -341,9 +441,9 @@ export function AdminSeatMapDialog({
               </div>
 
               <div className="admin-seat-manager-legend">
-                <span><i className="seat-legend-swatch available" />Disponível: clique para bloquear</span>
+                <span><i className="seat-legend-swatch available" />Disponível: cadastrar cliente ou bloquear</span>
                 <span><i className="seat-legend-swatch occupied" />Ocupado: clique para identificar</span>
-                <span><i className="seat-legend-swatch blocked" />Bloqueado: clique para liberar</span>
+                <span><i className="seat-legend-swatch blocked" />Bloqueado: pode ser liberado ou usado pelo Admin</span>
               </div>
 
               <div className="admin-seat-detail">
@@ -374,29 +474,163 @@ export function AdminSeatMapDialog({
                           : 'Passageiro específico ainda não identificado'}
                     </small>
                     <small>{assignment.reservation.client.email || 'Sem e-mail'} · {assignment.reservation.client.phone || 'Sem telefone'}</small>
+                    <span className={'admin-seat-source admin-seat-source--' + assignment.source.toLowerCase()}>
+                      {assignment.source === 'ONLINE_PURCHASE'
+                        ? 'Compra online · protegida'
+                        : assignment.source === 'PUBLIC_RESERVATION'
+                          ? 'Solicitação pelo site'
+                          : 'Cadastro manual do Admin'}
+                    </span>
                   </>
                 ) : blocked.has(selectedSeat) ? (
                   <>
                     <span className="admin-seat-detail-kicker">Assento {selectedSeat}</span>
                     <strong>Bloqueado pela agência</strong>
-                    <p>Este lugar não pode ser comprado nem reservado enquanto estiver bloqueado.</p>
-                    <button type="button" onClick={() => void toggleSeat(selectedSeat)}>
-                      <Unlock size={15} />
-                      Liberar assento
-                    </button>
+                    <p>Este lugar não pode ser comprado pelo site enquanto estiver bloqueado. O Admin ainda pode cadastrar um cliente nele.</p>
+                    <div className="admin-seat-detail-actions">
+                      <button type="button" onClick={() => setAssignOpen(true)}>
+                        <UserPlus size={15} />
+                        Cadastrar cliente
+                      </button>
+                      <button type="button" className="secondary" onClick={() => void toggleSeatBlock(selectedSeat)}>
+                        <Unlock size={15} />
+                        Liberar assento
+                      </button>
+                    </div>
                   </>
                 ) : (
                   <>
                     <span className="admin-seat-detail-kicker">Assento {selectedSeat}</span>
-                    <strong>Disponível para venda</strong>
-                    <p>O lugar está livre e pode ser escolhido pelo viajante.</p>
-                    <button type="button" onClick={() => void toggleSeat(selectedSeat)}>
-                      <Lock size={15} />
-                      Bloquear assento
-                    </button>
+                    <strong>Poltrona disponível</strong>
+                    <p>Cadastre um cliente diretamente nesta poltrona ou mantenha o lugar fora da venda pública.</p>
+                    <div className="admin-seat-detail-actions">
+                      <button type="button" onClick={() => setAssignOpen(true)}>
+                        <UserPlus size={15} />
+                        Cadastrar cliente
+                      </button>
+                      <button type="button" className="secondary" onClick={() => void toggleSeatBlock(selectedSeat)}>
+                        <Lock size={15} />
+                        Bloquear assento
+                      </button>
+                    </div>
                   </>
                 )}
               </div>
+
+              {assignOpen && selectedSeat !== null && !assignment ? (
+                <div className="admin-seat-client-panel">
+                  <div className="admin-seat-client-panel-head">
+                    <div>
+                      <span>Poltrona {selectedSeat}</span>
+                      <strong>Cadastrar cliente</strong>
+                    </div>
+                    <button type="button" onClick={() => setAssignOpen(false)} aria-label="Fechar cadastro">
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  <div className="admin-seat-client-tabs">
+                    <button
+                      type="button"
+                      className={assignMode === 'existing' ? 'active' : ''}
+                      onClick={() => setAssignMode('existing')}
+                    >
+                      Cliente existente
+                    </button>
+                    <button
+                      type="button"
+                      className={assignMode === 'new' ? 'active' : ''}
+                      onClick={() => setAssignMode('new')}
+                    >
+                      Novo cliente
+                    </button>
+                  </div>
+
+                  {assignMode === 'existing' ? (
+                    <>
+                      <label className="admin-seat-client-search">
+                        <Search size={15} />
+                        <input
+                          value={clientQuery}
+                          onChange={(event) => setClientQuery(event.target.value)}
+                          placeholder="Buscar por nome, e-mail ou telefone"
+                        />
+                      </label>
+
+                      <div className="admin-seat-client-results">
+                        {clientsLoading ? (
+                          <span>Buscando clientes...</span>
+                        ) : clients.length ? (
+                          clients.slice(0, 8).map((client) => (
+                            <button
+                              type="button"
+                              key={client.id}
+                              className={selectedClientId === client.id ? 'active' : ''}
+                              onClick={() => setSelectedClientId(client.id)}
+                            >
+                              <strong>{client.fullName}</strong>
+                              <small>{client.email || client.phone || 'Sem contato informado'}</small>
+                            </button>
+                          ))
+                        ) : (
+                          <span>Nenhum cliente encontrado.</span>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="admin-seat-client-form">
+                      <label>
+                        <span>Nome completo</span>
+                        <input
+                          value={newClientName}
+                          onChange={(event) => setNewClientName(event.target.value)}
+                          placeholder="Nome do cliente"
+                        />
+                      </label>
+                      <label>
+                        <span>E-mail</span>
+                        <input
+                          type="email"
+                          value={newClientEmail}
+                          onChange={(event) => setNewClientEmail(event.target.value)}
+                          placeholder="email@exemplo.com"
+                        />
+                      </label>
+                      <label>
+                        <span>Telefone</span>
+                        <input
+                          value={newClientPhone}
+                          onChange={(event) => setNewClientPhone(event.target.value)}
+                          placeholder="(85) 99999-9999"
+                        />
+                      </label>
+                      <label>
+                        <span>Documento</span>
+                        <input
+                          value={newClientDocument}
+                          onChange={(event) => setNewClientDocument(event.target.value)}
+                          placeholder="CPF ou documento"
+                        />
+                      </label>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    className="admin-seat-client-confirm"
+                    disabled={
+                      assigning ||
+                      (assignMode === 'existing'
+                        ? !selectedClientId
+                        : newClientName.trim().length < 2)
+                    }
+                    onClick={() => void assignClient()}
+                  >
+                    <UserPlus size={15} />
+                    {assigning ? 'Cadastrando...' : 'Confirmar nesta poltrona'}
+                  </button>
+                </div>
+              ) : null}
             </aside>
           </div>
         ) : null}
