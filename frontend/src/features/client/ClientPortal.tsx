@@ -19,6 +19,8 @@ import {
   fetchClientPortal,
   openClientDocumentPdf,
   rejectClientQuote,
+  retryClientPayment,
+  type ClientPaymentStartResult,
   type ClientPortalData,
 } from '../../lib/clientPortal'
 
@@ -70,6 +72,9 @@ export function ClientPortal({ accessToken, onLogout }: ClientPortalProps) {
   const [data, setData] = useState<ClientPortalData | null>(null)
   const [error, setError] = useState('')
   const [responding, setResponding] = useState(false)
+  const [paymentStarting, setPaymentStarting] = useState(false)
+  const [paymentResult, setPaymentResult] = useState<ClientPaymentStartResult | null>(null)
+  const [pixCopied, setPixCopied] = useState(false)
 
   async function loadPortal() {
     setError('')
@@ -106,6 +111,44 @@ export function ClientPortal({ accessToken, onLogout }: ClientPortalProps) {
       setError(cause instanceof Error ? cause.message : 'Não foi possível registrar sua resposta.')
     } finally {
       setResponding(false)
+    }
+  }
+
+  async function resumePayment() {
+    setPaymentStarting(true)
+    setError('')
+
+    try {
+      const result = await retryClientPayment(accessToken)
+      setPaymentResult(result)
+
+      if (result.kind === 'CHECKOUT') {
+        window.location.assign(result.checkoutUrl)
+      }
+
+      if (result.kind === 'PAID') {
+        await loadPortal()
+      }
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'Não foi possível iniciar o pagamento.',
+      )
+    } finally {
+      setPaymentStarting(false)
+    }
+  }
+
+  async function copyPixCode() {
+    if (paymentResult?.kind !== 'PIX') return
+
+    try {
+      await navigator.clipboard.writeText(paymentResult.qrCode)
+      setPixCopied(true)
+      window.setTimeout(() => setPixCopied(false), 1800)
+    } catch {
+      setPixCopied(false)
     }
   }
 
