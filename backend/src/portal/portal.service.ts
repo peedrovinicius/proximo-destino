@@ -126,6 +126,23 @@ export class PortalService {
       trip.capacity <= 80
 
     const selectedSeats = [...(data.selectedSeats ?? [])].sort((a, b) => a - b)
+    const providedPassengers = data.passengers?.map((passenger, index) => ({
+      sequence: index + 1,
+      fullName:
+        index === 0
+          ? data.fullName.trim()
+          : passenger.fullName.trim(),
+      document: passenger.document?.trim() || null,
+    }))
+
+    if (
+      providedPassengers &&
+      providedPassengers.length !== data.passengerCount
+    ) {
+      throw new BadRequestException(
+        `Informe os dados dos ${data.passengerCount} passageiro(s)`,
+      )
+    }
 
     if (seatSelectionEnabled) {
       if (selectedSeats.length !== data.passengerCount) {
@@ -243,7 +260,10 @@ export class PortalService {
               data: {
                 reservationId: created.id,
                 sequence: index + 1,
-                fullName: index === 0 ? data.fullName.trim() : null,
+                fullName:
+                  providedPassengers?.[index]?.fullName ??
+                  (index === 0 ? data.fullName.trim() : null),
+                document: providedPassengers?.[index]?.document ?? null,
                 isPrimary: index === 0,
               },
               select: { id: true },
@@ -305,6 +325,19 @@ export class PortalService {
       throw cause
     }
 
+    const passengers = await this.prisma.reservationPassenger.findMany({
+      where: { reservationId: reservation.id },
+      select: {
+        id: true,
+        sequence: true,
+        fullName: true,
+        document: true,
+        isPrimary: true,
+        seatAssignment: { select: { seatNumber: true } },
+      },
+      orderBy: { sequence: 'asc' },
+    })
+
     const purchaseOrder = purchaseIntent
       ? await this.prisma.purchaseOrder.findUnique({
           where: { reservationId: reservation.id },
@@ -339,6 +372,7 @@ export class PortalService {
       reservation,
       accessCode,
       selectedSeats,
+      passengers,
       purchaseOrder,
       payment,
       message: purchaseIntent
