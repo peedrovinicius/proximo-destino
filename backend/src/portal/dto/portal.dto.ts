@@ -1,7 +1,12 @@
 import { Type } from 'class-transformer'
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  ArrayUnique,
+  IsArray,
   IsEmail,
   IsInt,
+  IsOptional,
   IsString,
   Max,
   MaxLength,
@@ -33,6 +38,16 @@ export class RequestReservationDto {
   @Min(1)
   @Max(10)
   passengerCount!: number
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(10)
+  @ArrayUnique()
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  @Max(80, { each: true })
+  selectedSeats?: number[]
 }
 
 export class ClientPortalLoginDto {
