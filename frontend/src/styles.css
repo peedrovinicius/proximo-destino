@@ -9636,3 +9636,247 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
     grid-column: 1 / -1;
   }
 }
+
+
+/* Admin manual seat assignment */
+
+.admin-seat-detail-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.admin-seat-detail-actions button {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 9px;
+  padding: 0 10px;
+  color: #fff;
+  background: #2677d9;
+  font-size: 8px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.admin-seat-detail-actions button.secondary {
+  border: 1px solid #dce5eb;
+  color: #49667d;
+  background: #fff;
+}
+
+.admin-seat-source {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 9px;
+  border-radius: 999px;
+  padding: 5px 8px;
+  font-size: 7px;
+  font-weight: 800;
+}
+
+.admin-seat-source--online_purchase {
+  color: #8f3d37;
+  background: #fff0ef;
+}
+
+.admin-seat-source--public_reservation {
+  color: #7a5b17;
+  background: #fff7e5;
+}
+
+.admin-seat-source--admin_reservation {
+  color: #247051;
+  background: #eaf8f2;
+}
+
+.admin-seat-client-panel {
+  display: grid;
+  gap: 11px;
+  margin-top: 12px;
+  border: 1px solid #dce6ed;
+  border-radius: 14px;
+  padding: 13px;
+  background: #f8fafc;
+}
+
+.admin-seat-client-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-seat-client-panel-head > div {
+  display: grid;
+  gap: 2px;
+}
+
+.admin-seat-client-panel-head span {
+  color: #7d8f9d;
+  font-size: 7px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.admin-seat-client-panel-head strong {
+  color: #25455d;
+  font-size: 10px;
+}
+
+.admin-seat-client-panel-head > button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  color: #5f7486;
+  background: #edf2f6;
+  cursor: pointer;
+}
+
+.admin-seat-client-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.admin-seat-client-tabs button {
+  min-height: 34px;
+  border: 1px solid #dce5eb;
+  border-radius: 9px;
+  color: #64798a;
+  background: #fff;
+  font-size: 7px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.admin-seat-client-tabs button.active {
+  border-color: #bfd7ec;
+  color: #1d5f99;
+  background: #edf5fd;
+}
+
+.admin-seat-client-search {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #dce5eb;
+  border-radius: 9px;
+  padding: 0 9px;
+  color: #8a99a5;
+  background: #fff;
+}
+
+.admin-seat-client-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  color: #24455d;
+  background: transparent;
+  font-size: 8px;
+}
+
+.admin-seat-client-results {
+  display: grid;
+  max-height: 210px;
+  gap: 6px;
+  overflow-y: auto;
+}
+
+.admin-seat-client-results > span {
+  padding: 8px 2px;
+  color: #82919d;
+  font-size: 8px;
+}
+
+.admin-seat-client-results button {
+  display: grid;
+  gap: 2px;
+  min-height: 44px;
+  border: 1px solid #e1e8ee;
+  border-radius: 9px;
+  padding: 8px 9px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.admin-seat-client-results button.active {
+  border-color: #a9cbea;
+  background: #edf5fd;
+}
+
+.admin-seat-client-results strong {
+  color: #29485f;
+  font-size: 8px;
+}
+
+.admin-seat-client-results small {
+  overflow: hidden;
+  color: #80909d;
+  font-size: 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-seat-client-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.admin-seat-client-form label {
+  display: grid;
+  gap: 5px;
+  color: #627889;
+  font-size: 7px;
+  font-weight: 800;
+}
+
+.admin-seat-client-form input {
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  border: 1px solid #dce5eb;
+  border-radius: 9px;
+  padding: 0 9px;
+  color: #24455d;
+  background: #fff;
+  font-size: 8px;
+}
+
+.admin-seat-client-confirm {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 10px;
+  color: #fff;
+  background: #2677d9;
+  font-size: 8px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.admin-seat-client-confirm:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 620px) {
+  .admin-seat-detail-actions,
+  .admin-seat-client-form {
+    grid-template-columns: 1fr;
+  }
+}
