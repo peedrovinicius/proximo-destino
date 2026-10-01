@@ -21,6 +21,7 @@ import {
   type DashboardData,
   type SeatLayout,
   type SearchResult,
+  type VehicleFeature,
 } from '../../lib/adminApi'
 import { openWhatsApp } from '../../lib/whatsapp'
 
@@ -304,6 +305,175 @@ function ClientsView({
   )
 }
 
+const vehicleFeatureLabels: Record<VehicleFeature['type'], string> = {
+  RESTROOM: 'Banheiro',
+  DOOR: 'Porta',
+  STAIRS: 'Escada',
+}
+
+function defaultFeature(type: VehicleFeature['type']): VehicleFeature {
+  if (type === 'RESTROOM') {
+    return { type, deck: 1, position: 'REAR', side: 'RIGHT' }
+  }
+  if (type === 'STAIRS') {
+    return { type, deck: 1, position: 'MIDDLE', side: 'CENTER' }
+  }
+  return { type, deck: 1, position: 'FRONT', side: 'RIGHT' }
+}
+
+function parseBlockedSeatsInput(value: string, capacity: number) {
+  if (!value.trim()) return [] as number[]
+
+  const values = value
+    .split(/[\s,;]+/)
+    .filter(Boolean)
+    .map(Number)
+
+  if (
+    values.some(
+      (seat) =>
+        !Number.isInteger(seat) ||
+        seat < 1 ||
+        seat > capacity,
+    )
+  ) {
+    return null
+  }
+
+  return [...new Set(values)].sort((a, b) => a - b)
+}
+
+function VehicleConfigurationFields({
+  deckCount,
+  features,
+  onFeaturesChange,
+  blockedSeats,
+  onBlockedSeatsChange,
+}: {
+  deckCount: 1 | 2
+  features: VehicleFeature[]
+  onFeaturesChange: (features: VehicleFeature[]) => void
+  blockedSeats: string
+  onBlockedSeatsChange: (value: string) => void
+}) {
+  const types: VehicleFeature['type'][] =
+    deckCount === 2
+      ? ['RESTROOM', 'DOOR', 'STAIRS']
+      : ['RESTROOM', 'DOOR']
+
+  function toggle(type: VehicleFeature['type'], enabled: boolean) {
+    if (!enabled) {
+      onFeaturesChange(features.filter((feature) => feature.type !== type))
+      return
+    }
+
+    if (!features.some((feature) => feature.type === type)) {
+      onFeaturesChange([...features, defaultFeature(type)])
+    }
+  }
+
+  function patch(
+    type: VehicleFeature['type'],
+    next: Partial<VehicleFeature>,
+  ) {
+    onFeaturesChange(
+      features.map((feature) =>
+        feature.type === type ? { ...feature, ...next } : feature,
+      ),
+    )
+  }
+
+  return (
+    <div className="admin-vehicle-config">
+      <div className="admin-vehicle-config-heading">
+        <div>
+          <strong>Configuração interna</strong>
+          <span>Posicione instalações e bloqueie lugares que não podem ser vendidos.</span>
+        </div>
+        <small>{deckCount === 2 ? '2 andares' : '1 andar'}</small>
+      </div>
+
+      <div className="admin-vehicle-features">
+        {types.map((type) => {
+          const feature = features.find((item) => item.type === type)
+          const enabled = Boolean(feature)
+
+          return (
+            <div className="admin-vehicle-feature-row" key={type}>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={enabled}
+                  onChange={(event) => toggle(type, event.target.checked)}
+                />
+                <span>{vehicleFeatureLabels[type]}</span>
+              </label>
+
+              {feature ? (
+                <div className="admin-vehicle-feature-position">
+                  {deckCount === 2 ? (
+                    <select
+                      value={feature.deck}
+                      onChange={(event) =>
+                        patch(type, { deck: Number(event.target.value) as 1 | 2 })
+                      }
+                      aria-label={'Andar de ' + vehicleFeatureLabels[type]}
+                    >
+                      <option value={1}>Piso inferior</option>
+                      <option value={2}>Piso superior</option>
+                    </select>
+                  ) : null}
+
+                  <select
+                    value={feature.position}
+                    onChange={(event) =>
+                      patch(type, {
+                        position: event.target.value as VehicleFeature['position'],
+                      })
+                    }
+                    aria-label={'Zona de ' + vehicleFeatureLabels[type]}
+                  >
+                    <option value="FRONT">Frente</option>
+                    <option value="MIDDLE">Meio</option>
+                    <option value="REAR">Traseira</option>
+                  </select>
+
+                  <select
+                    value={feature.side}
+                    onChange={(event) =>
+                      patch(type, {
+                        side: event.target.value as VehicleFeature['side'],
+                      })
+                    }
+                    aria-label={'Lado de ' + vehicleFeatureLabels[type]}
+                  >
+                    <option value="LEFT">Esquerda</option>
+                    <option value="CENTER">Centro</option>
+                    <option value="RIGHT">Direita</option>
+                  </select>
+                </div>
+              ) : (
+                <span className="admin-vehicle-feature-off">Não exibido no mapa</span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      <label className="admin-blocked-seats-field">
+        <span>Assentos bloqueados</span>
+        <input
+          value={blockedSeats}
+          onChange={(event) => onBlockedSeatsChange(event.target.value)}
+          inputMode="numeric"
+          placeholder="Ex.: 5, 6, 21"
+        />
+        <small>Números separados por vírgula. Eles aparecem como bloqueados e não podem ser reservados.</small>
+      </label>
+    </div>
+  )
+}
+
 function TripsView({
   accessToken,
   trips,
@@ -322,6 +492,10 @@ function TripsView({
   const [busTemplate, setBusTemplate] = useState('')
   const [capacity, setCapacity] = useState('')
   const [seatLayout, setSeatLayout] = useState<SeatLayout>('TWO_BY_TWO')
+  const [deckCount, setDeckCount] = useState<1 | 2>(1)
+  const [lowerDeckCapacity, setLowerDeckCapacity] = useState('')
+  const [vehicleFeatures, setVehicleFeatures] = useState<VehicleFeature[]>([])
+  const [blockedSeats, setBlockedSeats] = useState('')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -341,6 +515,56 @@ function TripsView({
   }, [accessToken])
 
   const selectedTemplate = busTemplates.find((template) => template.key === busTemplate)
+  const effectiveCapacity =
+    busTemplate === 'CUSTOM'
+      ? Number(capacity)
+      : selectedTemplate?.capacity ?? 0
+  const effectiveDeckCount =
+    busTemplate === 'CUSTOM'
+      ? deckCount
+      : selectedTemplate?.deckCount ?? 1
+
+  function chooseTemplate(next: string) {
+    setBusTemplate(next)
+    setBlockedSeats('')
+
+    const option = busTemplates.find((template) => template.key === next)
+    if (!option) {
+      setCapacity('')
+      setSeatLayout('TWO_BY_TWO')
+      setDeckCount(1)
+      setLowerDeckCapacity('')
+      setVehicleFeatures([])
+      return
+    }
+
+    if (option.key === 'CUSTOM') {
+      setCapacity('')
+      setSeatLayout('TWO_BY_TWO')
+      setDeckCount(1)
+      setLowerDeckCapacity('')
+      setVehicleFeatures([])
+      return
+    }
+
+    setCapacity(option.capacity?.toString() ?? '')
+    setSeatLayout(option.seatLayout ?? 'TWO_BY_TWO')
+    setDeckCount(option.deckCount ?? 1)
+    setLowerDeckCapacity(option.lowerDeckCapacity?.toString() ?? '')
+    setVehicleFeatures(option.defaultFeatures)
+  }
+
+  function changeDecks(next: 1 | 2) {
+    setDeckCount(next)
+    if (next === 1) {
+      setLowerDeckCapacity('')
+      setVehicleFeatures(
+        vehicleFeatures
+          .filter((feature) => feature.type !== 'STAIRS')
+          .map((feature) => ({ ...feature, deck: 1 as const })),
+      )
+    }
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -348,7 +572,19 @@ function TripsView({
     if (busTemplate === 'CUSTOM') {
       const parsed = Number(capacity)
       if (!Number.isInteger(parsed) || parsed < 1 || parsed > 80) return
+
+      if (deckCount === 2) {
+        const lower = Number(lowerDeckCapacity)
+        if (!Number.isInteger(lower) || lower < 1 || lower >= parsed) return
+      }
     }
+
+    const normalizedBlocked =
+      busTemplate && effectiveCapacity
+        ? parseBlockedSeatsInput(blockedSeats, effectiveCapacity)
+        : []
+
+    if (normalizedBlocked === null) return
 
     setSaving(true)
     try {
@@ -356,11 +592,18 @@ function TripsView({
         title,
         origin,
         destination,
-        departureDate: new Date(`${departureDate}T12:00:00`).toISOString(),
+        departureDate: new Date(departureDate + 'T12:00:00').toISOString(),
         status: 'SCHEDULED',
         busTemplate: busTemplate || undefined,
         capacity: busTemplate === 'CUSTOM' ? Number(capacity) : undefined,
         seatLayout: busTemplate === 'CUSTOM' ? seatLayout : undefined,
+        deckCount: busTemplate === 'CUSTOM' ? deckCount : undefined,
+        lowerDeckCapacity:
+          busTemplate === 'CUSTOM' && deckCount === 2
+            ? Number(lowerDeckCapacity)
+            : undefined,
+        vehicleFeatures: busTemplate ? vehicleFeatures : undefined,
+        blockedSeats: busTemplate ? normalizedBlocked : undefined,
         priceCents: price ? Math.round(Number(price.replace(',', '.')) * 100) : undefined,
       })
       setTitle('')
@@ -371,6 +614,10 @@ function TripsView({
       setBusTemplate('')
       setCapacity('')
       setSeatLayout('TWO_BY_TWO')
+      setDeckCount(1)
+      setLowerDeckCapacity('')
+      setVehicleFeatures([])
+      setBlockedSeats('')
       await onChanged()
     } finally {
       setSaving(false)
@@ -392,11 +639,7 @@ function TripsView({
           <select
             id="trip-bus-template"
             value={busTemplate}
-            onChange={(event) => {
-              setBusTemplate(event.target.value)
-              setCapacity('')
-              setSeatLayout('TWO_BY_TWO')
-            }}
+            onChange={(event) => chooseTemplate(event.target.value)}
           >
             <option value="">Sem escolha de assentos</option>
             {busTemplates.map((template) => (
@@ -412,7 +655,7 @@ function TripsView({
               </div>
               {selectedTemplate.capacity ? (
                 <small>
-                  {selectedTemplate.capacity} lugares · {selectedTemplate.seatLayout === 'TWO_BY_ONE' ? '2+1' : '2+2'}
+                  {selectedTemplate.capacity} lugares · {selectedTemplate.seatLayout === 'TWO_BY_ONE' ? '2+1' : '2+2'} · {selectedTemplate.deckCount === 2 ? '2 andares' : '1 andar'}
                 </small>
               ) : (
                 <small>Configuração manual</small>
@@ -425,7 +668,7 @@ function TripsView({
           )}
 
           {busTemplate === 'CUSTOM' ? (
-            <div className="admin-bus-custom">
+            <div className="admin-bus-custom admin-bus-custom--advanced">
               <input
                 type="number"
                 min="1"
@@ -444,7 +687,37 @@ function TripsView({
                 <option value="TWO_BY_TWO">2+2 · dois de cada lado</option>
                 <option value="TWO_BY_ONE">2+1 · dois de um lado e um do outro</option>
               </select>
+              <select
+                value={deckCount}
+                onChange={(event) => changeDecks(Number(event.target.value) as 1 | 2)}
+                aria-label="Quantidade de andares"
+              >
+                <option value={1}>1 andar</option>
+                <option value={2}>2 andares</option>
+              </select>
+              {deckCount === 2 ? (
+                <input
+                  type="number"
+                  min="1"
+                  max="79"
+                  inputMode="numeric"
+                  placeholder="Lugares no piso inferior"
+                  value={lowerDeckCapacity}
+                  onChange={(event) => setLowerDeckCapacity(event.target.value)}
+                  required
+                />
+              ) : null}
             </div>
+          ) : null}
+
+          {busTemplate ? (
+            <VehicleConfigurationFields
+              deckCount={effectiveDeckCount as 1 | 2}
+              features={vehicleFeatures}
+              onFeaturesChange={setVehicleFeatures}
+              blockedSeats={blockedSeats}
+              onBlockedSeatsChange={setBlockedSeats}
+            />
           ) : null}
         </div>
 
@@ -491,15 +764,83 @@ function TripBusControl({
   const [templateKey, setTemplateKey] = useState(initialTemplate)
   const [capacity, setCapacity] = useState(trip.capacity?.toString() ?? '')
   const [seatLayout, setSeatLayout] = useState<SeatLayout>(trip.seatLayout ?? 'TWO_BY_TWO')
+  const [deckCount, setDeckCount] = useState<1 | 2>(trip.deckCount === 2 ? 2 : 1)
+  const [lowerDeckCapacity, setLowerDeckCapacity] = useState(
+    trip.lowerDeckCapacity?.toString() ?? '',
+  )
+  const [features, setFeatures] = useState<VehicleFeature[]>(
+    trip.vehicleFeatures ?? [],
+  )
+  const [blockedSeats, setBlockedSeats] = useState(
+    trip.blockedSeats.join(', '),
+  )
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     setTemplateKey(trip.busTemplate ?? (trip.capacity ? 'CUSTOM' : ''))
     setCapacity(trip.capacity?.toString() ?? '')
     setSeatLayout(trip.seatLayout ?? 'TWO_BY_TWO')
-  }, [trip.busTemplate, trip.capacity, trip.seatLayout])
+    setDeckCount(trip.deckCount === 2 ? 2 : 1)
+    setLowerDeckCapacity(trip.lowerDeckCapacity?.toString() ?? '')
+    setFeatures(trip.vehicleFeatures ?? [])
+    setBlockedSeats(trip.blockedSeats.join(', '))
+  }, [
+    trip.busTemplate,
+    trip.capacity,
+    trip.seatLayout,
+    trip.deckCount,
+    trip.lowerDeckCapacity,
+    trip.vehicleFeatures,
+    trip.blockedSeats,
+  ])
 
   const selected = templates.find((template) => template.key === templateKey)
+  const effectiveCapacity =
+    templateKey === 'CUSTOM'
+      ? Number(capacity)
+      : selected?.capacity ?? trip.capacity ?? 0
+  const effectiveDeckCount =
+    templateKey === 'CUSTOM'
+      ? deckCount
+      : selected?.deckCount ?? (trip.deckCount === 2 ? 2 : 1)
+
+  function chooseTemplate(next: string) {
+    setTemplateKey(next)
+    const option = templates.find((template) => template.key === next)
+
+    if (!option) {
+      setFeatures([])
+      setBlockedSeats('')
+      return
+    }
+
+    if (option.key === 'CUSTOM') {
+      if (!capacity) setCapacity(trip.capacity?.toString() ?? '')
+      setSeatLayout(trip.seatLayout ?? 'TWO_BY_TWO')
+      setDeckCount(trip.deckCount === 2 ? 2 : 1)
+      setLowerDeckCapacity(trip.lowerDeckCapacity?.toString() ?? '')
+      return
+    }
+
+    setCapacity(option.capacity?.toString() ?? '')
+    setSeatLayout(option.seatLayout ?? 'TWO_BY_TWO')
+    setDeckCount(option.deckCount ?? 1)
+    setLowerDeckCapacity(option.lowerDeckCapacity?.toString() ?? '')
+    setFeatures(option.defaultFeatures)
+    setBlockedSeats('')
+  }
+
+  function changeDecks(next: 1 | 2) {
+    setDeckCount(next)
+    if (next === 1) {
+      setLowerDeckCapacity('')
+      setFeatures(
+        features
+          .filter((feature) => feature.type !== 'STAIRS')
+          .map((feature) => ({ ...feature, deck: 1 as const })),
+      )
+    }
+  }
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -511,6 +852,10 @@ function TripBusControl({
           busTemplate: null,
           capacity: null,
           seatLayout: null,
+          deckCount: null,
+          lowerDeckCapacity: null,
+          vehicleFeatures: [],
+          blockedSeats: [],
         })
         await onChanged()
       } finally {
@@ -519,9 +864,18 @@ function TripBusControl({
       return
     }
 
+    if (!effectiveCapacity || effectiveCapacity < 1 || effectiveCapacity > 80) return
+    const normalizedBlocked = parseBlockedSeatsInput(blockedSeats, effectiveCapacity)
+    if (normalizedBlocked === null) return
+
     if (templateKey === 'CUSTOM') {
       const parsed = Number(capacity)
       if (!Number.isInteger(parsed) || parsed < 1 || parsed > 80) return
+
+      if (deckCount === 2) {
+        const lower = Number(lowerDeckCapacity)
+        if (!Number.isInteger(lower) || lower < 1 || lower >= parsed) return
+      }
 
       setSaving(true)
       try {
@@ -529,6 +883,11 @@ function TripBusControl({
           busTemplate: 'CUSTOM',
           capacity: parsed,
           seatLayout,
+          deckCount,
+          lowerDeckCapacity:
+            deckCount === 2 ? Number(lowerDeckCapacity) : null,
+          vehicleFeatures: features,
+          blockedSeats: normalizedBlocked,
         })
         await onChanged()
       } finally {
@@ -541,6 +900,8 @@ function TripBusControl({
     try {
       await adminApi.updateTrip(accessToken, trip.id, {
         busTemplate: templateKey,
+        vehicleFeatures: features,
+        blockedSeats: normalizedBlocked,
       })
       await onChanged()
     } finally {
@@ -549,29 +910,27 @@ function TripBusControl({
   }
 
   return (
-    <form className="admin-bus-control" onSubmit={save}>
+    <form className="admin-bus-control admin-bus-control--advanced" onSubmit={save}>
       <div className="admin-bus-control-summary">
         <strong>
           {selected?.shortLabel ??
-            (trip.capacity ? `Personalizado · ${trip.capacity}` : 'Assentos desativados')}
+            (trip.capacity ? 'Personalizado · ' + trip.capacity : 'Assentos desativados')}
         </strong>
         <span>
           {trip.capacity
-            ? `${trip.capacity} lugares · ${trip.seatLayout === 'TWO_BY_ONE' ? '2+1' : '2+2'}`
+            ? trip.capacity +
+              ' lugares · ' +
+              (trip.seatLayout === 'TWO_BY_ONE' ? '2+1' : '2+2') +
+              (trip.deckCount === 2 ? ' · 2 andares' : '') +
+              (trip.blockedSeats.length ? ' · ' + trip.blockedSeats.length + ' bloqueado(s)' : '')
             : 'Mapa não exibido ao viajante'}
         </span>
       </div>
 
       <select
         value={templateKey}
-        onChange={(event) => {
-          const next = event.target.value
-          setTemplateKey(next)
-          const option = templates.find((template) => template.key === next)
-          if (option?.capacity) setCapacity(option.capacity.toString())
-          if (option?.seatLayout) setSeatLayout(option.seatLayout)
-        }}
-        aria-label={`Modelo de ônibus de ${trip.title}`}
+        onChange={(event) => chooseTemplate(event.target.value)}
+        aria-label={'Modelo de ônibus de ' + trip.title}
       >
         <option value="">Sem assentos</option>
         {templates.map((template) => (
@@ -580,28 +939,56 @@ function TripBusControl({
       </select>
 
       {templateKey === 'CUSTOM' ? (
-        <div className="admin-bus-control-custom">
+        <div className="admin-bus-control-custom admin-bus-control-custom--advanced">
           <input
             type="number"
             min="1"
             max="80"
             value={capacity}
             onChange={(event) => setCapacity(event.target.value)}
-            aria-label={`Lotação de ${trip.title}`}
+            aria-label={'Lotação de ' + trip.title}
           />
           <select
             value={seatLayout}
             onChange={(event) => setSeatLayout(event.target.value as SeatLayout)}
-            aria-label={`Disposição de assentos de ${trip.title}`}
+            aria-label={'Disposição de assentos de ' + trip.title}
           >
             <option value="TWO_BY_TWO">2+2</option>
             <option value="TWO_BY_ONE">2+1</option>
           </select>
+          <select
+            value={deckCount}
+            onChange={(event) => changeDecks(Number(event.target.value) as 1 | 2)}
+            aria-label={'Andares de ' + trip.title}
+          >
+            <option value={1}>1 andar</option>
+            <option value={2}>2 andares</option>
+          </select>
+          {deckCount === 2 ? (
+            <input
+              type="number"
+              min="1"
+              max="79"
+              value={lowerDeckCapacity}
+              onChange={(event) => setLowerDeckCapacity(event.target.value)}
+              aria-label={'Lugares no piso inferior de ' + trip.title}
+            />
+          ) : null}
         </div>
       ) : null}
 
+      {templateKey ? (
+        <VehicleConfigurationFields
+          deckCount={effectiveDeckCount as 1 | 2}
+          features={features}
+          onFeaturesChange={setFeatures}
+          blockedSeats={blockedSeats}
+          onBlockedSeatsChange={setBlockedSeats}
+        />
+      ) : null}
+
       <button type="submit" disabled={saving}>
-        {saving ? 'Salvando' : 'Aplicar'}
+        {saving ? 'Salvando' : 'Aplicar configuração'}
       </button>
     </form>
   )
