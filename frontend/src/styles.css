@@ -7270,3 +7270,38 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
     transition: none;
   }
 }
+
+
+/* WhatsApp perfect circle */
+
+.whatsapp-float,
+.public-home .whatsapp-float {
+  width: 56px;
+  min-width: 56px;
+  max-width: 56px;
+  height: 56px;
+  min-height: 56px;
+  max-height: 56px;
+  aspect-ratio: 1 / 1;
+  flex: 0 0 56px;
+  box-sizing: border-box;
+  padding: 0;
+  border-radius: 999px;
+  line-height: 1;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+@media (max-width: 700px) {
+  .whatsapp-float,
+  .public-home .whatsapp-float {
+    width: 54px;
+    min-width: 54px;
+    max-width: 54px;
+    height: 54px;
+    min-height: 54px;
+    max-height: 54px;
+    flex-basis: 54px;
+    border-radius: 999px;
+  }
+}
