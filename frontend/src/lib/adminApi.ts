@@ -70,6 +70,34 @@ export type AdminTrip = {
   _count: { reservations: number }
 }
 
+export type AdminSeatOccupancy = {
+  seatNumber: number
+  reservationId: string
+  reservationStatus: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED'
+  client: {
+    id: string
+    fullName: string
+    email: string | null
+    phone: string | null
+  }
+}
+
+export type AdminSeatMap = {
+  enabled: boolean
+  tripId: string
+  title: string
+  capacity: number | null
+  busTemplate: string | null
+  busLabel: string | null
+  seatLayout: SeatLayout
+  deckCount: 1 | 2
+  lowerDeckCapacity: number | null
+  vehicleFeatures: VehicleFeature[]
+  blockedSeats: number[]
+  occupiedSeats: AdminSeatOccupancy[]
+  availableCount: number | null
+}
+
 export type AdminReservation = {
   id: string
   status: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED'
@@ -252,6 +280,12 @@ export const adminApi = {
 
   trips: (token: string, query = '') =>
     adminFetch<AdminTrip[]>(token, `/admin/trips${query ? `?q=${encodeURIComponent(query)}` : ''}`),
+
+  tripSeatMap: (token: string, id: string) =>
+    adminFetch<AdminSeatMap>(
+      token,
+      `/admin/trips/${encodeURIComponent(id)}/seats`,
+    ),
 
   busTemplates: (token: string) =>
     adminFetch<BusTemplateOption[]>(token, '/admin/trips/bus-templates'),
