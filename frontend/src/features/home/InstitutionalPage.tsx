@@ -43,6 +43,7 @@ const content: Record<InstitutionalPageKey, PageContent> = {
         items: [
           'Próximo Destino Turismo e Viagens',
           'CNPJ 59.239.955/0001-49',
+          'Pindoretama - CE',
           'Atendimento digital pelo site, e-mail, Instagram e WhatsApp',
         ],
       },
@@ -80,21 +81,6 @@ const content: Record<InstitutionalPageKey, PageContent> = {
         ],
       },
     ],
-  },
-  careers: {
-    eyebrow: 'A Empresa',
-    title: 'Trabalhe conosco',
-    intro:
-      'Interessados em oportunidades profissionais podem encaminhar uma apresentação ou currículo pelo canal de e-mail da agência.',
-    sections: [
-      {
-        title: 'Envio de currículo',
-        paragraphs: [
-          'O envio espontâneo não representa promessa de contratação. Os dados recebidos serão utilizados apenas para avaliação de oportunidades compatíveis e poderão ser eliminados quando deixarem de ser necessários.',
-        ],
-      },
-    ],
-    action: 'email',
   },
   contact: {
     eyebrow: 'Atendimento',
@@ -135,6 +121,118 @@ const content: Record<InstitutionalPageKey, PageContent> = {
       },
     ],
     action: 'whatsapp',
+  },
+  payments: {
+    eyebrow: 'Financeiro',
+    title: 'Formas de pagamento',
+    intro:
+      'As formas disponíveis dependem da contratação registrada na reserva e das condições apresentadas ao cliente antes da aprovação.',
+    sections: [
+      {
+        title: 'Meios aceitos',
+        items: [
+          'PIX.',
+          'Cartão.',
+          'Dinheiro.',
+          'Transferência bancária.',
+          'Boleto.',
+        ],
+      },
+      {
+        title: 'Condições da contratação',
+        paragraphs: [
+          'Entrada, quantidade de parcelas, vencimentos e eventuais condições específicas são informados na cotação e no plano financeiro da reserva.',
+          'O pagamento somente é considerado quitado após a efetiva confirmação do recebimento. Em operações processadas por bancos, emissores, adquirentes ou outros intermediários financeiros, a confirmação pode depender do processamento do respectivo meio de pagamento.',
+        ],
+      },
+      {
+        title: 'Segurança',
+        paragraphs: [
+          'Antes de realizar qualquer pagamento, o cliente deve conferir os dados da reserva, os valores aprovados e o canal oficial utilizado no atendimento.',
+        ],
+      },
+    ],
+    action: 'both',
+  },
+  cancellation: {
+    eyebrow: 'Legal',
+    title: 'Política de Cancelamento e Reembolso',
+    intro:
+      'Pedidos de alteração, cancelamento e reembolso são tratados conforme a legislação aplicável, as condições informadas antes da contratação e as regras dos fornecedores efetivamente envolvidos na reserva.',
+    sections: [
+      {
+        title: '1. Como solicitar',
+        paragraphs: [
+          'O pedido deve ser feito por um canal oficial da Próximo Destino, com identificação suficiente da reserva. A agência registrará a solicitação e informará as condições aplicáveis antes de concluir a alteração ou o cancelamento, sempre que isso for possível.',
+        ],
+      },
+      {
+        title: '2. Direito de arrependimento',
+        paragraphs: [
+          'Quando o direito de arrependimento previsto na legislação brasileira for aplicável à contratação realizada fora do estabelecimento comercial, ele será respeitado nos termos legais, sem criação de renúncia ou restrição indevida ao consumidor.',
+        ],
+      },
+      {
+        title: '3. Passagens aéreas',
+        paragraphs: [
+          'Nas passagens aéreas sujeitas à regulamentação da ANAC, serão observadas as regras vigentes do transporte aéreo e as condições tarifárias previamente informadas.',
+          'Quando preenchidos os requisitos da regulamentação da ANAC, a desistência comunicada em até 24 horas do recebimento do comprovante da passagem, para compra realizada com antecedência igual ou superior a 7 dias do embarque, será tratada sem ônus ao passageiro.',
+          'Nos demais pedidos voluntários de alteração ou cancelamento, poderão incidir diferença tarifária, multa ou restrição prevista na tarifa contratada, desde que previamente informada e permitida pela legislação.',
+        ],
+      },
+      {
+        title: '4. Cancelamento ou alteração pelo fornecedor',
+        paragraphs: [
+          'Quando transportadora, hospedagem, operadora ou outro fornecedor cancelar ou alterar o serviço, a Próximo Destino auxiliará o cliente na aplicação das alternativas e direitos previstos na legislação e nas condições do serviço.',
+          'A atuação como intermediadora não elimina responsabilidades que a lei atribua à Próximo Destino ou aos demais integrantes da cadeia de fornecimento.',
+        ],
+      },
+      {
+        title: '5. Hotéis, passeios, transfers, seguros e outros serviços',
+        paragraphs: [
+          'Cada serviço pode possuir prazo próprio de cancelamento, condição reembolsável ou não reembolsável, multa, retenção ou regra de alteração. Essas condições devem ser informadas ao cliente antes da aprovação da cotação quando forem relevantes à decisão de compra.',
+          'Valores cobrados por fornecedores em razão de cancelamento ou alteração somente serão repassados quando vinculados à contratação e juridicamente aplicáveis.',
+        ],
+      },
+      {
+        title: '6. Serviços já prestados e despesas efetivas',
+        paragraphs: [
+          'Quando permitido pela legislação, poderão ser considerados serviços efetivamente prestados, custos já incorridos e valores não recuperáveis de fornecedores, desde que relacionados à reserva e devidamente informados ou demonstráveis.',
+          'Não será aplicada cláusula genérica destinada a afastar direitos obrigatórios do consumidor.',
+        ],
+      },
+      {
+        title: '7. Reembolso',
+        paragraphs: [
+          'O valor efetivamente reembolsável será apurado conforme a natureza de cada item da reserva, os direitos legais do consumidor, as condições previamente informadas e os valores recuperados ou devidos pelos fornecedores.',
+          'O processamento observará o meio de pagamento utilizado e os prazos legais aplicáveis. Quando a regulamentação do transporte aéreo estabelecer prazo específico, esse prazo será respeitado.',
+          'Em compras com cartão, depois de processado o estorno, a visualização do crédito pode depender do ciclo de fechamento e das regras do emissor do cartão.',
+        ],
+      },
+      {
+        title: '8. Não comparecimento',
+        paragraphs: [
+          'O não comparecimento ao embarque, hospedagem, passeio ou outro serviço poderá sujeitar a reserva às regras de no-show do fornecedor e da tarifa contratada, sem prejuízo de direitos que não possam ser afastados por contrato.',
+        ],
+      },
+      {
+        title: '9. Prazo e comunicação',
+        paragraphs: [
+          'O cliente deve comunicar o pedido o quanto antes. A proximidade da data de viagem pode reduzir alternativas disponíveis e aumentar custos impostos pelos fornecedores.',
+        ],
+      },
+      {
+        title: '10. Análise individual',
+        paragraphs: [
+          'Como uma mesma reserva pode reunir fornecedores e regras diferentes, o cálculo de eventual reembolso é feito por item. A agência apresentará ao cliente a composição aplicável ao caso concreto.',
+        ],
+      },
+      {
+        title: 'Última atualização',
+        paragraphs: ['30 de setembro de 2026.'],
+      },
+    ],
+    action: 'both',
   },
   terms: {
     eyebrow: 'Legal',
@@ -180,7 +278,7 @@ const content: Record<InstitutionalPageKey, PageContent> = {
       {
         title: '6. Pagamentos',
         paragraphs: [
-          'Valores, entrada, número de parcelas, vencimentos e formas de pagamento são os informados na contratação e registrados no plano financeiro da reserva.',
+          'A Próximo Destino aceita PIX, cartão, dinheiro, transferência bancária e boleto. A disponibilidade de cada meio, entrada, número de parcelas e vencimentos é a informada na contratação e registrada no plano financeiro da reserva.',
           'A confirmação financeira depende da efetiva identificação do pagamento. Serviços de terceiros podem adotar procedimentos próprios de análise, autorização ou antifraude.',
         ],
       },
@@ -194,8 +292,8 @@ const content: Record<InstitutionalPageKey, PageContent> = {
       {
         title: '8. Alterações, cancelamentos e reembolsos',
         paragraphs: [
-          'Pedidos de alteração, cancelamento ou reembolso serão analisados conforme a legislação aplicável, as condições informadas na contratação e as regras dos fornecedores envolvidos.',
-          'Taxas, multas, diferenças tarifárias e prazos de estorno, quando existentes e permitidos, devem ser informados ao cliente antes da conclusão do procedimento.',
+          'Pedidos de alteração, cancelamento ou reembolso serão analisados conforme a Política de Cancelamento e Reembolso, a legislação aplicável, as condições informadas antes da contratação e as regras dos fornecedores envolvidos.',
+          'Taxas, multas, diferenças tarifárias, retenções e prazos somente serão aplicados quando juridicamente permitidos e vinculados às condições da contratação.',
         ],
       },
       {
