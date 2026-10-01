@@ -62,19 +62,12 @@ export function TravelAiAssistant() {
       ])
       setStatus('')
     } catch (cause) {
-      const detail =
-        cause instanceof Error ? cause.message : 'O assistente está indisponível.'
-      const notConfigured = detail
-        .toLocaleLowerCase('pt-BR')
-        .includes('ainda não está configurado')
-
-      setMessages((current) => [
+      void cause
+            setMessages((current) => [
         ...current,
         {
           role: 'assistant',
-          content: notConfigured
-            ? 'A inteligência artificial ainda está sendo ativada. Enquanto isso, o atendimento da agência continua disponível pelo WhatsApp.'
-            : 'Não consegui consultar o assistente agora. Você pode tentar novamente em instantes ou falar com a agência pelo WhatsApp.',
+          content: 'Não consegui consultar o assistente agora. Você pode tentar novamente em instantes ou falar com a agência pelo WhatsApp.',
         },
       ])
       setStatus('')
@@ -94,7 +87,7 @@ export function TravelAiAssistant() {
         <section
           className="ai-assistant-panel"
           role="dialog"
-          aria-label="Assistente de IA da Próximo Destino"
+          aria-label="Assistente de viagens da Próximo Destino"
         >
           <header className="ai-assistant-header">
             <div className="ai-assistant-identity">
@@ -102,8 +95,8 @@ export function TravelAiAssistant() {
                 <Sparkles size={17} />
               </span>
               <div>
-                <strong>Assistente de IA</strong>
-                <span>Próximo Destino</span>
+                <strong>Assistente de viagens</strong>
+                <span>Consulta as viagens publicadas</span>
               </div>
             </div>
 
@@ -198,7 +191,7 @@ export function TravelAiAssistant() {
         aria-label={open ? 'Fechar assistente de IA' : 'Abrir assistente de IA'}
       >
         <Sparkles size={19} />
-        <span>Assistente de IA</span>
+        <span>Assistente de viagens</span>
       </button>
     </div>
   )
