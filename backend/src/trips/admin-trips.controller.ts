@@ -14,6 +14,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard'
 import { Roles } from '../auth/roles.decorator'
 import { RolesGuard } from '../auth/roles.guard'
 import {
+  BulkUpdateBoardingStatusDto,
   CreateTripDto,
   UpdateBoardingStatusDto,
   UpdateSeatBlockDto,
@@ -63,6 +64,19 @@ export class AdminTripsController {
   @Roles(UserRole.ADMIN)
   boardingList(@Param('id') id: string) {
     return this.trips.boardingList(id)
+  }
+
+  @Patch(':id/boarding')
+  @Roles(UserRole.ADMIN)
+  bulkUpdateBoarding(
+    @Param('id') id: string,
+    @Body() body: BulkUpdateBoardingStatusDto,
+  ) {
+    return this.trips.bulkUpdateBoardingStatus(
+      id,
+      body.passengerIds,
+      body.status,
+    )
   }
 
   @Patch(':id/boarding/:passengerId')
