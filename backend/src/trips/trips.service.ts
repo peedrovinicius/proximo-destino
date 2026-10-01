@@ -272,7 +272,7 @@ export class TripsService {
         vehicleFeatures,
         blockedSeats: [] as number[],
         occupiedSeats: [] as number[],
-        assignments: [] as Array<unknown>,
+        assignments: [],
         availableCount: capacity,
       }
     }
