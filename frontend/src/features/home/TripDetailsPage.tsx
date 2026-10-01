@@ -76,7 +76,11 @@ export function TripDetailsPage({
         if (!active) return
         setSeatMap(result)
         setSelectedSeats((current) =>
-          current.filter((seat) => !result.occupiedSeats.includes(seat)),
+          current.filter(
+          (seat) =>
+            !result.occupiedSeats.includes(seat) &&
+            !result.blockedSeats.includes(seat),
+        ),
         )
       })
       .catch(() => {
@@ -99,7 +103,11 @@ export function TripDetailsPage({
       const result = await fetchPublicTripSeats(tripId)
       setSeatMap(result)
       setSelectedSeats((current) =>
-        current.filter((seat) => !result.occupiedSeats.includes(seat)),
+        current.filter(
+          (seat) =>
+            !result.occupiedSeats.includes(seat) &&
+            !result.blockedSeats.includes(seat),
+        ),
       )
       return result
     } catch (cause) {
@@ -374,6 +382,10 @@ export function TripDetailsPage({
           capacity={seatMap.capacity}
           busLabel={seatMap.busLabel}
           seatLayout={seatMap.seatLayout}
+          deckCount={seatMap.deckCount}
+          lowerDeckCapacity={seatMap.lowerDeckCapacity}
+          vehicleFeatures={seatMap.vehicleFeatures}
+          blockedSeats={seatMap.blockedSeats}
           occupiedSeats={seatMap.occupiedSeats}
           passengerCount={passengerCount}
           selectedSeats={selectedSeats}

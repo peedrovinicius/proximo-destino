@@ -28,6 +28,16 @@ export type AdminClient = {
 }
 
 export type SeatLayout = 'TWO_BY_TWO' | 'TWO_BY_ONE'
+export type VehicleFeatureType = 'RESTROOM' | 'DOOR' | 'STAIRS'
+export type VehicleFeaturePosition = 'FRONT' | 'MIDDLE' | 'REAR'
+export type VehicleFeatureSide = 'LEFT' | 'CENTER' | 'RIGHT'
+
+export type VehicleFeature = {
+  type: VehicleFeatureType
+  deck: 1 | 2
+  position: VehicleFeaturePosition
+  side: VehicleFeatureSide
+}
 
 export type BusTemplateOption = {
   key: string
@@ -35,7 +45,10 @@ export type BusTemplateOption = {
   shortLabel: string
   capacity: number | null
   seatLayout: SeatLayout | null
+  deckCount: 1 | 2 | null
+  lowerDeckCapacity: number | null
   description: string
+  defaultFeatures: VehicleFeature[]
 }
 
 export type AdminTrip = {
@@ -49,6 +62,10 @@ export type AdminTrip = {
   capacity: number | null
   busTemplate: string | null
   seatLayout: SeatLayout | null
+  deckCount: number | null
+  lowerDeckCapacity: number | null
+  vehicleFeatures: VehicleFeature[] | null
+  blockedSeats: number[]
   priceCents: number | null
   _count: { reservations: number }
 }
@@ -251,6 +268,10 @@ export const adminApi = {
       capacity?: number
       busTemplate?: string | null
       seatLayout?: SeatLayout | null
+      deckCount?: number | null
+      lowerDeckCapacity?: number | null
+      vehicleFeatures?: VehicleFeature[] | null
+      blockedSeats?: number[]
       priceCents?: number
     },
   ) =>
@@ -266,6 +287,10 @@ export const adminApi = {
       capacity?: number | null
       busTemplate?: string | null
       seatLayout?: SeatLayout | null
+      deckCount?: number | null
+      lowerDeckCapacity?: number | null
+      vehicleFeatures?: VehicleFeature[] | null
+      blockedSeats?: number[]
     },
   ) =>
     adminFetch<AdminTrip>(token, `/admin/trips/${encodeURIComponent(id)}`, {

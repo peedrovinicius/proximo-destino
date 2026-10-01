@@ -1,5 +1,7 @@
 import { Type } from 'class-transformer'
 import {
+  ArrayUnique,
+  IsArray,
   IsDate,
   IsEnum,
   IsIn,
@@ -10,13 +12,83 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator'
 import { TripStatus } from '@prisma/client'
-import { BUS_TEMPLATES, SEAT_LAYOUTS } from '../bus-templates'
+import {
+  BUS_TEMPLATES,
+  SEAT_LAYOUTS,
+  VEHICLE_FEATURE_POSITIONS,
+  VEHICLE_FEATURE_SIDES,
+  VEHICLE_FEATURE_TYPES,
+} from '../bus-templates'
 
 const busTemplateKeys = [...BUS_TEMPLATES.map((template) => template.key), 'CUSTOM']
 
-export class CreateTripDto {
+export class VehicleFeatureDto {
+  @IsIn([...VEHICLE_FEATURE_TYPES])
+  type!: string
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(2)
+  deck!: number
+
+  @IsIn([...VEHICLE_FEATURE_POSITIONS])
+  position!: string
+
+  @IsIn([...VEHICLE_FEATURE_SIDES])
+  side!: string
+}
+
+class TripVehicleFieldsDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(10000)
+  capacity?: number | null
+
+  @IsOptional()
+  @IsIn(busTemplateKeys)
+  busTemplate?: string | null
+
+  @IsOptional()
+  @IsIn([...SEAT_LAYOUTS])
+  seatLayout?: string | null
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(2)
+  deckCount?: number | null
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(79)
+  lowerDeckCapacity?: number | null
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => VehicleFeatureDto)
+  vehicleFeatures?: VehicleFeatureDto[] | null
+
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @Type(() => Number)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  @Max(80, { each: true })
+  blockedSeats?: number[]
+}
+
+export class CreateTripDto extends TripVehicleFieldsDto {
   @IsString()
   @MaxLength(180)
   title!: string
@@ -45,21 +117,6 @@ export class CreateTripDto {
   @IsOptional()
   @Type(() => Number)
   @IsInt()
-  @Min(1)
-  @Max(10000)
-  capacity?: number
-
-  @IsOptional()
-  @IsIn(busTemplateKeys)
-  busTemplate?: string | null
-
-  @IsOptional()
-  @IsIn([...SEAT_LAYOUTS])
-  seatLayout?: string | null
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
   @Min(0)
   priceCents?: number
 
@@ -74,7 +131,7 @@ export class CreateTripDto {
   imageUrl?: string
 }
 
-export class UpdateTripDto {
+export class UpdateTripDto extends TripVehicleFieldsDto {
   @IsOptional()
   @IsString()
   @MaxLength(180)
@@ -103,21 +160,6 @@ export class UpdateTripDto {
   @IsOptional()
   @IsEnum(TripStatus)
   status?: TripStatus
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(10000)
-  capacity?: number | null
-
-  @IsOptional()
-  @IsIn(busTemplateKeys)
-  busTemplate?: string | null
-
-  @IsOptional()
-  @IsIn([...SEAT_LAYOUTS])
-  seatLayout?: string | null
 
   @IsOptional()
   @Type(() => Number)

@@ -36,6 +36,7 @@ export class PortalService {
       select: {
         id: true,
         capacity: true,
+        blockedSeats: true,
       },
     })
 
@@ -57,6 +58,13 @@ export class PortalService {
 
       if (selectedSeats.some((seat) => seat < 1 || seat > (trip.capacity as number))) {
         throw new BadRequestException('Há um assento fora da capacidade desta viagem')
+      }
+
+      const blocked = selectedSeats.filter((seat) => trip.blockedSeats.includes(seat))
+      if (blocked.length) {
+        throw new ConflictException(
+          `O(s) assento(s) ${blocked.join(', ')} está(ão) bloqueado(s) pela agência`,
+        )
       }
 
       const occupied = await this.prisma.seatAssignment.findMany({
@@ -113,6 +121,28 @@ export class PortalService {
 
     try {
       reservation = await this.prisma.$transaction(async (tx) => {
+        if (seatSelectionEnabled) {
+          const latestTrip = await tx.trip.findUnique({
+            where: { id: trip.id },
+            select: { capacity: true, blockedSeats: true },
+          })
+
+          if (
+            !latestTrip ||
+            latestTrip.capacity === null ||
+            selectedSeats.some(
+              (seat) =>
+                seat < 1 ||
+                seat > latestTrip.capacity! ||
+                latestTrip.blockedSeats.includes(seat),
+            )
+          ) {
+            throw new ConflictException(
+              'A disponibilidade dos assentos mudou. Atualize a seleção e tente novamente.',
+            )
+          }
+        }
+
         const created = await tx.reservation.create({
           data: {
             clientId: client.id,
