@@ -18,6 +18,7 @@ import { Brand } from '../../components/Brand'
 import { FinanceWorkspace, QuotesWorkspace } from './CommercialWorkspace'
 import { AdminSeatMapDialog } from './AdminSeatMap'
 import { ReservationPassengersDialog } from './ReservationPassengersDialog'
+import { TripBoardingDialog } from './TripBoardingDialog'
 import {
   adminApi,
   type AdminClient,
@@ -1022,6 +1023,7 @@ function TripBusControl({
   )
   const [saving, setSaving] = useState(false)
   const [showSeatMap, setShowSeatMap] = useState(false)
+  const [showBoarding, setShowBoarding] = useState(false)
 
   useEffect(() => {
     setTemplateKey(trip.busTemplate ?? (trip.capacity ? 'CUSTOM' : ''))
@@ -1238,14 +1240,26 @@ function TripBusControl({
         {saving ? 'Salvando' : 'Aplicar configuração'}
       </button>
 
-      {canManageSeats && trip.capacity ? (
-        <button
-          type="button"
-          className="admin-seat-map-open"
-          onClick={() => setShowSeatMap(true)}
-        >
-          Gerenciar assentos
-        </button>
+      {canManageSeats ? (
+        <div className="admin-trip-operation-actions">
+          {trip.capacity ? (
+            <button
+              type="button"
+              className="admin-seat-map-open"
+              onClick={() => setShowSeatMap(true)}
+            >
+              Gerenciar assentos
+            </button>
+          ) : null}
+
+          <button
+            type="button"
+            className="admin-boarding-open"
+            onClick={() => setShowBoarding(true)}
+          >
+            Lista de embarque
+          </button>
+        </div>
       ) : null}
 
       {showSeatMap ? (
@@ -1254,6 +1268,14 @@ function TripBusControl({
           tripId={trip.id}
           onClose={() => setShowSeatMap(false)}
           onChanged={onChanged}
+        />
+      ) : null}
+
+      {showBoarding ? (
+        <TripBoardingDialog
+          accessToken={accessToken}
+          tripId={trip.id}
+          onClose={() => setShowBoarding(false)}
         />
       ) : null}
     </form>
