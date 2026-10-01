@@ -2,6 +2,7 @@ import { Type } from 'class-transformer'
 import {
   ArrayUnique,
   IsArray,
+  IsBoolean,
   IsDate,
   IsEnum,
   IsIn,
@@ -176,4 +177,10 @@ export class UpdateTripDto extends TripVehicleFieldsDto {
   @IsUrl({ require_tld: false })
   @MaxLength(1000)
   imageUrl?: string
+}
+
+
+export class UpdateSeatBlockDto {
+  @IsBoolean()
+  blocked!: boolean
 }
