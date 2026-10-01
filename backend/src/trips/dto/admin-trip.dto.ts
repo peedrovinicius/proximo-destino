@@ -2,6 +2,7 @@ import { Type } from 'class-transformer'
 import {
   IsDate,
   IsEnum,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -11,6 +12,7 @@ import {
   Min,
 } from 'class-validator'
 import { TripStatus } from '@prisma/client'
+import { BUS_TEMPLATES, SEAT_LAYOUTS } from '../bus-templates'
 
 export class CreateTripDto {
   @IsString()
@@ -43,7 +45,23 @@ export class CreateTripDto {
   @IsInt()
   @Min(1)
   @Max(10000)
-  capacity?: number
+  capacity?: number | null
+
+  @IsOptional()
+  @IsIn([...BUS_TEMPLATES.map((template) => template.key), 'CUSTOM'])
+  busTemplate?: string | null
+
+  @IsOptional()
+  @IsIn(SEAT_LAYOUTS)
+  seatLayout?: string | null
+
+  @IsOptional()
+  @IsIn([...BUS_TEMPLATES.map((template) => template.key), 'CUSTOM'])
+  busTemplate?: string | null
+
+  @IsOptional()
+  @IsIn(SEAT_LAYOUTS)
+  seatLayout?: string | null
 
   @IsOptional()
   @Type(() => Number)
