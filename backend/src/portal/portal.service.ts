@@ -27,6 +27,24 @@ export class PortalService {
     private readonly config: ConfigService,
   ) {}
 
+  paymentConfig() {
+    const configured = Boolean(
+      this.config.get<string>('MERCADO_PAGO_ACCESS_TOKEN')?.trim() &&
+      this.config.get<string>('MERCADO_PAGO_WEBHOOK_SECRET')?.trim(),
+    )
+
+    return {
+      provider: 'MERCADO_PAGO',
+      configured,
+      methods: {
+        PIX: configured,
+        CARD: configured,
+        BOLETO: false,
+        TRANSFER: false,
+      },
+    }
+  }
+
   async requestReservation(data: RequestReservationDto) {
     const trip = await this.prisma.trip.findFirst({
       where: {
