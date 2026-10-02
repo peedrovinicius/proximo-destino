@@ -100,3 +100,10 @@ export class RefundReservationPaymentDto {
   @MaxLength(300)
   reason?: string
 }
+
+export class ResolveCancellationRequestDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  note?: string
+}
