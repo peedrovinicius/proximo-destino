@@ -88,7 +88,7 @@ export type AdminReservation = {
     bonusBalanceCents: number
   }
   purchaseOrder: {
-    status: 'PENDING_PAYMENT' | 'PAID' | 'CANCELLED' | 'EXPIRED'
+    status: 'PENDING_PAYMENT' | 'PAID' | 'PARTIALLY_REFUNDED' | 'REFUNDED' | 'CANCELLED' | 'EXPIRED'
     totalCents: number
   } | null
   trip: { id: string; title: string; origin: string; destination: string; departureDate: string }
@@ -240,11 +240,18 @@ export type AdminDocument = {
 
 export type AdminPurchaseOrder = {
   id: string
-  status: 'PENDING_PAYMENT' | 'PAID' | 'CANCELLED' | 'EXPIRED'
+  status: 'PENDING_PAYMENT' | 'PAID' | 'PARTIALLY_REFUNDED' | 'REFUNDED' | 'CANCELLED' | 'EXPIRED'
   paymentMethod: 'PIX' | 'CARD' | 'BOLETO' | 'TRANSFER'
   unitPriceCents: number
   passengerCount: number
   totalCents: number
+  providerPaymentId: string | null
+  providerOrderId: string | null
+  providerStatus: string | null
+  paidAt: string | null
+  refundedCents: number
+  refundedAt: string | null
+  lastReconciledAt: string | null
   createdAt: string
   updatedAt: string
   reservation: {
@@ -386,12 +393,95 @@ export type AdminPaymentsDashboard = {
     totalOrders: number
     paidOrders: number
     pendingOrders: number
+    refundedOrders: number
     cancelledOrders: number
     expiredOrders: number
     paidCents: number
     pendingCents: number
+    refundedCents: number
   }
   orders: AdminPurchaseOrder[]
+}
+
+export type AdminReservationFinance = {
+  reservation: {
+    id: string
+    status: AdminReservation['status']
+    passengerCount: number
+    createdAt: string
+    client: {
+      id: string
+      fullName: string
+      email: string | null
+      phone: string | null
+    }
+    trip: {
+      id: string
+      title: string
+      origin: string
+      destination: string
+      departureDate: string
+    }
+  }
+  purchaseOrder: AdminPurchaseOrder extends infer _T
+    ? {
+        id: string
+        status: AdminPurchaseOrder['status']
+        paymentMethod: AdminPurchaseOrder['paymentMethod']
+        unitPriceCents: number
+        passengerCount: number
+        totalCents: number
+        providerPaymentId: string | null
+        providerOrderId: string | null
+        providerStatus: string | null
+        paidAt: string | null
+        refundedCents: number
+        refundedAt: string | null
+        lastReconciledAt: string | null
+        createdAt: string
+        updatedAt: string
+      }
+    : never
+  financePlan: {
+    id: string
+    totalCents: number
+    downPaymentCents: number
+    installmentCount: number
+    refundedCents: number
+    createdAt: string
+    installments: FinancePlan['installments']
+  } | null
+  quote: {
+    id: string
+    revision: number
+    title: string
+    subtotalSaleCents: number
+    discountCents: number
+    totalCents: number
+    approvedAt: string | null
+  } | null
+  credits: Array<{
+    id: string
+    type: 'CANCELLATION_CREDIT' | 'BONUS_USED' | 'BONUS_REMOVED'
+    amountCents: number
+    note: string | null
+    createdAt: string
+  }>
+  summary: {
+    totalCents: number
+    grossPaidCents: number
+    refundedCents: number
+    netPaidCents: number
+    outstandingCents: number
+    refundableCents: number
+  }
+  events: Array<{
+    id: string
+    eventType: 'OPS_PAYMENT_REFUNDED' | 'OPS_PAYMENT_RECONCILED'
+    metadata: Record<string, unknown> | null
+    createdAt: string
+    user: { id: string; email: string; role: string } | null
+  }>
 }
 
 export type PaymentConnectionStatus = {
@@ -540,6 +630,37 @@ export const adminApi = {
       {
         method: 'POST',
         body: JSON.stringify({ code }),
+      },
+    ),
+
+  reservationFinance: (token: string, reservationId: string) =>
+    adminFetch<AdminReservationFinance>(
+      token,
+      `/admin/reservations/${encodeURIComponent(reservationId)}/finance`,
+    ),
+
+  reconcileReservationPayment: (
+    token: string,
+    reservationId: string,
+  ) =>
+    adminFetch<AdminReservationFinance>(
+      token,
+      `/admin/reservations/${encodeURIComponent(reservationId)}/finance/reconcile`,
+      { method: 'POST' },
+    ),
+
+  refundReservationPayment: (
+    token: string,
+    reservationId: string,
+    amountCents: number,
+    reason?: string,
+  ) =>
+    adminFetch<AdminReservationFinance>(
+      token,
+      `/admin/reservations/${encodeURIComponent(reservationId)}/finance/refund`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ amountCents, reason }),
       },
     ),
 
