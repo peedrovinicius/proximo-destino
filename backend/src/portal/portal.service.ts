@@ -11,6 +11,7 @@ import {
 import { ConfigService } from '@nestjs/config'
 import { JwtService } from '@nestjs/jwt'
 import {
+  CancellationRequestStatus,
   Prisma,
   PurchasePaymentMethod,
   PurchaseStatus,
@@ -1155,6 +1156,54 @@ export class PortalService {
     return this.getPortal(clientId, reservationId)
   }
 
+  async requestCancellation(
+    clientId: string,
+    reservationId: string,
+    reason: string,
+  ) {
+    const reservation = await this.prisma.reservation.findFirst({
+      where: { id: reservationId, clientId },
+      select: {
+        status: true,
+        cancellationRequestStatus: true,
+        trip: { select: { departureDate: true, status: true } },
+      },
+    })
+
+    if (!reservation) throw new NotFoundException('Reserva não encontrada')
+    if (
+      reservation.status === ReservationStatus.CANCELLED ||
+      reservation.status === ReservationStatus.COMPLETED ||
+      reservation.trip.status === TripStatus.CANCELLED ||
+      reservation.trip.status === TripStatus.COMPLETED ||
+      reservation.trip.departureDate.getTime() <= Date.now()
+    ) {
+      throw new ConflictException(
+        'Esta viagem não está mais disponível para solicitação de cancelamento',
+      )
+    }
+
+    if (reservation.cancellationRequestStatus === CancellationRequestStatus.PENDING) {
+      throw new ConflictException(
+        'Já existe uma solicitação de cancelamento aguardando análise',
+      )
+    }
+
+    await this.prisma.reservation.update({
+      where: { id: reservationId },
+      data: {
+        cancellationRequestStatus: CancellationRequestStatus.PENDING,
+        cancellationRequestedAt: new Date(),
+        cancellationRequestReason: reason.trim(),
+        cancellationRequestResolvedAt: null,
+        cancellationRequestResolutionNote: null,
+        cancellationRequestResolvedByUserId: null,
+      },
+    })
+
+    return this.getPortal(clientId, reservationId)
+  }
+
   async getPortal(clientId: string, reservationId: string) {
     await this.ensurePortalPassengers(clientId, reservationId)
 
@@ -1168,6 +1217,11 @@ export class PortalService {
         status: true,
         passengerCount: true,
         createdAt: true,
+        cancellationRequestStatus: true,
+        cancellationRequestedAt: true,
+        cancellationRequestReason: true,
+        cancellationRequestResolvedAt: true,
+        cancellationRequestResolutionNote: true,
         passengers: {
           select: {
             id: true,
@@ -1275,6 +1329,7 @@ export class PortalService {
             unitPriceCents: true,
             passengerCount: true,
             totalCents: true,
+            refundedCents: true,
             createdAt: true,
             updatedAt: true,
           },
@@ -1296,6 +1351,7 @@ export class PortalService {
             totalCents: true,
             downPaymentCents: true,
             installmentCount: true,
+            refundedCents: true,
             installments: {
               select: {
                 id: true,
@@ -1386,12 +1442,43 @@ export class PortalService {
         ? reservation.trip.lowerDeckCapacity
         : null
 
+    const cancellationPaidCents = reservation.purchaseOrder
+      ? Math.max(
+          (
+            reservation.purchaseOrder.status === PurchaseStatus.PAID ||
+            reservation.purchaseOrder.status === PurchaseStatus.PARTIALLY_REFUNDED ||
+            reservation.purchaseOrder.status === PurchaseStatus.REFUNDED
+              ? reservation.purchaseOrder.totalCents
+              : 0
+          ) - reservation.purchaseOrder.refundedCents,
+          0,
+        )
+      : Math.max(
+          (reservation.financePlan?.installments
+            .filter((item) => item.status === 'PAID')
+            .reduce((sum, item) => sum + item.amountCents, 0) ?? 0) -
+            (reservation.financePlan?.refundedCents ?? 0),
+          0,
+        )
+    const canRequestCancellation =
+      reservation.status !== ReservationStatus.CANCELLED &&
+      reservation.status !== ReservationStatus.COMPLETED &&
+      reservation.trip.status !== TripStatus.CANCELLED &&
+      reservation.trip.status !== TripStatus.COMPLETED &&
+      reservation.trip.departureDate.getTime() > Date.now() &&
+      reservation.cancellationRequestStatus !== CancellationRequestStatus.PENDING
+
     return {
       ...reservation,
       client,
       bonus: {
         balanceCents: bonusBalanceCents,
         transactions: creditTransactions,
+      },
+      canRequestCancellation,
+      cancellationFinancial: {
+        paidCents: cancellationPaidCents,
+        reviewableCents: cancellationPaidCents,
       },
       canEditPassengers:
         reservation.trip.departureDate.getTime() > Date.now() &&
