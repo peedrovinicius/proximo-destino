@@ -146,16 +146,20 @@ export function AdminDashboard({
     setLoading(true)
     setError('')
     try {
-      const [dashboardData, clientData, tripData, reservationData] = await Promise.all([
+      const [dashboardData, clientData, tripData, reservationData, paymentsData] = await Promise.all([
         adminApi.dashboard(accessToken),
         adminApi.clients(accessToken),
         adminApi.trips(accessToken),
         adminApi.reservations(accessToken),
+        canViewPayments
+          ? adminApi.purchaseOrders(accessToken).catch(() => null)
+          : Promise.resolve(null),
       ])
       setDashboard(dashboardData)
       setClients(clientData)
       setTrips(tripData)
       setReservations(reservationData)
+      setPendingPaymentCount(paymentsData?.summary.pendingOrders ?? 0)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Falha ao carregar o painel.')
     } finally {
