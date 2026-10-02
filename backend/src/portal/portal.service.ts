@@ -33,6 +33,7 @@ import {
   ClientPortalLoginDto,
   RequestReservationDto,
   UpdateClientPassengersDto,
+  UpdateClientSeatsDto,
 } from './dto/portal.dto'
 
 @Injectable()
@@ -963,6 +964,197 @@ export class PortalService {
     return this.getPortal(clientId, reservationId)
   }
 
+  async updateClientSeats(
+    clientId: string,
+    reservationId: string,
+    data: UpdateClientSeatsDto,
+  ) {
+    await this.ensurePortalPassengers(clientId, reservationId)
+
+    const reservation = await this.prisma.reservation.findFirst({
+      where: { id: reservationId, clientId },
+      select: {
+        status: true,
+        passengerCount: true,
+        passengers: {
+          select: { id: true, sequence: true },
+          orderBy: { sequence: 'asc' },
+        },
+        trip: {
+          select: {
+            id: true,
+            status: true,
+            departureDate: true,
+            capacity: true,
+            blockedSeats: true,
+          },
+        },
+      },
+    })
+
+    if (!reservation) throw new NotFoundException('Reserva não encontrada')
+
+    const cutoffAt =
+      reservation.trip.departureDate.getTime() - 24 * 60 * 60 * 1000
+    const canChange =
+      Date.now() < cutoffAt &&
+      reservation.status !== ReservationStatus.CANCELLED &&
+      reservation.status !== ReservationStatus.COMPLETED &&
+      reservation.trip.status !== TripStatus.CANCELLED &&
+      reservation.trip.status !== TripStatus.COMPLETED
+
+    if (!canChange) {
+      throw new ConflictException(
+        'A troca de poltrona fica bloqueada nas 24 horas antes do embarque e após o encerramento da viagem',
+      )
+    }
+
+    const capacity = reservation.trip.capacity
+    if (capacity === null || capacity < 1 || capacity > 80) {
+      throw new BadRequestException('Esta viagem não possui escolha de assentos')
+    }
+
+    const selectedSeats = [...data.selectedSeats].sort((a, b) => a - b)
+
+    if (selectedSeats.length !== reservation.passengerCount) {
+      throw new BadRequestException(
+        `Selecione exatamente ${reservation.passengerCount} assento(s)`,
+      )
+    }
+
+    if (
+      selectedSeats.some((seat) => seat < 1 || seat > capacity) ||
+      selectedSeats.some((seat) => reservation.trip.blockedSeats.includes(seat))
+    ) {
+      throw new ConflictException(
+        'Um ou mais assentos selecionados não estão disponíveis',
+      )
+    }
+
+    const occupied = await this.prisma.seatAssignment.findMany({
+      where: {
+        tripId: reservation.trip.id,
+        reservationId: { not: reservationId },
+        seatNumber: { in: selectedSeats },
+        reservation: { status: { not: ReservationStatus.CANCELLED } },
+      },
+      select: { seatNumber: true },
+    })
+
+    if (occupied.length) {
+      throw new ConflictException(
+        `O(s) assento(s) ${occupied.map((item) => item.seatNumber).join(', ')} não está(ão) mais disponível(is)`,
+      )
+    }
+
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        const latestTrip = await tx.trip.findUnique({
+          where: { id: reservation.trip.id },
+          select: {
+            capacity: true,
+            blockedSeats: true,
+            departureDate: true,
+            status: true,
+          },
+        })
+
+        if (
+          !latestTrip ||
+          latestTrip.capacity === null ||
+          Date.now() >= latestTrip.departureDate.getTime() - 24 * 60 * 60 * 1000 ||
+          latestTrip.status === TripStatus.CANCELLED ||
+          latestTrip.status === TripStatus.COMPLETED ||
+          selectedSeats.some(
+            (seat) =>
+              seat < 1 ||
+              seat > latestTrip.capacity! ||
+              latestTrip.blockedSeats.includes(seat),
+          )
+        ) {
+          throw new ConflictException(
+            'A disponibilidade dos assentos mudou. Atualize a viagem e tente novamente.',
+          )
+        }
+
+        const latestOccupied = await tx.seatAssignment.findMany({
+          where: {
+            tripId: reservation.trip.id,
+            reservationId: { not: reservationId },
+            seatNumber: { in: selectedSeats },
+            reservation: { status: { not: ReservationStatus.CANCELLED } },
+          },
+          select: { seatNumber: true },
+        })
+
+        if (latestOccupied.length) {
+          throw new ConflictException(
+            'Um dos assentos selecionados acabou de ser ocupado',
+          )
+        }
+
+        const currentAssignments = await tx.seatAssignment.findMany({
+          where: { reservationId },
+          select: { id: true, passengerId: true, seatNumber: true },
+          orderBy: { seatNumber: 'asc' },
+        })
+
+        const selectedSet = new Set(selectedSeats)
+        const retained = currentAssignments.filter((assignment) =>
+          selectedSet.has(assignment.seatNumber),
+        )
+        const retainedPassengerIds = new Set(
+          retained
+            .map((assignment) => assignment.passengerId)
+            .filter((id): id is string => Boolean(id)),
+        )
+        const retainedSeats = new Set(
+          retained.map((assignment) => assignment.seatNumber),
+        )
+        const passengersToAssign = reservation.passengers.filter(
+          (passenger) => !retainedPassengerIds.has(passenger.id),
+        )
+        const newSeats = selectedSeats.filter((seat) => !retainedSeats.has(seat))
+
+        if (passengersToAssign.length !== newSeats.length) {
+          throw new ConflictException(
+            'Não foi possível preservar a distribuição atual dos passageiros',
+          )
+        }
+
+        await tx.seatAssignment.deleteMany({
+          where: {
+            reservationId,
+            seatNumber: { notIn: selectedSeats },
+          },
+        })
+
+        for (let index = 0; index < newSeats.length; index += 1) {
+          await tx.seatAssignment.create({
+            data: {
+              tripId: reservation.trip.id,
+              reservationId,
+              passengerId: passengersToAssign[index].id,
+              seatNumber: newSeats[index],
+            },
+          })
+        }
+      })
+    } catch (cause) {
+      if (
+        cause instanceof Prisma.PrismaClientKnownRequestError &&
+        cause.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'Um dos assentos selecionados acabou de ser ocupado. Atualize a seleção e tente novamente.',
+        )
+      }
+      throw cause
+    }
+
+    return this.getPortal(clientId, reservationId)
+  }
+
   async getPortal(clientId: string, reservationId: string) {
     await this.ensurePortalPassengers(clientId, reservationId)
 
@@ -1034,6 +1226,13 @@ export class PortalService {
             summary: true,
             imageUrl: true,
             status: true,
+            capacity: true,
+            busTemplate: true,
+            seatLayout: true,
+            deckCount: true,
+            lowerDeckCapacity: true,
+            vehicleFeatures: true,
+            blockedSeats: true,
           },
         },
         quotes: {
@@ -1135,6 +1334,58 @@ export class PortalService {
       ),
     )
 
+    const seatMapEnabled =
+      reservation.trip.capacity !== null &&
+      reservation.trip.capacity >= 1 &&
+      reservation.trip.capacity <= 80
+    const seatChangeCutoffAt = new Date(
+      reservation.trip.departureDate.getTime() - 24 * 60 * 60 * 1000,
+    )
+    const canChangeSeats =
+      seatMapEnabled &&
+      Date.now() < seatChangeCutoffAt.getTime() &&
+      reservation.status !== ReservationStatus.CANCELLED &&
+      reservation.status !== ReservationStatus.COMPLETED &&
+      reservation.trip.status !== TripStatus.CANCELLED &&
+      reservation.trip.status !== TripStatus.COMPLETED
+
+    const externalAssignments = seatMapEnabled
+      ? await this.prisma.seatAssignment.findMany({
+          where: {
+            tripId: reservation.trip.id,
+            reservationId: { not: reservation.id },
+            reservation: { status: { not: ReservationStatus.CANCELLED } },
+          },
+          select: { seatNumber: true },
+          orderBy: { seatNumber: 'asc' },
+        })
+      : []
+
+    const capacity = reservation.trip.capacity
+    const blockedSeats =
+      seatMapEnabled && capacity !== null
+        ? reservation.trip.blockedSeats
+            .filter((seat) => seat >= 1 && seat <= capacity)
+            .sort((a, b) => a - b)
+        : []
+    const occupiedSeats = externalAssignments.map(
+      (assignment) => assignment.seatNumber,
+    )
+    const unavailableSeats = new Set([...blockedSeats, ...occupiedSeats])
+    const seatLayout =
+      reservation.trip.seatLayout === 'TWO_BY_ONE'
+        ? 'TWO_BY_ONE'
+        : 'TWO_BY_TWO'
+    const deckCount = reservation.trip.deckCount === 2 ? 2 : 1
+    const lowerDeckCapacity =
+      deckCount === 2 &&
+      reservation.trip.lowerDeckCapacity !== null &&
+      capacity !== null &&
+      reservation.trip.lowerDeckCapacity > 0 &&
+      reservation.trip.lowerDeckCapacity < capacity
+        ? reservation.trip.lowerDeckCapacity
+        : null
+
     return {
       ...reservation,
       client,
@@ -1146,6 +1397,33 @@ export class PortalService {
         reservation.trip.departureDate.getTime() > Date.now() &&
         reservation.status !== ReservationStatus.CANCELLED &&
         reservation.status !== ReservationStatus.COMPLETED,
+      canChangeSeats,
+      seatChangeCutoffAt,
+      seatMap: {
+        enabled: seatMapEnabled,
+        capacity,
+        busTemplate: reservation.trip.busTemplate,
+        busLabel:
+          reservation.trip.busTemplate === 'CUSTOM'
+            ? capacity
+              ? `Personalizado · ${capacity} lugares`
+              : 'Personalizado'
+            : capacity
+              ? `Veículo · ${capacity} lugares`
+              : null,
+        seatLayout,
+        deckCount,
+        lowerDeckCapacity,
+        vehicleFeatures: Array.isArray(reservation.trip.vehicleFeatures)
+          ? reservation.trip.vehicleFeatures
+          : [],
+        blockedSeats,
+        occupiedSeats,
+        availableCount:
+          seatMapEnabled && capacity !== null
+            ? Math.max(0, capacity - unavailableSeats.size)
+            : capacity,
+      },
     }
   }
 
