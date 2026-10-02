@@ -5,7 +5,7 @@ import {
   CheckCircle2,
   Copy,
   MapPin,
-  Plane,
+  Bus,
   ShieldCheck,
   Users,
 } from 'lucide-react'
@@ -52,9 +52,10 @@ export function TripDetailsPage({
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
-  const [passengerCount, setPassengerCount] = useState(defaultPassengers)
+  const initialPassengerCount = Math.max(1, defaultPassengers || 1)
+  const [passengerCount, setPassengerCount] = useState(initialPassengerCount)
   const [companionNames, setCompanionNames] = useState<string[]>(
-    Array.from({ length: Math.max(0, defaultPassengers - 1) }, () => ''),
+    Array.from({ length: Math.max(0, initialPassengerCount - 1) }, () => ''),
   )
   const [submitting, setSubmitting] = useState(false)
   const [requestResult, setRequestResult] = useState<ReservationRequestResult | null>(null)
@@ -346,7 +347,7 @@ export function TripDetailsPage({
           <article className="trip-details-info">
             <div className="trip-route-large">
               <div><small>Origem</small><strong>{trip.origin}</strong></div>
-              <Plane size={22} />
+              <Bus size={22} />
               <div><small>Destino</small><strong>{trip.destination}</strong></div>
             </div>
 
