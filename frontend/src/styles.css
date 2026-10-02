@@ -9880,3 +9880,133 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Boarding finalization */
+
+.boarding-completion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 14px 20px 0;
+  border: 1px solid #dfe7ed;
+  border-radius: 13px;
+  padding: 11px 12px;
+  background: #f8fafc;
+}
+
+.boarding-completion--ready {
+  border-color: #cfe6d9;
+  background: #f4fbf7;
+}
+
+.boarding-completion--pending {
+  border-color: #eadfbf;
+  background: #fffaf0;
+}
+
+.boarding-completion--done {
+  border-color: #c8dfd4;
+  background: #eef8f3;
+}
+
+.boarding-completion-copy {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+}
+
+.boarding-completion-copy svg {
+  flex: 0 0 auto;
+  color: #2f7f5d;
+}
+
+.boarding-completion--pending .boarding-completion-copy svg {
+  color: #9b7627;
+}
+
+.boarding-completion-copy > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.boarding-completion-copy strong {
+  color: #28475e;
+  font-size: 9px;
+}
+
+.boarding-completion-copy span {
+  color: #758796;
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.boarding-completion > button,
+.boarding-completion-confirm button {
+  min-height: 36px;
+  border: 0;
+  border-radius: 9px;
+  padding: 0 11px;
+  color: #fff;
+  background: #2677d9;
+  font-size: 8px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.boarding-completion > button:disabled {
+  color: #8c9aa5;
+  background: #e9eef2;
+  cursor: not-allowed;
+}
+
+.boarding-completion-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.boarding-completion-confirm span {
+  color: #536b7d;
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.boarding-completion-confirm .confirm {
+  background: #237653;
+}
+
+.boarding-completion-confirm .cancel {
+  border: 1px solid #dce4ea;
+  color: #536b7d;
+  background: #fff;
+}
+
+@media (max-width: 720px) {
+  .boarding-completion {
+    align-items: stretch;
+    flex-direction: column;
+    margin: 12px 14px 0;
+  }
+
+  .boarding-completion > button {
+    width: 100%;
+  }
+
+  .boarding-completion-confirm {
+    justify-content: stretch;
+  }
+
+  .boarding-completion-confirm span {
+    width: 100%;
+  }
+
+  .boarding-completion-confirm button {
+    flex: 1 1 45%;
+  }
+}
