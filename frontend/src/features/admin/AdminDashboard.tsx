@@ -107,7 +107,10 @@ export function AdminDashboard({
   const canViewPayments = userRole === 'ADMIN' || userRole === 'FINANCE'
 
   function navigateTab(next: Tab, replace = false) {
-    if (next === tab) return
+    if (next === tab) {
+      setAccountMenuOpen(false)
+      return
+    }
 
     scrollPositions.current[tab] = window.scrollY
 
@@ -156,7 +159,7 @@ export function AdminDashboard({
 
   useEffect(() => {
     void reload()
-  }, [accessToken])
+  }, [])
 
   useEffect(() => {
     const url = new URL(window.location.href)
