@@ -12,7 +12,7 @@ import {
   Settings,
   CheckCircle2,
   LogOut,
-  Plane,
+  Bus,
   Search,
   ShieldCheck,
   Users,
@@ -377,7 +377,7 @@ export function AdminDashboard({
 
                 {upcomingTripsCount > 0 ? (
                   <button type="button" onClick={() => openNotificationTab('trips')}>
-                    <Plane size={16} />
+                    <Bus size={16} />
                     <div>
                       <strong>{upcomingTripsCount} viagem(ns) nos próximos 7 dias</strong>
                       <span>Conferir assentos, passageiros e embarque.</span>
