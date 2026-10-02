@@ -11066,3 +11066,623 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
     gap: 7px;
   }
 }
+
+
+/* Client bonus and cancellation */
+
+.admin-client-bonus-button,
+.admin-reservation-bonus,
+.admin-reservation-cancel {
+  min-height: 34px;
+  border-radius: 9px;
+  padding: 0 10px;
+  font-size: 8px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.admin-client-bonus-button,
+.admin-reservation-bonus {
+  border: 1px solid #cfe0ec;
+  color: #285f89;
+  background: #f3f9fd;
+}
+
+.admin-reservation-cancel {
+  border: 1px solid #efd2cf;
+  color: #9a443e;
+  background: #fff6f5;
+}
+
+.client-bonus-overlay,
+.reservation-cancel-overlay,
+.reservation-bonus-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 320;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(8, 23, 36, .48);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.client-bonus-dialog,
+.reservation-cancel-dialog,
+.reservation-bonus-dialog {
+  display: grid;
+  width: min(660px, 100%);
+  max-height: calc(100dvh - 36px);
+  overflow: hidden auto;
+  border: 1px solid rgba(255,255,255,.82);
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: 0 32px 90px rgba(17, 42, 63, .24);
+}
+
+.client-bonus-header,
+.reservation-cancel-dialog > header,
+.reservation-bonus-dialog > header {
+  position: relative;
+  padding: 19px 64px 18px 20px;
+  border-bottom: 1px solid #e9eef2;
+}
+
+.client-bonus-header > div,
+.reservation-cancel-dialog > header > div,
+.reservation-bonus-dialog > header > div {
+  display: grid;
+  gap: 3px;
+}
+
+.client-bonus-header span,
+.reservation-cancel-dialog > header span,
+.reservation-bonus-dialog > header span {
+  color: #778a99;
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.client-bonus-header h2,
+.reservation-cancel-dialog > header h2,
+.reservation-bonus-dialog > header h2 {
+  margin: 0;
+  color: #17344d;
+  font: 700 20px 'Manrope', sans-serif;
+}
+
+.reservation-cancel-dialog > header small,
+.reservation-bonus-dialog > header small {
+  color: #7b8d9a;
+  font-size: 8px;
+}
+
+.client-bonus-header > button,
+.reservation-cancel-dialog > header > button,
+.reservation-bonus-dialog > header > button {
+  position: absolute;
+  top: 17px;
+  right: 17px;
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  color: #526b7e;
+  background: #f2f6f8;
+  cursor: pointer;
+}
+
+.client-bonus-balance,
+.reservation-bonus-balance {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 18px 0;
+  border: 1px solid #d9e7f1;
+  border-radius: 14px;
+  padding: 14px;
+  color: #236b9f;
+  background: linear-gradient(135deg, #eef7fe, #f8fbfd);
+}
+
+.client-bonus-balance > div,
+.reservation-bonus-balance > div {
+  display: grid;
+  gap: 3px;
+}
+
+.client-bonus-balance span,
+.reservation-bonus-balance span {
+  color: #668096;
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.client-bonus-balance strong,
+.reservation-bonus-balance strong {
+  color: #174d84;
+  font: 700 22px 'Manrope', sans-serif;
+}
+
+.client-bonus-balance small {
+  color: #80909d;
+  font-size: 7px;
+}
+
+.client-bonus-remove {
+  display: grid;
+  gap: 11px;
+  margin: 12px 18px 0;
+  border: 1px solid #e2e8ed;
+  border-radius: 14px;
+  padding: 14px;
+  background: #fafcfd;
+}
+
+.client-bonus-remove > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.client-bonus-remove > div:first-child strong {
+  color: #334f64;
+  font-size: 9px;
+}
+
+.client-bonus-remove > div:first-child span {
+  color: #7d8e9c;
+  font-size: 8px;
+}
+
+.client-bonus-remove-grid {
+  display: grid;
+  grid-template-columns: 150px minmax(0,1fr);
+  gap: 8px;
+}
+
+.client-bonus-remove-grid label,
+.reservation-bonus-dialog > label,
+.reservation-cancel-reason {
+  display: grid;
+  gap: 5px;
+  color: #617889;
+  font-size: 7px;
+  font-weight: 800;
+}
+
+.client-bonus-remove-grid input,
+.reservation-bonus-dialog > label input {
+  width: 100%;
+  height: 39px;
+  border: 1px solid #dce5eb;
+  border-radius: 9px;
+  padding: 0 10px;
+  color: #23445c;
+  background: #fff;
+  font-size: 8px;
+}
+
+.client-bonus-remove > button {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 36px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #efd6d2;
+  border-radius: 9px;
+  padding: 0 10px;
+  color: #98443e;
+  background: #fff7f6;
+  font-size: 8px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.client-bonus-remove > button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.client-bonus-history {
+  display: grid;
+  gap: 8px;
+  padding: 16px 18px 20px;
+}
+
+.client-bonus-history-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.client-bonus-history-title strong {
+  color: #334f64;
+  font-size: 9px;
+}
+
+.client-bonus-history-title span,
+.client-bonus-history > p {
+  color: #81909c;
+  font-size: 8px;
+}
+
+.client-bonus-history article {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #e5ebef;
+  border-radius: 11px;
+  padding: 9px;
+}
+
+.client-bonus-history-icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 9px;
+}
+
+.client-bonus-history-icon.positive {
+  color: #237653;
+  background: #eaf7f1;
+}
+
+.client-bonus-history-icon.negative {
+  color: #9a4a43;
+  background: #fff1f0;
+}
+
+.client-bonus-history article > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.client-bonus-history article > div strong {
+  color: #2e4b61;
+  font-size: 8px;
+}
+
+.client-bonus-history article > div span,
+.client-bonus-history article > div small {
+  overflow: hidden;
+  color: #82919d;
+  font-size: 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.client-bonus-history article > strong {
+  font-size: 9px;
+}
+
+.client-bonus-history article > strong.positive {
+  color: #237653;
+}
+
+.client-bonus-history article > strong.negative {
+  color: #9a4a43;
+}
+
+.reservation-cancel-warning,
+.reservation-cancel-bonus {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 14px 18px 0;
+  border: 1px solid #e2e8ed;
+  border-radius: 12px;
+  padding: 12px;
+  background: #fafcfd;
+}
+
+.reservation-cancel-warning svg {
+  flex: 0 0 auto;
+  color: #9a4a43;
+}
+
+.reservation-cancel-warning > div,
+.reservation-cancel-bonus > div {
+  display: grid;
+  gap: 3px;
+}
+
+.reservation-cancel-warning strong,
+.reservation-cancel-bonus strong {
+  color: #334f64;
+  font-size: 9px;
+}
+
+.reservation-cancel-warning span,
+.reservation-cancel-bonus span {
+  color: #768998;
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.reservation-cancel-bonus {
+  cursor: pointer;
+  background: #f3f9fd;
+}
+
+.reservation-cancel-bonus > input {
+  width: 16px;
+  height: 16px;
+  accent-color: #2677d9;
+}
+
+.reservation-cancel-bonus > svg {
+  flex: 0 0 auto;
+  color: #2677d9;
+}
+
+.reservation-cancel-reason {
+  margin: 14px 18px 0;
+}
+
+.reservation-cancel-reason textarea {
+  min-height: 88px;
+  resize: vertical;
+  border: 1px solid #dce5eb;
+  border-radius: 10px;
+  padding: 10px;
+  color: #28475e;
+  background: #fff;
+  font: inherit;
+  font-size: 8px;
+}
+
+.reservation-cancel-actions,
+.reservation-bonus-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 18px 20px;
+}
+
+.reservation-cancel-actions button,
+.reservation-bonus-actions button,
+.reservation-cancel-result > button,
+.reservation-bonus-success > button {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 9px;
+  padding: 0 12px;
+  color: #fff;
+  background: #2677d9;
+  font-size: 8px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.reservation-cancel-actions button.secondary,
+.reservation-bonus-actions button.secondary {
+  border: 1px solid #dce5eb;
+  color: #5d7385;
+  background: #fff;
+}
+
+.reservation-cancel-actions button.danger {
+  background: #a94d46;
+}
+
+.reservation-cancel-actions button:disabled,
+.reservation-bonus-actions button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.reservation-cancel-result,
+.reservation-bonus-success {
+  display: grid;
+  gap: 8px;
+  margin: 18px;
+  border: 1px solid #cfe5d8;
+  border-radius: 14px;
+  padding: 14px;
+  color: #237653;
+  background: #f2faf6;
+}
+
+.reservation-cancel-result > div {
+  display: grid;
+  gap: 3px;
+}
+
+.reservation-cancel-result strong,
+.reservation-bonus-success span {
+  color: #2d5c48;
+  font-size: 9px;
+}
+
+.reservation-cancel-result span {
+  color: #688175;
+  font-size: 8px;
+}
+
+.reservation-cancel-result > button,
+.reservation-bonus-success > button {
+  width: fit-content;
+  background: #237653;
+}
+
+.reservation-bonus-dialog > label,
+.reservation-bonus-dialog > p {
+  margin: 12px 18px 0;
+}
+
+.reservation-bonus-dialog > p {
+  color: #758796;
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.client-bonus-panel {
+  display: grid;
+  grid-template-columns: minmax(220px, .9fr) minmax(0, 1.1fr);
+  gap: 14px;
+  margin-top: 12px;
+  border: 1px solid #dbe7ef;
+  border-radius: 18px;
+  padding: 18px;
+  background:
+    radial-gradient(circle at 0 0, rgba(38,119,217,.08), transparent 34%),
+    #fff;
+  box-shadow: 0 7px 22px rgba(40,70,96,.035);
+}
+
+.client-bonus-panel-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+}
+
+.client-bonus-panel-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  place-items: center;
+  border-radius: 12px;
+  color: #2677d9;
+  background: #edf5fd;
+}
+
+.client-bonus-panel-main > div {
+  min-width: 0;
+}
+
+.client-bonus-panel-main h2 {
+  margin: 5px 0 4px;
+  color: #174d84;
+  font: 700 26px 'Manrope', sans-serif;
+}
+
+.client-bonus-panel-main p {
+  margin: 0;
+  color: #728493;
+  font-size: 8px;
+  line-height: 1.55;
+}
+
+.client-bonus-transactions {
+  display: grid;
+  gap: 6px;
+}
+
+.client-bonus-transaction {
+  display: grid;
+  grid-template-columns: 30px minmax(0,1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  border-bottom: 1px solid #edf1f4;
+}
+
+.client-bonus-transaction:last-child {
+  border-bottom: 0;
+}
+
+.client-bonus-transaction-icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 8px;
+}
+
+.client-bonus-transaction-icon.positive {
+  color: #237653;
+  background: #ebf8f2;
+}
+
+.client-bonus-transaction-icon.negative {
+  color: #9a4a43;
+  background: #fff1f0;
+}
+
+.client-bonus-transaction > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.client-bonus-transaction > div strong {
+  color: #365269;
+  font-size: 8px;
+}
+
+.client-bonus-transaction > div span {
+  overflow: hidden;
+  color: #81909d;
+  font-size: 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.client-bonus-transaction > strong {
+  font-size: 8px;
+}
+
+.client-bonus-transaction > strong.positive {
+  color: #237653;
+}
+
+.client-bonus-transaction > strong.negative {
+  color: #9a4a43;
+}
+
+.client-bonus-empty {
+  align-self: center;
+  color: #81909d;
+  font-size: 8px;
+}
+
+@media (max-width: 760px) {
+  .client-bonus-overlay,
+  .reservation-cancel-overlay,
+  .reservation-bonus-overlay {
+    padding: 0;
+  }
+
+  .client-bonus-dialog,
+  .reservation-cancel-dialog,
+  .reservation-bonus-dialog {
+    width: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .client-bonus-remove-grid,
+  .client-bonus-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .client-bonus-history article {
+    grid-template-columns: 34px minmax(0,1fr);
+  }
+
+  .client-bonus-history article > strong {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .reservation-cancel-actions,
+  .reservation-bonus-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+}
