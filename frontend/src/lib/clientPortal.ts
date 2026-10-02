@@ -46,6 +46,20 @@ export type ClientPortalData = {
     email: string | null
     phone: string | null
   }
+  bonus: {
+    balanceCents: number
+    transactions: Array<{
+      id: string
+      type: 'CANCELLATION_CREDIT' | 'BONUS_USED' | 'BONUS_REMOVED'
+      amountCents: number
+      note: string | null
+      createdAt: string
+      reservation: {
+        id: string
+        trip: { title: string; destination: string }
+      } | null
+    }>
+  }
   trip: {
     id: string
     title: string
