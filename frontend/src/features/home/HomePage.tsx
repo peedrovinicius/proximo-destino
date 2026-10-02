@@ -50,6 +50,7 @@ export function HomePage({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null)
+  const [openSeatsOnTrip, setOpenSeatsOnTrip] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -92,12 +93,23 @@ export function HomePage({
     [catalog, origin],
   )
 
+  const firstTripWithSeats = catalog.find(
+    (trip) =>
+      trip.capacity !== null &&
+      trip.capacity >= 1 &&
+      trip.capacity <= 80,
+  )
+
   if (selectedTripId) {
     return (
       <TripDetailsPage
         tripId={selectedTripId}
         defaultPassengers={Number(passengers)}
-        onBack={() => setSelectedTripId(null)}
+        autoOpenSeats={openSeatsOnTrip}
+        onBack={() => {
+          setSelectedTripId(null)
+          setOpenSeatsOnTrip(false)
+        }}
         onClientAccess={onClientAccess}
       />
     )
@@ -176,6 +188,33 @@ export function HomePage({
             <span className="public-kicker">Próximo Destino Turismo e Viagens</span>
             <h1>Para onde você quer ir agora?</h1>
             <p>Escolha uma viagem cadastrada pela agência e solicite sua reserva online.</p>
+            <div className="public-hero-actions">
+              <button
+                type="button"
+                className="public-hero-primary"
+                onClick={() => {
+                  document
+                    .getElementById('viagens')
+                    ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                }}
+              >
+                <Bus size={17} />
+                Ver viagens
+              </button>
+              {firstTripWithSeats ? (
+                <button
+                  type="button"
+                  className="public-hero-secondary"
+                  onClick={() => {
+                    setOpenSeatsOnTrip(true)
+                    setSelectedTripId(firstTripWithSeats.id)
+                  }}
+                >
+                  <Users size={17} />
+                  Escolher assentos
+                </button>
+              ) : null}
+            </div>
           </div>
 
           <form className="travel-search-card" onSubmit={handleSearch}>
@@ -301,10 +340,33 @@ export function HomePage({
                         <strong>{trip.priceCents == null ? 'Sob consulta' : money.format(trip.priceCents / 100)}</strong>
                         <span>por pessoa</span>
                       </div>
-                      <button type="button" onClick={() => setSelectedTripId(trip.id)}>
-                        Ver viagem
-                        <ChevronRight size={15} />
-                      </button>
+                      <div className="public-trip-card-actions">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOpenSeatsOnTrip(false)
+                            setSelectedTripId(trip.id)
+                          }}
+                        >
+                          Abrir viagem
+                          <ChevronRight size={15} />
+                        </button>
+                        {trip.capacity !== null &&
+                        trip.capacity >= 1 &&
+                        trip.capacity <= 80 ? (
+                          <button
+                            type="button"
+                            className="public-trip-seat-shortcut"
+                            onClick={() => {
+                              setOpenSeatsOnTrip(true)
+                              setSelectedTripId(trip.id)
+                            }}
+                          >
+                            <Bus size={15} />
+                            Escolher assentos
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                 </article>
