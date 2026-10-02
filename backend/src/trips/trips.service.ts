@@ -1337,7 +1337,10 @@ export class TripsService {
         blockedSeats,
         priceCents: data.priceCents,
         summary: data.summary?.trim(),
-        imageUrl: data.imageUrl?.trim(),
+        imageUrl:
+          data.imageUrl === null
+            ? null
+            : data.imageUrl?.trim(),
       },
     })
   }
