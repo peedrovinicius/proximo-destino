@@ -122,3 +122,14 @@ export class UpdateClientPassengersDto {
   @Type(() => ClientPassengerUpdateDto)
   passengers!: ClientPassengerUpdateDto[]
 }
+
+export class UpdateClientSeatsDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(10)
+  @ArrayUnique()
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  @Max(80, { each: true })
+  selectedSeats!: number[]
+}
