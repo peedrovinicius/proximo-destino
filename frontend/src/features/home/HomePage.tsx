@@ -5,7 +5,7 @@ import {
   ChevronRight,
   MapPin,
   MessageCircle,
-  Plane,
+  Bus,
   Search,
   ShieldCheck,
   Sparkles,
@@ -45,7 +45,7 @@ export function HomePage({
   const [origin, setOrigin] = useState('')
   const [destination, setDestination] = useState('')
   const [departure, setDeparture] = useState('')
-  const [passengers, setPassengers] = useState('2')
+  const [passengers, setPassengers] = useState('1')
   const [searched, setSearched] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -188,7 +188,7 @@ export function HomePage({
             </label>
 
             <label>
-              <span><Plane size={15} /> Indo para</span>
+              <span><Bus size={15} /> Indo para</span>
               <select value={destination} onChange={(event) => setDestination(event.target.value)}>
                 <option value="">Todos os destinos disponíveis</option>
                 {destinations.map((item) => <option key={item}>{item}</option>)}
@@ -287,7 +287,7 @@ export function HomePage({
                         <small>{trip.origin}</small>
                         <strong>{trip.destination}</strong>
                       </div>
-                      <Plane size={18} />
+                      <Bus size={18} />
                     </div>
 
                     <div className="public-trip-meta">
