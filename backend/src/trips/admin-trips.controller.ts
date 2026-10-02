@@ -7,10 +7,14 @@ import {
   ParseIntPipe,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common'
 import { UserRole } from '@prisma/client'
-import { JwtAuthGuard } from '../auth/jwt-auth.guard'
+import {
+  JwtAuthGuard,
+  type AuthenticatedRequest,
+} from '../auth/jwt-auth.guard'
 import { Roles } from '../auth/roles.decorator'
 import { RolesGuard } from '../auth/roles.guard'
 import {
@@ -57,8 +61,9 @@ export class AdminTripsController {
     @Param('id') id: string,
     @Param('seatNumber', ParseIntPipe) seatNumber: number,
     @Body() body: AssignSeatClientDto,
+    @Req() request: AuthenticatedRequest,
   ) {
-    return this.trips.assignClientToSeat(id, seatNumber, body)
+    return this.trips.assignClientToSeat(id, seatNumber, body, request.user.id)
   }
 
   @Patch(':id/seats/:seatNumber')
@@ -67,8 +72,20 @@ export class AdminTripsController {
     @Param('id') id: string,
     @Param('seatNumber', ParseIntPipe) seatNumber: number,
     @Body() body: UpdateSeatBlockDto,
+    @Req() request: AuthenticatedRequest,
   ) {
-    return this.trips.setSeatBlocked(id, seatNumber, body.blocked)
+    return this.trips.setSeatBlocked(
+      id,
+      seatNumber,
+      body.blocked,
+      request.user.id,
+    )
+  }
+
+  @Get(':id/audit')
+  @Roles(UserRole.ADMIN)
+  audit(@Param('id') id: string) {
+    return this.trips.operationalAudit(id)
   }
 
   @Get(':id/boarding')
@@ -82,11 +99,13 @@ export class AdminTripsController {
   bulkUpdateBoarding(
     @Param('id') id: string,
     @Body() body: BulkUpdateBoardingStatusDto,
+    @Req() request: AuthenticatedRequest,
   ) {
     return this.trips.bulkUpdateBoardingStatus(
       id,
       body.passengerIds,
       body.status,
+      request.user.id,
     )
   }
 
@@ -96,14 +115,23 @@ export class AdminTripsController {
     @Param('id') id: string,
     @Param('passengerId') passengerId: string,
     @Body() body: UpdateBoardingStatusDto,
+    @Req() request: AuthenticatedRequest,
   ) {
-    return this.trips.updateBoardingStatus(id, passengerId, body.status)
+    return this.trips.updateBoardingStatus(
+      id,
+      passengerId,
+      body.status,
+      request.user.id,
+    )
   }
 
   @Post(':id/complete')
   @Roles(UserRole.ADMIN)
-  complete(@Param('id') id: string) {
-    return this.trips.completeTrip(id)
+  complete(
+    @Param('id') id: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.trips.completeTrip(id, request.user.id)
   }
 
   @Patch(':id')
