@@ -29,6 +29,12 @@ enum ReservationStatus {
   COMPLETED
 }
 
+enum CancellationRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum QuoteStatus {
   DRAFT
   SENT
@@ -242,6 +248,12 @@ model Reservation {
   status         ReservationStatus @default(PENDING)
   passengerCount Int               @default(1)
   accessCodeHash String?
+  cancellationRequestStatus CancellationRequestStatus?
+  cancellationRequestedAt DateTime?
+  cancellationRequestReason String?
+  cancellationRequestResolvedAt DateTime?
+  cancellationRequestResolutionNote String?
+  cancellationRequestResolvedByUserId String?
   createdAt       DateTime          @default(now())
   updatedAt DateTime          @updatedAt
 
