@@ -1220,7 +1220,7 @@ export class TripsService {
     await this.prisma.trip.update({
       where: { id },
       data: {
-        imageData: file.buffer,
+        imageData: Uint8Array.from(file.buffer),
         imageMimeType: file.mimetype,
         imageUpdatedAt: new Date(),
         imageUrl: null,
