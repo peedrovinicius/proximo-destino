@@ -23,6 +23,7 @@ export type AdminClient = {
   email: string | null
   phone: string | null
   birthDate: string | null
+  document: string | null
   createdAt: string
   bonusBalanceCents: number
   _count: { companions: number; reservations: number }
@@ -92,6 +93,33 @@ export type AdminReservation = {
     totalCents: number
   } | null
   trip: { id: string; title: string; origin: string; destination: string; departureDate: string }
+}
+
+export type AdminClientDetail = {
+  id: string
+  fullName: string
+  email: string | null
+  phone: string | null
+  birthDate: string | null
+  document: string | null
+  notes: string | null
+  createdAt: string
+  updatedAt: string
+  companions: Array<{
+    id: string
+    fullName: string
+    document: string | null
+    birthDate: string | null
+    relationship: string | null
+  }>
+  reservations: Array<{
+    id: string
+    status: AdminReservation['status']
+    passengerCount: number
+    createdAt: string
+    seatAssignments: Array<{ seatNumber: number }>
+    trip: AdminTrip
+  }>
 }
 
 export type AdminClientCredits = {
@@ -771,6 +799,33 @@ export const adminApi = {
 
   clients: (token: string, query = '') =>
     adminFetch<AdminClient[]>(token, `/admin/clients${query ? `?q=${encodeURIComponent(query)}` : ''}`),
+
+  client: (token: string, clientId: string) =>
+    adminFetch<AdminClientDetail>(
+      token,
+      `/admin/clients/${encodeURIComponent(clientId)}`,
+    ),
+
+  updateClient: (
+    token: string,
+    clientId: string,
+    data: {
+      fullName?: string
+      email?: string
+      phone?: string
+      birthDate?: string | null
+      document?: string | null
+      notes?: string
+    },
+  ) =>
+    adminFetch<AdminClientDetail>(
+      token,
+      `/admin/clients/${encodeURIComponent(clientId)}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      },
+    ),
 
   clientCredits: (token: string, clientId: string) =>
     adminFetch<AdminClientCredits>(
