@@ -371,6 +371,7 @@ export class TripsService {
     id: string,
     seatNumber: number,
     data: AssignSeatClientDto,
+    actorUserId?: string,
   ) {
     const trip = await this.prisma.trip.findUnique({
       where: { id },
@@ -589,6 +590,22 @@ export class TripsService {
           },
         })
 
+        if (actorUserId) {
+          await tx.authAuditEvent.create({
+            data: {
+              userId: actorUserId,
+              eventType: 'OPS_SEAT_CLIENT_ASSIGNED',
+              metadata: {
+                tripId: id,
+                seatNumber,
+                clientId: client.id,
+                reservationId,
+                passengerId: passenger.id,
+              },
+            },
+          })
+        }
+
         if (trip.blockedSeats.includes(seatNumber)) {
           await tx.trip.update({
             where: { id },
@@ -613,7 +630,12 @@ export class TripsService {
     return this.findAdminSeatMap(id)
   }
 
-  async setSeatBlocked(id: string, seatNumber: number, blocked: boolean) {
+  async setSeatBlocked(
+    id: string,
+    seatNumber: number,
+    blocked: boolean,
+    actorUserId?: string,
+  ) {
     const trip = await this.prisma.trip.findUnique({
       where: { id },
       select: { capacity: true, blockedSeats: true },
@@ -645,9 +667,24 @@ export class TripsService {
       ? [...new Set([...trip.blockedSeats, seatNumber])].sort((a, b) => a - b)
       : trip.blockedSeats.filter((seat) => seat !== seatNumber)
 
-    await this.prisma.trip.update({
-      where: { id },
-      data: { blockedSeats: nextBlocked },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.trip.update({
+        where: { id },
+        data: { blockedSeats: nextBlocked },
+      })
+
+      if (actorUserId) {
+        await tx.authAuditEvent.create({
+          data: {
+            userId: actorUserId,
+            eventType: blocked ? 'OPS_SEAT_BLOCKED' : 'OPS_SEAT_RELEASED',
+            metadata: {
+              tripId: id,
+              seatNumber,
+            },
+          },
+        })
+      }
     })
 
     return this.findAdminSeatMap(id)
@@ -814,6 +851,7 @@ export class TripsService {
     id: string,
     passengerId: string,
     status: BoardingStatus,
+    actorUserId?: string,
   ) {
     const trip = await this.prisma.trip.findUnique({
       where: { id },
@@ -843,6 +881,9 @@ export class TripsService {
       select: {
         id: true,
         boardedAt: true,
+        boardingStatus: true,
+        reservationId: true,
+        seatAssignment: { select: { seatNumber: true } },
       },
     })
 
@@ -850,15 +891,34 @@ export class TripsService {
       throw new NotFoundException('Passageiro não encontrado nesta viagem')
     }
 
-    await this.prisma.reservationPassenger.update({
-      where: { id: passenger.id },
-      data: {
-        boardingStatus: status,
-        boardedAt:
-          status === BoardingStatus.BOARDED
-            ? passenger.boardedAt ?? new Date()
-            : null,
-      },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.reservationPassenger.update({
+        where: { id: passenger.id },
+        data: {
+          boardingStatus: status,
+          boardedAt:
+            status === BoardingStatus.BOARDED
+              ? passenger.boardedAt ?? new Date()
+              : null,
+        },
+      })
+
+      if (actorUserId) {
+        await tx.authAuditEvent.create({
+          data: {
+            userId: actorUserId,
+            eventType: 'OPS_BOARDING_UPDATED',
+            metadata: {
+              tripId: id,
+              passengerId: passenger.id,
+              reservationId: passenger.reservationId,
+              seatNumber: passenger.seatAssignment?.seatNumber ?? null,
+              fromStatus: passenger.boardingStatus,
+              toStatus: status,
+            },
+          },
+        })
+      }
     })
 
     return this.boardingList(id)
@@ -868,6 +928,7 @@ export class TripsService {
     id: string,
     passengerIds: string[],
     status: BoardingStatus,
+    actorUserId?: string,
   ) {
     const trip = await this.prisma.trip.findUnique({
       where: { id },
@@ -902,21 +963,38 @@ export class TripsService {
       )
     }
 
-    await this.prisma.reservationPassenger.updateMany({
-      where: { id: { in: passengerIds } },
-      data: {
-        boardingStatus: status,
-        boardedAt:
-          status === BoardingStatus.BOARDED
-            ? new Date()
-            : null,
-      },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.reservationPassenger.updateMany({
+        where: { id: { in: passengerIds } },
+        data: {
+          boardingStatus: status,
+          boardedAt:
+            status === BoardingStatus.BOARDED
+              ? new Date()
+              : null,
+        },
+      })
+
+      if (actorUserId) {
+        await tx.authAuditEvent.create({
+          data: {
+            userId: actorUserId,
+            eventType: 'OPS_BOARDING_BULK_UPDATED',
+            metadata: {
+              tripId: id,
+              passengerIds,
+              passengerCount: passengerIds.length,
+              toStatus: status,
+            },
+          },
+        })
+      }
     })
 
     return this.boardingList(id)
   }
 
-  async completeTrip(id: string) {
+  async completeTrip(id: string, actorUserId?: string) {
     const trip = await this.prisma.trip.findUnique({
       where: { id },
       select: { id: true, status: true },
@@ -957,11 +1035,64 @@ export class TripsService {
         data: { status: ReservationStatus.COMPLETED },
       })
 
+      if (actorUserId) {
+        await tx.authAuditEvent.create({
+          data: {
+            userId: actorUserId,
+            eventType: 'OPS_TRIP_COMPLETED',
+            metadata: { tripId: id },
+          },
+        })
+      }
+
       return tx.trip.update({
         where: { id },
         data: { status: TripStatus.COMPLETED },
       })
     })
+  }
+
+  async operationalAudit(id: string) {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        title: true,
+        origin: true,
+        destination: true,
+        departureDate: true,
+        status: true,
+      },
+    })
+
+    if (!trip) throw new NotFoundException('Viagem não encontrada')
+
+    const events = await this.prisma.authAuditEvent.findMany({
+      where: {
+        eventType: { startsWith: 'OPS_' },
+        metadata: {
+          path: ['tripId'],
+          equals: id,
+        },
+      },
+      select: {
+        id: true,
+        eventType: true,
+        metadata: true,
+        createdAt: true,
+        user: {
+          select: {
+            id: true,
+            email: true,
+            role: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    })
+
+    return { trip, events }
   }
 
   async findPublicById(id: string) {
