@@ -30,6 +30,16 @@ export type ClientPortalData = {
   passengerCount: number
   createdAt: string
   canEditPassengers: boolean
+  canRequestCancellation: boolean
+  cancellationRequestStatus: 'PENDING' | 'APPROVED' | 'REJECTED' | null
+  cancellationRequestedAt: string | null
+  cancellationRequestReason: string | null
+  cancellationRequestResolvedAt: string | null
+  cancellationRequestResolutionNote: string | null
+  cancellationFinancial: {
+    paidCents: number
+    reviewableCents: number
+  }
   canChangeSeats: boolean
   seatChangeCutoffAt: string
   seatMap: {
@@ -218,6 +228,23 @@ export async function updateClientSeats(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ selectedSeats }),
+  })
+
+  if (!response.ok) throw new Error(await parseError(response))
+  return response.json() as Promise<ClientPortalData>
+}
+
+export async function requestClientCancellation(
+  accessToken: string,
+  reason: string,
+) {
+  const response = await fetch(`${API_BASE}/client/cancellation-request`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ reason }),
   })
 
   if (!response.ok) throw new Error(await parseError(response))
