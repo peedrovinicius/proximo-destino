@@ -5,6 +5,7 @@ import { BadRequestException, ConflictException } from '@nestjs/common'
 import {
   BoardingStatus,
   ReservationStatus,
+  TravelDocumentType,
   TripStatus,
   UserRole,
 } from '@prisma/client'
@@ -19,6 +20,7 @@ describe('lista de embarque administrativa', () => {
   const clientId = `boarding-client-${suffix}`
   const reservationId = `boarding-reservation-${suffix}`
   const actorUserId = `boarding-actor-${suffix}`
+  const verificationCode = `QR${suffix}`.toUpperCase()
 
   before(async () => {
     await prisma.$connect()
@@ -68,9 +70,22 @@ describe('lista de embarque administrativa', () => {
         { reservationId, tripId, seatNumber: 2 },
       ],
     })
+
+    await prisma.travelDocument.create({
+      data: {
+        reservationId,
+        type: TravelDocumentType.TRAVEL_VOUCHER,
+        version: 1,
+        documentNumber: `PD-VCH-TEST-${suffix.toUpperCase()}`,
+        verificationCode,
+        snapshot: {},
+        issuedByUserId: actorUserId,
+      },
+    })
   })
 
   after(async () => {
+    await prisma.travelDocument.deleteMany({ where: { reservationId } })
     await prisma.reservation.deleteMany({ where: { id: reservationId } })
     await prisma.trip.deleteMany({ where: { id: tripId } })
     await prisma.client.deleteMany({ where: { id: clientId } })
@@ -87,6 +102,15 @@ describe('lista de embarque administrativa', () => {
     assert.equal(initial.summary.boarded, 0)
     assert.equal(initial.passengers[0]?.seatAssignment?.seatNumber, 1)
     assert.equal(initial.passengers[1]?.seatAssignment?.seatNumber, 2)
+
+    const scanned = await trips.scanBoardingQr(
+      tripId,
+      `https://api.example.com/api/v1/public/documents/verify/${verificationCode}`,
+      actorUserId,
+    )
+    assert.equal(scanned.reservationId, reservationId)
+    assert.equal(scanned.passengerIds.length, 2)
+    assert.equal(scanned.clientName, 'Titular Embarque')
 
     const first = initial.passengers[0]
     const second = initial.passengers[1]
@@ -182,6 +206,11 @@ describe('lista de embarque administrativa', () => {
     assert.ok(
       audit.events.some(
         (event) => event.eventType === 'OPS_BOARDING_UPDATED',
+      ),
+    )
+    assert.ok(
+      audit.events.some(
+        (event) => event.eventType === 'OPS_BOARDING_QR_SCANNED',
       ),
     )
     assert.ok(
