@@ -22,6 +22,9 @@ import { Brand } from '../../components/Brand'
 import { FinanceWorkspace, QuotesWorkspace } from './CommercialWorkspace'
 import { AdminSeatMapDialog } from './AdminSeatMap'
 import { ReservationPassengersDialog } from './ReservationPassengersDialog'
+import { ReservationCancelDialog } from './ReservationCancelDialog'
+import { ReservationBonusDialog } from './ReservationBonusDialog'
+import { ClientBonusDialog } from './ClientBonusDialog'
 import { TripBoardingDialog } from './TripBoardingDialog'
 import { TripAuditDialog } from './TripAuditDialog'
 import { TripPhotoPicker } from './TripPhotoPicker'
@@ -673,6 +676,7 @@ function ClientsView({
   const [phone, setPhone] = useState('')
   const [birthDate, setBirthDate] = useState('')
   const [saving, setSaving] = useState(false)
+  const [bonusClientId, setBonusClientId] = useState<string | null>(null)
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -712,11 +716,26 @@ function ClientsView({
             <div className="admin-table-row" key={client.id}>
               <div><strong>{client.fullName}</strong><span>{client.email || 'Sem e-mail'} · {client.phone || 'Sem telefone'}</span></div>
               <span>{client._count.companions} acompanhantes</span>
-              <span>{client._count.reservations} reservas</span>
+              <button
+                type="button"
+                className="admin-client-bonus-button"
+                onClick={() => setBonusClientId(client.id)}
+              >
+                Bônus {money.format(client.bonusBalanceCents / 100)}
+              </button>
             </div>
           )) : <p className="admin-empty">Nenhum cliente cadastrado ainda.</p>}
         </div>
       </article>
+
+      {bonusClientId ? (
+        <ClientBonusDialog
+          accessToken={accessToken}
+          clientId={bonusClientId}
+          onClose={() => setBonusClientId(null)}
+          onChanged={onChanged}
+        />
+      ) : null}
     </section>
   )
 }
@@ -1587,6 +1606,8 @@ function ReservationsView({
   const [tripId, setTripId] = useState('')
   const [saving, setSaving] = useState(false)
   const [passengersReservationId, setPassengersReservationId] = useState<string | null>(null)
+  const [cancelReservationId, setCancelReservationId] = useState<string | null>(null)
+  const [bonusReservationId, setBonusReservationId] = useState<string | null>(null)
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -1635,14 +1656,23 @@ function ReservationsView({
                   {reservation.seatAssignments.length
                     ? ' · Assentos ' + reservation.seatAssignments.map((seat) => seat.seatNumber).join(', ')
                     : ''}
+                  {reservation.client.bonusBalanceCents > 0
+                    ? ' · Bônus ' + money.format(reservation.client.bonusBalanceCents / 100)
+                    : ''}
                 </span>
               </div>
               <div className="admin-reservation-actions">
-                <select value={reservation.status} onChange={(e) => void changeStatus(reservation.id, e.target.value as AdminReservation['status'])}>
+                <select
+                  value={reservation.status}
+                  disabled={reservation.status === 'CANCELLED'}
+                  onChange={(e) => void changeStatus(reservation.id, e.target.value as AdminReservation['status'])}
+                >
                   <option value="PENDING">Pendente</option>
                   <option value="CONFIRMED">Confirmada</option>
                   <option value="COMPLETED">Concluída</option>
-                  <option value="CANCELLED">Cancelada</option>
+                  {reservation.status === 'CANCELLED' ? (
+                    <option value="CANCELLED">Cancelada</option>
+                  ) : null}
                 </select>
                 {canManagePassengers && reservation.status !== 'CANCELLED' ? (
                   <button
@@ -1650,6 +1680,29 @@ function ReservationsView({
                     onClick={() => setPassengersReservationId(reservation.id)}
                   >
                     Passageiros
+                  </button>
+                ) : null}
+                {canManagePassengers &&
+                reservation.status !== 'CANCELLED' &&
+                reservation.status !== 'COMPLETED' &&
+                reservation.client.bonusBalanceCents > 0 ? (
+                  <button
+                    type="button"
+                    className="admin-reservation-bonus"
+                    onClick={() => setBonusReservationId(reservation.id)}
+                  >
+                    Usar bônus
+                  </button>
+                ) : null}
+                {canManagePassengers &&
+                reservation.status !== 'CANCELLED' &&
+                reservation.status !== 'COMPLETED' ? (
+                  <button
+                    type="button"
+                    className="admin-reservation-cancel"
+                    onClick={() => setCancelReservationId(reservation.id)}
+                  >
+                    Cancelar
                   </button>
                 ) : null}
               </div>
@@ -1663,6 +1716,28 @@ function ReservationsView({
           accessToken={accessToken}
           reservationId={passengersReservationId}
           onClose={() => setPassengersReservationId(null)}
+          onChanged={onChanged}
+        />
+      ) : null}
+
+      {cancelReservationId ? (
+        <ReservationCancelDialog
+          accessToken={accessToken}
+          reservation={
+            reservations.find((item) => item.id === cancelReservationId)!
+          }
+          onClose={() => setCancelReservationId(null)}
+          onChanged={onChanged}
+        />
+      ) : null}
+
+      {bonusReservationId ? (
+        <ReservationBonusDialog
+          accessToken={accessToken}
+          reservation={
+            reservations.find((item) => item.id === bonusReservationId)!
+          }
+          onClose={() => setBonusReservationId(null)}
           onChanged={onChanged}
         />
       ) : null}
