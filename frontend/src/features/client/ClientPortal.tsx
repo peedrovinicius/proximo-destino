@@ -10,6 +10,9 @@ import {
   ShieldCheck,
   Users,
   WalletCards,
+  Gift,
+  ArrowDownCircle,
+  ArrowUpCircle,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Brand } from '../../components/Brand'
@@ -263,6 +266,66 @@ export function ClientPortal({ accessToken, onLogout }: ClientPortalProps) {
             <strong>{statusLabel[data.status]}</strong>
             <small>ID {data.id.slice(-8).toUpperCase()}</small>
           </article>
+        </section>
+
+        <section className="client-bonus-panel">
+          <div className="client-bonus-panel-main">
+            <span className="client-bonus-panel-icon"><Gift size={21} /></span>
+            <div>
+              <span className="eyebrow">Bônus Próximo Destino</span>
+              <h2>{money.format(data.bonus.balanceCents / 100)}</h2>
+              <p>
+                Saldo disponível para desconto em uma próxima viagem. A agência aplica o bônus antes de gerar o novo plano financeiro.
+              </p>
+            </div>
+          </div>
+
+          {data.bonus.transactions.length ? (
+            <div className="client-bonus-transactions">
+              {data.bonus.transactions.slice(0, 4).map((transaction) => (
+                <div className="client-bonus-transaction" key={transaction.id}>
+                  <span
+                    className={
+                      'client-bonus-transaction-icon ' +
+                      (transaction.amountCents > 0 ? 'positive' : 'negative')
+                    }
+                  >
+                    {transaction.amountCents > 0 ? (
+                      <ArrowUpCircle size={15} />
+                    ) : (
+                      <ArrowDownCircle size={15} />
+                    )}
+                  </span>
+                  <div>
+                    <strong>
+                      {transaction.type === 'CANCELLATION_CREDIT'
+                        ? 'Crédito por cancelamento'
+                        : transaction.type === 'BONUS_USED'
+                          ? 'Bônus usado em viagem'
+                          : 'Ajuste do bônus'}
+                    </strong>
+                    <span>
+                      {transaction.reservation?.trip.title ||
+                        transaction.note ||
+                        'Movimentação do saldo'}
+                    </span>
+                  </div>
+                  <strong
+                    className={
+                      transaction.amountCents > 0 ? 'positive' : 'negative'
+                    }
+                  >
+                    {transaction.amountCents > 0 ? '+' : '-'}
+                    {money.format(Math.abs(transaction.amountCents) / 100)}
+                  </strong>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <span className="client-bonus-empty">
+              Você ainda não possui movimentações de bônus.
+            </span>
+          )}
         </section>
 
         <ClientPassengersPanel
