@@ -1,4 +1,4 @@
-import { Armchair, Bus, Lock, Search, Unlock, UserPlus, X } from 'lucide-react'
+import { ArrowRightLeft, Armchair, Bus, Lock, Search, Unlock, UserPlus, X } from 'lucide-react'
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import {
   adminApi,
@@ -98,6 +98,9 @@ export function AdminSeatMapDialog({
   const [newClientPhone, setNewClientPhone] = useState('')
   const [newClientDocument, setNewClientDocument] = useState('')
   const [assigning, setAssigning] = useState(false)
+  const [movingFromSeat, setMovingFromSeat] = useState<number | null>(null)
+  const [moveTargetSeat, setMoveTargetSeat] = useState<number | null>(null)
+  const [movingSeat, setMovingSeat] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -170,6 +173,11 @@ export function AdminSeatMapDialog({
       data?.assignments.find((item) => item.seatNumber === selectedSeat) ?? null,
     [data?.assignments, selectedSeat],
   )
+  const movingAssignment = useMemo(
+    () =>
+      data?.assignments.find((item) => item.seatNumber === movingFromSeat) ?? null,
+    [data?.assignments, movingFromSeat],
+  )
 
   if (!data && !error) {
     return (
@@ -182,11 +190,86 @@ export function AdminSeatMapDialog({
   }
 
   function selectSeat(seatNumber: number) {
+    if (movingFromSeat !== null) {
+      if (seatNumber === movingFromSeat) {
+        setSelectedSeat(seatNumber)
+        setMoveTargetSeat(null)
+        setError('')
+        return
+      }
+
+      if (occupied.has(seatNumber)) {
+        setError('Escolha uma poltrona livre para fazer a troca.')
+        return
+      }
+
+      setSelectedSeat(seatNumber)
+      setMoveTargetSeat(seatNumber)
+      setAssignOpen(false)
+      setError('')
+      return
+    }
+
     setSelectedSeat(seatNumber)
     setAssignOpen(false)
     setSelectedClientId('')
     setClientQuery('')
+    setMoveTargetSeat(null)
     setError('')
+  }
+
+  function startMove(seatNumber: number) {
+    setMovingFromSeat(seatNumber)
+    setMoveTargetSeat(null)
+    setSelectedSeat(seatNumber)
+    setAssignOpen(false)
+    setError('')
+  }
+
+  function cancelMove() {
+    setMovingFromSeat(null)
+    setMoveTargetSeat(null)
+    setError('')
+  }
+
+  async function confirmMove() {
+    if (
+      movingFromSeat === null ||
+      moveTargetSeat === null ||
+      movingSeat
+    ) {
+      return
+    }
+
+    setMovingSeat(true)
+    setError('')
+
+    try {
+      const result = await adminApi.moveSeatAssignment(
+        accessToken,
+        tripId,
+        movingFromSeat,
+        moveTargetSeat,
+      )
+      setData(result)
+      setSelectedSeat(moveTargetSeat)
+      setMovingFromSeat(null)
+      setMoveTargetSeat(null)
+      await onChanged()
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'Não foi possível trocar a poltrona.',
+      )
+      try {
+        setData(await adminApi.seatMap(accessToken, tripId))
+      } catch {
+        // mantém o último estado visível
+      }
+    } finally {
+      setMovingSeat(false)
+    }
   }
 
   async function toggleSeatBlock(seatNumber: number) {
@@ -406,16 +489,23 @@ export function AdminSeatMapDialog({
                               className={
                                 'seat-item seat-item--' +
                                 state +
-                                (isFocused ? ' admin-seat-item--focused' : '')
+                                (isFocused ? ' admin-seat-item--focused' : '') +
+                                (movingFromSeat === seat ? ' admin-seat-item--move-source' : '') +
+                                (moveTargetSeat === seat ? ' admin-seat-item--move-target' : '') +
+                                (movingFromSeat !== null && !isOccupied && seat !== movingFromSeat
+                                  ? ' admin-seat-item--move-option'
+                                  : '')
                               }
                               onClick={() => selectSeat(seat)}
                               disabled={savingSeat === seat}
                               aria-label={
-                                isOccupied
-                                  ? 'Assento ' + seat + ', ocupado. Ver passageiro.'
-                                  : isBlocked
-                                    ? 'Assento ' + seat + ', bloqueado. Clique para gerenciar.'
-                                    : 'Assento ' + seat + ', disponível. Clique para gerenciar.'
+                                movingFromSeat !== null && !isOccupied
+                                  ? 'Assento ' + seat + ', disponível para troca.'
+                                  : isOccupied
+                                    ? 'Assento ' + seat + ', ocupado. Ver passageiro.'
+                                    : isBlocked
+                                      ? 'Assento ' + seat + ', bloqueado. Clique para gerenciar.'
+                                      : 'Assento ' + seat + ', disponível. Clique para gerenciar.'
                               }
                             >
                               <Armchair size={22} aria-hidden="true" />
@@ -442,7 +532,7 @@ export function AdminSeatMapDialog({
 
               <div className="admin-seat-manager-legend">
                 <span><i className="seat-legend-swatch available" />Disponível: cadastrar cliente ou bloquear</span>
-                <span><i className="seat-legend-swatch occupied" />Ocupado: clique para identificar</span>
+                <span><i className="seat-legend-swatch occupied" />Ocupado: identificar ou trocar poltrona</span>
                 <span><i className="seat-legend-swatch blocked" />Bloqueado: pode ser liberado ou usado pelo Admin</span>
               </div>
 
@@ -481,6 +571,16 @@ export function AdminSeatMapDialog({
                           ? 'Solicitação pelo site'
                           : 'Cadastro manual do Admin'}
                     </span>
+                    {movingFromSeat === null ? (
+                      <button
+                        type="button"
+                        className="admin-seat-move-start"
+                        onClick={() => startMove(selectedSeat)}
+                      >
+                        <ArrowRightLeft size={15} />
+                        Mover passageiro
+                      </button>
+                    ) : null}
                   </>
                 ) : blocked.has(selectedSeat) ? (
                   <>
@@ -516,6 +616,58 @@ export function AdminSeatMapDialog({
                   </>
                 )}
               </div>
+
+              {movingFromSeat !== null && movingAssignment ? (
+                <div className="admin-seat-move-panel">
+                  <div className="admin-seat-move-panel-head">
+                    <span>Troca de poltrona</span>
+                    <strong>
+                      {movingAssignment.passenger?.fullName ||
+                        movingAssignment.reservation.client.fullName}
+                    </strong>
+                  </div>
+
+                  <div className="admin-seat-move-route">
+                    <div>
+                      <span>Atual</span>
+                      <strong>{movingFromSeat}</strong>
+                    </div>
+                    <ArrowRightLeft size={18} />
+                    <div className={moveTargetSeat === null ? 'is-empty' : ''}>
+                      <span>Nova</span>
+                      <strong>{moveTargetSeat ?? '—'}</strong>
+                    </div>
+                  </div>
+
+                  <p>
+                    {moveTargetSeat === null
+                      ? 'Clique em uma poltrona livre no mapa para escolher o novo lugar.'
+                      : blocked.has(moveTargetSeat)
+                        ? 'Esta poltrona estava bloqueada pela agência e será liberada automaticamente ao confirmar.'
+                        : 'A reserva, passageiro e pagamento permanecerão os mesmos.'}
+                  </p>
+
+                  <div className="admin-seat-move-actions">
+                    <button
+                      type="button"
+                      className="confirm"
+                      disabled={moveTargetSeat === null || movingSeat}
+                      onClick={() => void confirmMove()}
+                    >
+                      <ArrowRightLeft size={14} />
+                      {movingSeat ? 'Movendo...' : 'Confirmar troca'}
+                    </button>
+                    <button
+                      type="button"
+                      className="cancel"
+                      disabled={movingSeat}
+                      onClick={cancelMove}
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              ) : null}
 
               {assignOpen && selectedSeat !== null && !assignment ? (
                 <div className="admin-seat-client-panel">
