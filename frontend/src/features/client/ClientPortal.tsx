@@ -6,7 +6,7 @@ import {
   FileText,
   Download,
   MapPin,
-  Plane,
+  Bus,
   ShieldCheck,
   Users,
   WalletCards,
@@ -223,7 +223,7 @@ export function ClientPortal({ accessToken, onLogout }: ClientPortalProps) {
           </div>
 
           <div className="client-hero-badge">
-            <Plane size={22} />
+            <Bus size={22} />
             <div>
               <strong>{data.trip.origin} → {data.trip.destination}</strong>
               <span>{date.format(new Date(data.trip.departureDate))}</span>
@@ -485,7 +485,7 @@ export function ClientPortal({ accessToken, onLogout }: ClientPortalProps) {
                 <span className="eyebrow">Viagem</span>
                 <h2>Resumo da operação</h2>
               </div>
-              <Plane size={20} />
+              <Bus size={20} />
             </div>
 
             <div className="timeline">
@@ -571,7 +571,7 @@ export function ClientPortal({ accessToken, onLogout }: ClientPortalProps) {
           <section className="client-commercial-section">
             <div className="light-panel-heading">
               <div><span className="eyebrow">Serviços contratados</span><h2>Operação da sua viagem</h2></div>
-              <Plane size={20} />
+              <Bus size={20} />
             </div>
             <div className="client-service-list">
               {data.services.map((service) => (
