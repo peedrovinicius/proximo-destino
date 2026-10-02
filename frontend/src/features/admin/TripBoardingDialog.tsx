@@ -121,7 +121,7 @@ export function TripBoardingDialog({
           ? cause.message
           : 'Não foi possível validar este QR Code.',
       )
-      setQrScanning(false)
+      setQrScanning(Boolean(streamRef.current))
     }
   }
 
@@ -154,6 +154,10 @@ export function TripBoardingDialog({
       })
       streamRef.current = stream
 
+      await new Promise<void>((resolve) =>
+        window.requestAnimationFrame(() => resolve()),
+      )
+
       const video = videoRef.current
       if (!video) {
         stopCamera()
@@ -177,7 +181,7 @@ export function TripBoardingDialog({
             const raw = codes.find((item) => item.rawValue)?.rawValue
             if (raw) {
               await processQrCode(raw)
-              return
+              if (!streamRef.current) return
             }
           } catch {
             // continua tentando enquanto a câmera estiver ativa
