@@ -13255,3 +13255,217 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
     width: 100%;
   }
 }
+
+
+/* Client cancellation request */
+
+.client-cancellation-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: 18px;
+  border: 1px solid #e1e7ec;
+  border-radius: 20px;
+  padding: 18px 20px;
+  background: #fff;
+  box-shadow: 0 16px 36px rgba(28,70,103,.06);
+}
+
+.client-cancellation-panel--pending {
+  border-color: #e9dfbd;
+  background: #fffdf7;
+}
+
+.client-cancellation-panel--approved {
+  border-color: #cee5d7;
+  background: #f8fcfa;
+}
+
+.client-cancellation-panel--rejected {
+  border-color: #ead7d5;
+  background: #fffafa;
+}
+
+.client-cancellation-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  min-width: 0;
+}
+
+.client-cancellation-icon {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  place-items: center;
+  border-radius: 14px;
+  color: #8a615d;
+  background: #f8eeee;
+}
+
+.client-cancellation-main > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.client-cancellation-main h2 {
+  margin: 0;
+  color: #334f63;
+  font: 700 16px 'Manrope', sans-serif;
+}
+
+.client-cancellation-main p {
+  max-width: 690px;
+  margin: 0;
+  color: #748795;
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.client-cancellation-main small {
+  color: #8796a1;
+  font-size: 8px;
+}
+
+.client-cancellation-value {
+  margin-top: 4px;
+  color: #486a82;
+  font-size: 9px;
+}
+
+.client-cancellation-request,
+.client-cancellation-form button {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 11px;
+  padding: 0 15px;
+  color: #fff;
+  background: #9b5550;
+  font-size: 9px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.client-cancellation-form {
+  display: grid;
+  width: min(430px, 100%);
+  gap: 10px;
+}
+
+.client-cancellation-form label {
+  display: grid;
+  gap: 6px;
+  color: #657b8b;
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.client-cancellation-form textarea {
+  width: 100%;
+  min-height: 82px;
+  resize: vertical;
+  border: 1px solid #d9e2e8;
+  border-radius: 11px;
+  padding: 10px 11px;
+  color: #304d62;
+  background: #fff;
+  font: inherit;
+  font-size: 9px;
+  line-height: 1.5;
+  outline: 0;
+}
+
+.client-cancellation-form textarea:focus {
+  border-color: #bdcfdc;
+  box-shadow: 0 0 0 3px rgba(57,105,134,.08);
+}
+
+.client-cancellation-form > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.client-cancellation-form button.secondary {
+  border: 1px solid #d7e0e6;
+  color: #607687;
+  background: #fff;
+}
+
+.client-cancellation-form button:disabled,
+.client-cancellation-request:disabled {
+  opacity: .48;
+  cursor: not-allowed;
+}
+
+.reservation-cancel-request-note {
+  display: grid;
+  gap: 4px;
+  margin: 0 18px 14px;
+  border: 1px solid #d9e6ef;
+  border-radius: 12px;
+  padding: 12px 13px;
+  background: #f7fbfe;
+}
+
+.reservation-cancel-request-note strong {
+  color: #315f7e;
+  font-size: 9px;
+}
+
+.reservation-cancel-request-note span {
+  color: #627b8d;
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.reservation-cancel-request-note small {
+  color: #8a99a4;
+  font-size: 7px;
+}
+
+.admin-cancellation-request-badge {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 5px;
+  border-radius: 999px;
+  padding: 5px 8px;
+  color: #86651f;
+  background: #fff5d9;
+  font-size: 7px;
+  font-weight: 800;
+}
+
+.admin-cancellation-request-badge--rejected {
+  color: #8c5954;
+  background: #fff0ee;
+}
+
+@media (max-width: 720px) {
+  .client-cancellation-panel {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 16px;
+  }
+
+  .client-cancellation-form {
+    width: 100%;
+  }
+
+  .client-cancellation-form > div {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .client-cancellation-request,
+  .client-cancellation-form button {
+    width: 100%;
+  }
+}
