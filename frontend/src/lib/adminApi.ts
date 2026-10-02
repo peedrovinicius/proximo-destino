@@ -279,6 +279,28 @@ export type AdminSeatMap = {
 
 export type BoardingStatus = 'PENDING' | 'BOARDED' | 'ABSENT'
 
+export type AdminOperationalAudit = {
+  trip: {
+    id: string
+    title: string
+    origin: string
+    destination: string
+    departureDate: string
+    status: AdminTrip['status']
+  }
+  events: Array<{
+    id: string
+    eventType: string
+    metadata: Record<string, unknown> | null
+    createdAt: string
+    user: {
+      id: string
+      email: string
+      role: string
+    } | null
+  }>
+}
+
 export type AdminBoardingList = {
   trip: {
     id: string
@@ -398,6 +420,12 @@ export const adminApi = {
     adminFetch<AdminBoardingList>(
       token,
       `/admin/trips/${encodeURIComponent(tripId)}/boarding`,
+    ),
+
+  operationalAudit: (token: string, tripId: string) =>
+    adminFetch<AdminOperationalAudit>(
+      token,
+      `/admin/trips/${encodeURIComponent(tripId)}/audit`,
     ),
 
   completeTrip: (token: string, tripId: string) =>
