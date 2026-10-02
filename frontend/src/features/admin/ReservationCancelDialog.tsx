@@ -21,13 +21,40 @@ export function ReservationCancelDialog({
   onChanged,
 }: Props) {
   const [creditAsBonus, setCreditAsBonus] = useState(true)
-  const [reason, setReason] = useState('')
+  const [reason, setReason] = useState(
+    reservation.cancellationRequestReason ?? '',
+  )
   const [submitting, setSubmitting] = useState(false)
+  const [rejecting, setRejecting] = useState(false)
   const [result, setResult] = useState<{
     paidCents: number
     bonusGrantedCents: number
   } | null>(null)
   const [error, setError] = useState('')
+
+  async function rejectRequest() {
+    if (submitting || rejecting) return
+
+    setRejecting(true)
+    setError('')
+    try {
+      await adminApi.rejectCancellationRequest(
+        accessToken,
+        reservation.id,
+        reason.trim() || undefined,
+      )
+      await onChanged()
+      onClose()
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'Não foi possível recusar a solicitação.',
+      )
+    } finally {
+      setRejecting(false)
+    }
+  }
 
   async function confirm() {
     if (submitting) return
@@ -70,7 +97,11 @@ export function ReservationCancelDialog({
       >
         <header>
           <div>
-            <span>Cancelamento da reserva</span>
+            <span>
+              {reservation.cancellationRequestStatus === 'PENDING'
+                ? 'Solicitação de cancelamento'
+                : 'Cancelamento da reserva'}
+            </span>
             <h2 id="reservation-cancel-title">{reservation.client.fullName}</h2>
             <small>{reservation.trip.title}</small>
           </div>
@@ -97,6 +128,25 @@ export function ReservationCancelDialog({
           </div>
         ) : (
           <>
+            {reservation.cancellationRequestStatus === 'PENDING' ? (
+              <div className="reservation-cancel-request-note">
+                <strong>Solicitado pelo passageiro</strong>
+                <span>
+                  {reservation.cancellationRequestReason ||
+                    'O passageiro não informou um motivo adicional.'}
+                </span>
+                {reservation.cancellationRequestedAt ? (
+                  <small>
+                    Enviado em{' '}
+                    {new Intl.DateTimeFormat('pt-BR', {
+                      dateStyle: 'medium',
+                      timeStyle: 'short',
+                    }).format(new Date(reservation.cancellationRequestedAt))}
+                  </small>
+                ) : null}
+              </div>
+            ) : null}
+
             <div className="reservation-cancel-warning">
               <Ban size={19} />
               <div>
@@ -136,18 +186,32 @@ export function ReservationCancelDialog({
               <button
                 type="button"
                 className="secondary"
-                disabled={submitting}
+                disabled={submitting || rejecting}
                 onClick={onClose}
               >
                 Voltar
               </button>
+              {reservation.cancellationRequestStatus === 'PENDING' ? (
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={submitting || rejecting}
+                  onClick={() => void rejectRequest()}
+                >
+                  {rejecting ? 'Recusando...' : 'Recusar solicitação'}
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="danger"
-                disabled={submitting}
+                disabled={submitting || rejecting}
                 onClick={() => void confirm()}
               >
-                {submitting ? 'Cancelando...' : 'Confirmar cancelamento'}
+                {submitting
+                  ? 'Cancelando...'
+                  : reservation.cancellationRequestStatus === 'PENDING'
+                    ? 'Aprovar e cancelar'
+                    : 'Confirmar cancelamento'}
               </button>
             </div>
           </>
