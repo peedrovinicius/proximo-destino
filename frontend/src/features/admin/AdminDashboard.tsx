@@ -26,6 +26,7 @@ import { ReservationCancelDialog } from './ReservationCancelDialog'
 import { ReservationBonusDialog } from './ReservationBonusDialog'
 import { ReservationFinanceDialog } from './ReservationFinanceDialog'
 import { ClientBonusDialog } from './ClientBonusDialog'
+import { ClientDataDialog } from './ClientDataDialog'
 import { TripBoardingDialog } from './TripBoardingDialog'
 import { TripAuditDialog } from './TripAuditDialog'
 import { TripPhotoPicker } from './TripPhotoPicker'
@@ -45,6 +46,7 @@ import {
   type VehicleFeature,
 } from '../../lib/adminApi'
 import { openWhatsApp, openWhatsAppTo } from '../../lib/whatsapp'
+import { cpfDigits, formatCpf, isValidCpf } from '../../lib/cpf'
 
 type AdminDashboardProps = {
   accessToken: string
@@ -840,24 +842,43 @@ function ClientsView({
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [birthDate, setBirthDate] = useState('')
+  const [cpf, setCpf] = useState('')
   const [saving, setSaving] = useState(false)
+  const [clientError, setClientError] = useState('')
   const [bonusClientId, setBonusClientId] = useState<string | null>(null)
+  const [dataClientId, setDataClientId] = useState<string | null>(null)
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+
+    const normalizedCpf = cpfDigits(cpf)
+    if (normalizedCpf && !isValidCpf(normalizedCpf)) {
+      setClientError('Informe um CPF válido.')
+      return
+    }
+
     setSaving(true)
+    setClientError('')
     try {
       await adminApi.createClient(accessToken, {
         fullName,
         email: email || undefined,
         phone: phone || undefined,
         birthDate: birthDate ? `${birthDate}T12:00:00.000Z` : undefined,
+        document: normalizedCpf || undefined,
       })
       setFullName('')
       setEmail('')
       setPhone('')
       setBirthDate('')
+      setCpf('')
       await onChanged()
+    } catch (cause) {
+      setClientError(
+        cause instanceof Error
+          ? cause.message
+          : 'Não foi possível cadastrar o cliente.',
+      )
     } finally {
       setSaving(false)
     }
@@ -867,9 +888,17 @@ function ClientsView({
     <section className="admin-workspace">
       <form className="admin-form-panel" onSubmit={submit}>
         <div><span className="eyebrow">Novo cadastro</span><h2>Cliente</h2></div>
+        {clientError ? <div className="admin-error" role="alert">{clientError}</div> : null}
         <input placeholder="Nome completo" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
+        <input
+          placeholder="CPF"
+          value={cpf}
+          onChange={(e) => setCpf(formatCpf(e.target.value))}
+          inputMode="numeric"
+          maxLength={14}
+        />
         <input type="email" placeholder="E-mail" value={email} onChange={(e) => setEmail(e.target.value)} />
-        <input placeholder="Telefone" value={phone} onChange={(e) => setPhone(e.target.value)} />
+        <input placeholder="Telefone / WhatsApp" value={phone} onChange={(e) => setPhone(e.target.value)} />
         <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
         <button type="submit" disabled={saving}>{saving ? 'Salvando...' : 'Cadastrar cliente'}</button>
       </form>
@@ -878,16 +907,31 @@ function ClientsView({
         <div className="admin-panel-heading"><div><span className="eyebrow">Base real</span><h2>Clientes</h2></div><strong>{clients.length}</strong></div>
         <div className="admin-table">
           {clients.length ? clients.map((client) => (
-            <div className="admin-table-row" key={client.id}>
-              <div><strong>{client.fullName}</strong><span>{client.email || 'Sem e-mail'} · {client.phone || 'Sem telefone'}</span></div>
+            <div className="admin-table-row admin-table-row--client" key={client.id}>
+              <div>
+                <strong>{client.fullName}</strong>
+                <span>
+                  {client.document ? `CPF ${formatCpf(client.document)} · ` : 'CPF não informado · '}
+                  {client.email || 'Sem e-mail'} · {client.phone || 'Sem telefone'}
+                </span>
+              </div>
               <span>{client._count.companions} acompanhantes</span>
-              <button
-                type="button"
-                className="admin-client-bonus-button"
-                onClick={() => setBonusClientId(client.id)}
-              >
-                Bônus {money.format(client.bonusBalanceCents / 100)}
-              </button>
+              <div className="admin-client-row-actions">
+                <button
+                  type="button"
+                  className="admin-client-data-button"
+                  onClick={() => setDataClientId(client.id)}
+                >
+                  Dados
+                </button>
+                <button
+                  type="button"
+                  className="admin-client-bonus-button"
+                  onClick={() => setBonusClientId(client.id)}
+                >
+                  Bônus {money.format(client.bonusBalanceCents / 100)}
+                </button>
+              </div>
             </div>
           )) : <p className="admin-empty">Nenhum cliente cadastrado ainda.</p>}
         </div>
@@ -898,6 +942,15 @@ function ClientsView({
           accessToken={accessToken}
           clientId={bonusClientId}
           onClose={() => setBonusClientId(null)}
+          onChanged={onChanged}
+        />
+      ) : null}
+
+      {dataClientId ? (
+        <ClientDataDialog
+          accessToken={accessToken}
+          clientId={dataClientId}
+          onClose={() => setDataClientId(null)}
           onChanged={onChanged}
         />
       ) : null}
