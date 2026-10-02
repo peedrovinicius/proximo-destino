@@ -67,6 +67,7 @@ export type AdminTrip = {
   vehicleFeatures: VehicleFeature[] | null
   blockedSeats: number[]
   priceCents: number | null
+  imageUrl: string | null
   _count: { reservations: number }
 }
 
@@ -592,6 +593,7 @@ export const adminApi = {
       vehicleFeatures?: VehicleFeature[] | null
       blockedSeats?: number[]
       priceCents?: number
+      imageUrl?: string
     },
   ) =>
     adminFetch<AdminTrip>(token, '/admin/trips', {
@@ -610,6 +612,7 @@ export const adminApi = {
       lowerDeckCapacity?: number | null
       vehicleFeatures?: VehicleFeature[] | null
       blockedSeats?: number[]
+      imageUrl?: string | null
     },
   ) =>
     adminFetch<AdminTrip>(token, `/admin/trips/${encodeURIComponent(id)}`, {
