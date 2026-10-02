@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, describe, it } from 'node:test'
 import { BadRequestException, ConflictException } from '@nestjs/common'
-import { BoardingStatus, TripStatus } from '@prisma/client'
+import { BoardingStatus, ReservationStatus, TripStatus } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { TripsService } from '../trips/trips.service'
 
@@ -76,6 +76,13 @@ describe('lista de embarque administrativa', () => {
     assert.ok(first)
     assert.ok(second)
 
+    await assert.rejects(
+      () => trips.completeTrip(tripId),
+      (error: unknown) =>
+        error instanceof ConflictException &&
+        error.message.includes('aguardando definição de embarque'),
+    )
+
     const bulkBoarded = await trips.bulkUpdateBoardingStatus(
       tripId,
       [first.id, second.id],
@@ -134,10 +141,14 @@ describe('lista de embarque administrativa', () => {
     assert.equal(absent.summary.absent, 1)
     assert.equal(absent.summary.pending, 0)
 
-    await prisma.trip.update({
-      where: { id: tripId },
-      data: { status: TripStatus.COMPLETED },
+    const completed = await trips.completeTrip(tripId)
+    assert.equal(completed?.status, TripStatus.COMPLETED)
+
+    const completedReservation = await prisma.reservation.findUnique({
+      where: { id: reservationId },
+      select: { status: true },
     })
+    assert.equal(completedReservation?.status, ReservationStatus.COMPLETED)
 
     await assert.rejects(
       () =>
