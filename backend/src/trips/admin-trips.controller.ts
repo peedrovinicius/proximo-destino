@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -8,9 +9,12 @@ import {
   Post,
   Query,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common'
 import { UserRole } from '@prisma/client'
+import { FileInterceptor } from '@nestjs/platform-express'
 import {
   JwtAuthGuard,
   type AuthenticatedRequest,
@@ -43,10 +47,37 @@ export class AdminTripsController {
     return this.trips.listAdmin(query)
   }
 
+  @Get('image-suggestions')
+  @Roles(UserRole.ADMIN, UserRole.AGENT)
+  imageSuggestions(@Query('q') query?: string) {
+    return this.trips.imageSuggestions(query)
+  }
+
   @Post()
   @Roles(UserRole.ADMIN, UserRole.AGENT)
   create(@Body() body: CreateTripDto) {
     return this.trips.create(body)
+  }
+
+  @Post(':id/image')
+  @Roles(UserRole.ADMIN, UserRole.AGENT)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 2_500_000 },
+    }),
+  )
+  uploadImage(
+    @Param('id') id: string,
+    @UploadedFile()
+    file?: { buffer: Buffer; mimetype: string; size: number },
+  ) {
+    return this.trips.uploadTripImage(id, file)
+  }
+
+  @Delete(':id/image')
+  @Roles(UserRole.ADMIN, UserRole.AGENT)
+  clearImage(@Param('id') id: string) {
+    return this.trips.clearTripImage(id)
   }
 
   @Get(':id/seats')
