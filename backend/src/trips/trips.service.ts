@@ -659,6 +659,173 @@ export class TripsService {
     return this.findAdminSeatMap(id)
   }
 
+  async moveSeatAssignment(
+    id: string,
+    fromSeatNumber: number,
+    toSeatNumber: number,
+    actorUserId?: string,
+  ) {
+    if (fromSeatNumber === toSeatNumber) {
+      throw new BadRequestException('Escolha uma poltrona diferente da atual')
+    }
+
+    const trip = await this.prisma.trip.findUnique({
+      where: { id },
+      select: {
+        status: true,
+        capacity: true,
+        blockedSeats: true,
+      },
+    })
+
+    if (!trip) throw new NotFoundException('Viagem não encontrada')
+    if (
+      trip.status === TripStatus.CANCELLED ||
+      trip.status === TripStatus.COMPLETED
+    ) {
+      throw new ConflictException(
+        'Não é possível trocar poltronas nesta viagem',
+      )
+    }
+    if (trip.capacity === null || trip.capacity < 1 || trip.capacity > 80) {
+      throw new BadRequestException(
+        'Esta viagem não possui mapa de assentos ativo',
+      )
+    }
+    if (
+      !Number.isInteger(fromSeatNumber) ||
+      !Number.isInteger(toSeatNumber) ||
+      fromSeatNumber < 1 ||
+      toSeatNumber < 1 ||
+      fromSeatNumber > trip.capacity ||
+      toSeatNumber > trip.capacity
+    ) {
+      throw new BadRequestException('Assento fora da capacidade do veículo')
+    }
+
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        const source = await tx.seatAssignment.findUnique({
+          where: {
+            tripId_seatNumber: {
+              tripId: id,
+              seatNumber: fromSeatNumber,
+            },
+          },
+          select: {
+            id: true,
+            reservationId: true,
+            passengerId: true,
+            reservation: {
+              select: {
+                status: true,
+                purchaseOrder: { select: { id: true } },
+                accessCodeHash: true,
+              },
+            },
+          },
+        })
+
+        if (
+          !source ||
+          source.reservation.status === ReservationStatus.CANCELLED
+        ) {
+          throw new NotFoundException(
+            'Não há passageiro ativo nesta poltrona',
+          )
+        }
+
+        const target = await tx.seatAssignment.findUnique({
+          where: {
+            tripId_seatNumber: {
+              tripId: id,
+              seatNumber: toSeatNumber,
+            },
+          },
+          select: {
+            id: true,
+            reservation: {
+              select: {
+                status: true,
+                purchaseOrder: { select: { id: true } },
+              },
+            },
+          },
+        })
+
+        if (
+          target &&
+          target.reservation.status !== ReservationStatus.CANCELLED
+        ) {
+          if (target.reservation.purchaseOrder) {
+            throw new ConflictException(
+              'A poltrona de destino pertence a uma compra online e está protegida',
+            )
+          }
+          throw new ConflictException(
+            'A poltrona de destino já está ocupada',
+          )
+        }
+
+        if (target) {
+          await tx.seatAssignment.delete({
+            where: { id: target.id },
+          })
+        }
+
+        await tx.seatAssignment.update({
+          where: { id: source.id },
+          data: { seatNumber: toSeatNumber },
+        })
+
+        if (trip.blockedSeats.includes(toSeatNumber)) {
+          await tx.trip.update({
+            where: { id },
+            data: {
+              blockedSeats: trip.blockedSeats.filter(
+                (seat) => seat !== toSeatNumber,
+              ),
+            },
+          })
+        }
+
+        if (actorUserId) {
+          await tx.authAuditEvent.create({
+            data: {
+              userId: actorUserId,
+              eventType: 'OPS_SEAT_MOVED',
+              metadata: {
+                tripId: id,
+                reservationId: source.reservationId,
+                passengerId: source.passengerId,
+                fromSeatNumber,
+                toSeatNumber,
+                source:
+                  source.reservation.purchaseOrder
+                    ? 'ONLINE_PURCHASE'
+                    : source.reservation.accessCodeHash
+                      ? 'PUBLIC_RESERVATION'
+                      : 'ADMIN_RESERVATION',
+              },
+            },
+          })
+        }
+      })
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'A poltrona de destino acabou de ser ocupada. Atualize o mapa e escolha outra.',
+        )
+      }
+      throw error
+    }
+
+    return this.findAdminSeatMap(id)
+  }
+
   async setSeatBlocked(
     id: string,
     seatNumber: number,
