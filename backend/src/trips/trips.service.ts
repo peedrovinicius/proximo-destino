@@ -916,6 +916,54 @@ export class TripsService {
     return this.boardingList(id)
   }
 
+  async completeTrip(id: string) {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id },
+      select: { id: true, status: true },
+    })
+
+    if (!trip) throw new NotFoundException('Viagem não encontrada')
+    if (trip.status === TripStatus.CANCELLED) {
+      throw new ConflictException('Uma viagem cancelada não pode ser concluída')
+    }
+    if (trip.status === TripStatus.COMPLETED) {
+      return this.prisma.trip.findUnique({ where: { id } })
+    }
+
+    await this.ensureTripPassengers(id)
+
+    const pending = await this.prisma.reservationPassenger.count({
+      where: {
+        boardingStatus: BoardingStatus.PENDING,
+        reservation: {
+          tripId: id,
+          status: { not: ReservationStatus.CANCELLED },
+        },
+      },
+    })
+
+    if (pending > 0) {
+      throw new ConflictException(
+        `Ainda há ${pending} passageiro(s) aguardando definição de embarque`,
+      )
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.reservation.updateMany({
+        where: {
+          tripId: id,
+          status: { not: ReservationStatus.CANCELLED },
+        },
+        data: { status: ReservationStatus.COMPLETED },
+      })
+
+      return tx.trip.update({
+        where: { id },
+        data: { status: TripStatus.COMPLETED },
+      })
+    })
+  }
+
   async findPublicById(id: string) {
     const trip = await this.prisma.trip.findFirst({
       where: {
@@ -1016,6 +1064,10 @@ export class TripsService {
   }
 
   async update(id: string, data: UpdateTripDto) {
+    if (data.status === TripStatus.COMPLETED) {
+      return this.completeTrip(id)
+    }
+
     const existing = await this.prisma.trip.findUnique({
       where: { id },
       select: {
