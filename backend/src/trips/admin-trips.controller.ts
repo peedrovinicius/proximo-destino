@@ -25,6 +25,7 @@ import {
   AssignSeatClientDto,
   BulkUpdateBoardingStatusDto,
   CreateTripDto,
+  MoveSeatAssignmentDto,
   UpdateBoardingStatusDto,
   UpdateSeatBlockDto,
   UpdateTripDto,
@@ -95,6 +96,22 @@ export class AdminTripsController {
     @Req() request: AuthenticatedRequest,
   ) {
     return this.trips.assignClientToSeat(id, seatNumber, body, request.user.id)
+  }
+
+  @Patch(':id/seats/:seatNumber/assignment')
+  @Roles(UserRole.ADMIN)
+  moveSeatAssignment(
+    @Param('id') id: string,
+    @Param('seatNumber', ParseIntPipe) seatNumber: number,
+    @Body() body: MoveSeatAssignmentDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.trips.moveSeatAssignment(
+      id,
+      seatNumber,
+      body.toSeatNumber,
+      request.user.id,
+    )
   }
 
   @Patch(':id/seats/:seatNumber')
