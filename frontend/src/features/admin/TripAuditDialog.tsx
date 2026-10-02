@@ -1,5 +1,6 @@
 import {
   Armchair,
+  ArrowRightLeft,
   CheckCircle2,
   Clock3,
   History,
@@ -25,6 +26,7 @@ const eventLabels: Record<string, string> = {
   OPS_SEAT_CLIENT_ASSIGNED: 'Cliente cadastrado na poltrona',
   OPS_SEAT_BLOCKED: 'Poltrona bloqueada',
   OPS_SEAT_RELEASED: 'Poltrona liberada',
+  OPS_SEAT_MOVED: 'Passageiro mudou de poltrona',
   OPS_BOARDING_UPDATED: 'Embarque atualizado',
   OPS_BOARDING_BULK_UPDATED: 'Embarque em massa atualizado',
   OPS_TRIP_COMPLETED: 'Viagem concluída',
@@ -32,6 +34,7 @@ const eventLabels: Record<string, string> = {
 
 function EventIcon({ eventType }: { eventType: string }) {
   if (eventType === 'OPS_SEAT_CLIENT_ASSIGNED') return <UserPlus size={16} />
+  if (eventType === 'OPS_SEAT_MOVED') return <ArrowRightLeft size={16} />
   if (eventType === 'OPS_SEAT_BLOCKED') return <Lock size={16} />
   if (eventType === 'OPS_SEAT_RELEASED') return <Unlock size={16} />
   if (eventType === 'OPS_TRIP_COMPLETED') return <CheckCircle2 size={16} />
@@ -58,6 +61,21 @@ function metaText(
 
   if (eventType === 'OPS_SEAT_BLOCKED' || eventType === 'OPS_SEAT_RELEASED') {
     return seat
+  }
+
+  if (eventType === 'OPS_SEAT_MOVED') {
+    const from =
+      typeof metadata.fromSeatNumber === 'number'
+        ? 'Poltrona ' + metadata.fromSeatNumber
+        : ''
+    const to =
+      typeof metadata.toSeatNumber === 'number'
+        ? 'Poltrona ' + metadata.toSeatNumber
+        : ''
+    return [
+      from && to ? from + ' → ' + to : from || to,
+      reservation,
+    ].filter(Boolean).join(' · ')
   }
 
   if (eventType === 'OPS_BOARDING_UPDATED') {
