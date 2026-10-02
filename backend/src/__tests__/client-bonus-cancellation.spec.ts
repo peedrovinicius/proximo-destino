@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, describe, it } from 'node:test'
+import { ConfigService } from '@nestjs/config'
+import { JwtService } from '@nestjs/jwt'
 import {
+  CancellationRequestStatus,
   PurchasePaymentMethod,
   PurchaseStatus,
   QuoteStatus,
@@ -11,12 +14,20 @@ import {
 } from '@prisma/client'
 import { AdminService } from '../admin/admin.service'
 import { ClientsService } from '../clients/clients.service'
+import { PortalService } from '../portal/portal.service'
 import { PrismaService } from '../prisma/prisma.service'
 
 describe('cancelamento com bônus do cliente', () => {
   const prisma = new PrismaService()
   const admin = new AdminService(prisma)
   const clients = new ClientsService(prisma)
+  const portal = new PortalService(
+    prisma,
+    new JwtService(),
+    new ConfigService({
+      JWT_ACCESS_SECRET: 'cancellation-request-test-secret',
+    }),
+  )
   const suffix = randomUUID().slice(0, 8)
 
   const actorId = `bonus-actor-${suffix}`
@@ -154,7 +165,19 @@ describe('cancelamento com bônus do cliente', () => {
     await prisma.$disconnect()
   })
 
-  it('cancela, libera assento e converte pagamento em bônus uma única vez', async () => {
+  it('solicita, aprova, cancela, libera assento e converte pagamento em bônus uma única vez', async () => {
+    const request = await portal.requestCancellation(
+      clientId,
+      reservationId,
+      'Mudança de planos do passageiro',
+    )
+
+    assert.equal(
+      request.cancellationRequestStatus,
+      CancellationRequestStatus.PENDING,
+    )
+    assert.equal(request.cancellationFinancial.reviewableCents, 32000)
+
     const result = await admin.cancelReservation(
       reservationId,
       true,
@@ -169,12 +192,17 @@ describe('cancelamento com bônus do cliente', () => {
       where: { id: reservationId },
       select: {
         status: true,
+        cancellationRequestStatus: true,
         seatAssignments: true,
         purchaseOrder: { select: { status: true } },
       },
     })
 
     assert.equal(reservation?.status, ReservationStatus.CANCELLED)
+    assert.equal(
+      reservation?.cancellationRequestStatus,
+      CancellationRequestStatus.APPROVED,
+    )
     assert.equal(reservation?.seatAssignments.length, 0)
     assert.equal(
       reservation?.purchaseOrder?.status,
@@ -201,6 +229,45 @@ describe('cancelamento com bônus do cliente', () => {
         (item) => item.type === 'CANCELLATION_CREDIT',
       ).length,
       1,
+    )
+  })
+
+  it('permite ao administrador recusar a solicitação sem cancelar a reserva', async () => {
+    const request = await portal.requestCancellation(
+      clientId,
+      nextReservationId,
+      'Quero avaliar outra data',
+    )
+
+    assert.equal(
+      request.cancellationRequestStatus,
+      CancellationRequestStatus.PENDING,
+    )
+
+    const rejected = await admin.rejectCancellationRequest(
+      nextReservationId,
+      'A agência entrou em contato e manteve a viagem.',
+      actorId,
+    )
+    assert.equal(rejected.rejected, true)
+
+    const reservation = await prisma.reservation.findUniqueOrThrow({
+      where: { id: nextReservationId },
+      select: {
+        status: true,
+        cancellationRequestStatus: true,
+        cancellationRequestResolutionNote: true,
+      },
+    })
+
+    assert.equal(reservation.status, ReservationStatus.CONFIRMED)
+    assert.equal(
+      reservation.cancellationRequestStatus,
+      CancellationRequestStatus.REJECTED,
+    )
+    assert.match(
+      reservation.cancellationRequestResolutionNote ?? '',
+      /manteve a viagem/i,
     )
   })
 
