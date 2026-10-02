@@ -68,6 +68,8 @@ export type AdminTrip = {
   blockedSeats: number[]
   priceCents: number | null
   imageUrl: string | null
+  hasUploadedImage: boolean
+  imageUpdatedAt: string | null
   _count: { reservations: number }
 }
 
@@ -280,6 +282,15 @@ export type AdminSeatMap = {
 
 export type BoardingStatus = 'PENDING' | 'BOARDED' | 'ABSENT'
 
+export type TripImageSuggestion = {
+  id: string
+  title: string
+  imageUrl: string
+  sourceUrl: string
+  author: string | null
+  license: string | null
+}
+
 export type AdminOperationalAudit = {
   trip: {
     id: string
@@ -390,14 +401,16 @@ async function adminFetch<T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
+  const headers = new Headers(init.headers)
+  headers.set('Authorization', `Bearer ${accessToken}`)
+  if (!(init.body instanceof FormData)) {
+    headers.set('Content-Type', 'application/json')
+  }
+
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${accessToken}`,
-      ...(init.headers || {}),
-    },
+    headers,
   })
 
   if (!response.ok) {
@@ -414,6 +427,16 @@ async function adminFetch<T>(
 
   if (response.status === 204) return undefined as T
   return response.json() as Promise<T>
+}
+
+export function adminTripImageUrl(trip: Pick<AdminTrip, 'id' | 'imageUrl' | 'hasUploadedImage' | 'imageUpdatedAt'>) {
+  if (trip.hasUploadedImage) {
+    const version = trip.imageUpdatedAt
+      ? '?v=' + encodeURIComponent(trip.imageUpdatedAt)
+      : ''
+    return `${API_BASE}/public/trips/${encodeURIComponent(trip.id)}/image${version}`
+  }
+  return trip.imageUrl
 }
 
 export const adminApi = {
@@ -575,6 +598,29 @@ export const adminApi = {
 
   busTemplates: (token: string) =>
     adminFetch<BusTemplateOption[]>(token, '/admin/trips/bus-templates'),
+
+  imageSuggestions: (token: string, query: string) =>
+    adminFetch<TripImageSuggestion[]>(
+      token,
+      `/admin/trips/image-suggestions?q=${encodeURIComponent(query)}`,
+    ),
+
+  uploadTripImage: (token: string, tripId: string, file: Blob, filename = 'viagem.webp') => {
+    const form = new FormData()
+    form.append('file', file, filename)
+    return adminFetch<AdminTrip>(
+      token,
+      `/admin/trips/${encodeURIComponent(tripId)}/image`,
+      { method: 'POST', body: form },
+    )
+  },
+
+  clearTripImage: (token: string, tripId: string) =>
+    adminFetch<AdminTrip>(
+      token,
+      `/admin/trips/${encodeURIComponent(tripId)}/image`,
+      { method: 'DELETE' },
+    ),
 
   createTrip: (
     token: string,
