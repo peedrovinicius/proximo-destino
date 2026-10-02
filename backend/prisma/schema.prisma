@@ -85,6 +85,12 @@ enum BoardingStatus {
   ABSENT
 }
 
+enum ClientCreditTransactionType {
+  CANCELLATION_CREDIT
+  BONUS_USED
+  BONUS_REMOVED
+}
+
 model User {
   id                        String    @id @default(cuid())
   email                     String    @unique
@@ -109,6 +115,7 @@ model User {
   issuedDocuments   TravelDocument[]
   paymentConnections PaymentProviderConnection[] @relation("PaymentConnectionOwner")
   paymentOauthStates PaymentOAuthState[]
+  creditTransactions ClientCreditTransaction[] @relation("CreditActor")
 
   @@index([role, isActive])
 }
@@ -173,6 +180,7 @@ model Client {
   user         User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
   companions   Companion[]
   reservations Reservation[]
+  creditTransactions ClientCreditTransaction[]
 
   @@index([fullName])
   @@index([birthDate])
@@ -244,6 +252,7 @@ model Reservation {
   documents       TravelDocument[]
   seatAssignments SeatAssignment[]
   passengers      ReservationPassenger[]
+  creditTransactions ClientCreditTransaction[]
 
   @@unique([clientId, tripId])
   @@index([tripId, status])
@@ -418,6 +427,25 @@ model TravelDocument {
   @@index([reservationId, type, issuedAt])
 }
 
+
+model ClientCreditTransaction {
+  id            String                      @id @default(cuid())
+  clientId      String
+  reservationId String?
+  type          ClientCreditTransactionType
+  amountCents   Int
+  note          String?
+  sourceKey     String?                     @unique
+  actorUserId   String?
+  createdAt     DateTime                    @default(now())
+
+  client      Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  reservation Reservation? @relation(fields: [reservationId], references: [id], onDelete: SetNull)
+  actor       User?        @relation("CreditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([clientId, createdAt])
+  @@index([reservationId])
+}
 
 model PaymentProviderConnection {
   id                    String   @id @default(cuid())
