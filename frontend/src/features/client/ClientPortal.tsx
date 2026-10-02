@@ -14,6 +14,7 @@ import {
   ArrowDownCircle,
   ArrowUpCircle,
   Armchair,
+  Ban,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Brand } from '../../components/Brand'
@@ -25,6 +26,7 @@ import {
   fetchClientPortal,
   openClientDocumentPdf,
   rejectClientQuote,
+  requestClientCancellation,
   retryClientPayment,
   updateClientSeats,
   type ClientPaymentStartResult,
@@ -89,6 +91,9 @@ export function ClientPortal({ accessToken, onLogout }: ClientPortalProps) {
   const [pixCopied, setPixCopied] = useState(false)
   const [seatSelectorOpen, setSeatSelectorOpen] = useState(false)
   const [seatSaving, setSeatSaving] = useState(false)
+  const [cancellationOpen, setCancellationOpen] = useState(false)
+  const [cancellationReason, setCancellationReason] = useState('')
+  const [cancellationSubmitting, setCancellationSubmitting] = useState(false)
 
   async function loadPortal() {
     setError('')
@@ -200,6 +205,30 @@ export function ClientPortal({ accessToken, onLogout }: ClientPortalProps) {
       )
     } finally {
       setSeatSaving(false)
+    }
+  }
+
+  async function submitCancellationRequest() {
+    const reason = cancellationReason.trim()
+    if (reason.length < 5) {
+      setError('Informe brevemente o motivo do cancelamento.')
+      return
+    }
+
+    setCancellationSubmitting(true)
+    setError('')
+    try {
+      setData(await requestClientCancellation(accessToken, reason))
+      setCancellationOpen(false)
+      setCancellationReason('')
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'Não foi possível enviar a solicitação de cancelamento.',
+      )
+    } finally {
+      setCancellationSubmitting(false)
     }
   }
 
@@ -421,6 +450,108 @@ export function ClientPortal({ accessToken, onLogout }: ClientPortalProps) {
             </div>
           </section>
         ) : null}
+
+        <section
+          className={
+            'client-cancellation-panel' +
+            (data.cancellationRequestStatus
+              ? ' client-cancellation-panel--' +
+                data.cancellationRequestStatus.toLowerCase()
+              : '')
+          }
+        >
+          <div className="client-cancellation-main">
+            <span className="client-cancellation-icon">
+              <Ban size={21} />
+            </span>
+            <div>
+              <span className="eyebrow">Cancelamento</span>
+              <h2>
+                {data.cancellationRequestStatus === 'PENDING'
+                  ? 'Solicitação enviada para análise'
+                  : data.cancellationRequestStatus === 'APPROVED'
+                    ? 'Cancelamento aprovado'
+                    : data.cancellationRequestStatus === 'REJECTED'
+                      ? 'Solicitação não aprovada'
+                      : 'Precisa cancelar esta viagem?'}
+              </h2>
+              <p>
+                {data.cancellationRequestStatus === 'PENDING'
+                  ? 'A agência vai analisar sua solicitação antes de cancelar a reserva, liberar as poltronas e definir bônus ou estorno.'
+                  : data.cancellationRequestStatus === 'APPROVED'
+                    ? 'A reserva foi cancelada pela agência conforme a análise da solicitação.'
+                    : data.cancellationRequestStatus === 'REJECTED'
+                      ? data.cancellationRequestResolutionNote ||
+                        'A agência não aprovou esta solicitação. Fale com o atendimento se precisar revisar o caso.'
+                      : 'Envie o pedido por aqui. A reserva não é cancelada automaticamente.'}
+              </p>
+              {data.cancellationRequestReason ? (
+                <small>Motivo informado: {data.cancellationRequestReason}</small>
+              ) : null}
+              {data.cancellationFinancial.reviewableCents > 0 ? (
+                <strong className="client-cancellation-value">
+                  Valor pago identificado para análise:{' '}
+                  {money.format(data.cancellationFinancial.reviewableCents / 100)}
+                </strong>
+              ) : null}
+            </div>
+          </div>
+
+          {data.canRequestCancellation ? (
+            cancellationOpen ? (
+              <div className="client-cancellation-form">
+                <label>
+                  <span>Motivo do cancelamento</span>
+                  <textarea
+                    value={cancellationReason}
+                    onChange={(event) =>
+                      setCancellationReason(event.target.value)
+                    }
+                    maxLength={500}
+                    placeholder="Explique brevemente por que deseja cancelar a viagem."
+                  />
+                </label>
+                <div>
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={cancellationSubmitting}
+                    onClick={() => setCancellationOpen(false)}
+                  >
+                    Voltar
+                  </button>
+                  <button
+                    type="button"
+                    disabled={cancellationSubmitting}
+                    onClick={() => void submitCancellationRequest()}
+                  >
+                    {cancellationSubmitting
+                      ? 'Enviando...'
+                      : 'Enviar solicitação'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="client-cancellation-request"
+                onClick={() => {
+                  setCancellationReason(
+                    data.cancellationRequestStatus === 'REJECTED'
+                      ? data.cancellationRequestReason ?? ''
+                      : '',
+                  )
+                  setCancellationOpen(true)
+                }}
+              >
+                <Ban size={16} />
+                {data.cancellationRequestStatus === 'REJECTED'
+                  ? 'Solicitar novamente'
+                  : 'Solicitar cancelamento'}
+              </button>
+            )
+          ) : null}
+        </section>
 
         {data.purchaseOrder ? (
           <section className="client-payment-panel">
