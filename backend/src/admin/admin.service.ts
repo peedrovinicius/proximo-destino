@@ -7,6 +7,7 @@ import {
   Optional,
 } from '@nestjs/common'
 import {
+  CancellationRequestStatus,
   ClientCreditTransactionType,
   InstallmentStatus,
   PurchaseStatus,
@@ -98,6 +99,11 @@ export class AdminService {
         id: true,
         status: true,
         passengerCount: true,
+        cancellationRequestStatus: true,
+        cancellationRequestedAt: true,
+        cancellationRequestReason: true,
+        cancellationRequestResolvedAt: true,
+        cancellationRequestResolutionNote: true,
         seatAssignments: {
           select: { seatNumber: true },
           orderBy: { seatNumber: 'asc' },
@@ -998,6 +1004,7 @@ export class AdminService {
         id: true,
         clientId: true,
         status: true,
+        cancellationRequestStatus: true,
         purchaseOrder: {
           select: {
             id: true,
@@ -1100,7 +1107,20 @@ export class AdminService {
 
       await tx.reservation.update({
         where: { id },
-        data: { status: ReservationStatus.CANCELLED },
+        data: {
+          status: ReservationStatus.CANCELLED,
+          ...(reservation.cancellationRequestStatus ===
+          CancellationRequestStatus.PENDING
+            ? {
+                cancellationRequestStatus:
+                  CancellationRequestStatus.APPROVED,
+                cancellationRequestResolvedAt: new Date(),
+                cancellationRequestResolutionNote:
+                  reason?.trim() || 'Solicitação aprovada pelo administrador',
+                cancellationRequestResolvedByUserId: actorUserId,
+              }
+            : {}),
+        },
       })
 
       if (creditAsBonus && paidCents > 0) {
@@ -1145,6 +1165,58 @@ export class AdminService {
       paidCents,
       bonusGrantedCents,
     }
+  }
+
+  async rejectCancellationRequest(
+    id: string,
+    note: string | undefined,
+    actorUserId: string,
+  ) {
+    const reservation = await this.prisma.reservation.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        clientId: true,
+        cancellationRequestStatus: true,
+      },
+    })
+
+    if (!reservation) throw new NotFoundException('Reserva não encontrada')
+    if (
+      reservation.cancellationRequestStatus !==
+      CancellationRequestStatus.PENDING
+    ) {
+      throw new ConflictException(
+        'Não há solicitação de cancelamento aguardando análise',
+      )
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.reservation.update({
+        where: { id },
+        data: {
+          cancellationRequestStatus: CancellationRequestStatus.REJECTED,
+          cancellationRequestResolvedAt: new Date(),
+          cancellationRequestResolutionNote:
+            note?.trim() || 'Solicitação recusada pelo administrador',
+          cancellationRequestResolvedByUserId: actorUserId,
+        },
+      })
+
+      await tx.authAuditEvent.create({
+        data: {
+          userId: actorUserId,
+          eventType: 'OPS_CANCELLATION_REQUEST_REJECTED',
+          metadata: {
+            reservationId: id,
+            clientId: reservation.clientId,
+            note: note?.trim() || null,
+          },
+        },
+      })
+    })
+
+    return { rejected: true }
   }
 
   async applyBonus(
