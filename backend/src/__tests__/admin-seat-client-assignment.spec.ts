@@ -180,6 +180,45 @@ describe('cadastro manual de cliente por poltrona', () => {
     )
   })
 
+  it('move passageiro para poltrona livre sem recriar a reserva', async () => {
+    const before = await trips.findAdminSeatMap(tripId)
+    const source = before.assignments.find((item) => item.seatNumber === 2)
+    assert.ok(source)
+
+    const moved = await trips.moveSeatAssignment(
+      tripId,
+      2,
+      4,
+      actorUserId,
+    )
+
+    const target = moved.assignments.find((item) => item.seatNumber === 4)
+    assert.ok(target)
+    assert.equal(
+      moved.assignments.some((item) => item.seatNumber === 2),
+      false,
+    )
+    assert.equal(target.reservation.id, source.reservation.id)
+    assert.equal(target.reservation.client.id, existingClientId)
+    assert.equal(target.source, 'ADMIN_RESERVATION')
+
+    await assert.rejects(
+      () => trips.moveSeatAssignment(tripId, 4, 1, actorUserId),
+      (error: unknown) =>
+        error instanceof ConflictException &&
+        error.message.includes('compra online'),
+    )
+
+    const audit = await trips.operationalAudit(tripId)
+    const event = audit.events.find(
+      (item) => item.eventType === 'OPS_SEAT_MOVED',
+    )
+    assert.ok(event)
+    assert.equal(event.user?.id, actorUserId)
+    assert.equal(event.metadata?.fromSeatNumber, 2)
+    assert.equal(event.metadata?.toSeatNumber, 4)
+  })
+
   it('protege poltrona comprada diretamente pelo site', async () => {
     await assert.rejects(
       () =>
