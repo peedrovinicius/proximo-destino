@@ -133,3 +133,10 @@ export class UpdateClientSeatsDto {
   @Max(80, { each: true })
   selectedSeats!: number[]
 }
+
+export class RequestCancellationDto {
+  @IsString()
+  @MinLength(5)
+  @MaxLength(500)
+  reason!: string
+}
