@@ -1276,6 +1276,7 @@ function TripBusControl({
           accessToken={accessToken}
           tripId={trip.id}
           onClose={() => setShowBoarding(false)}
+          onCompleted={onChanged}
         />
       ) : null}
     </form>
