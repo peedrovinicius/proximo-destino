@@ -10343,3 +10343,336 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
     min-height: 68px;
   }
 }
+
+
+/* Complete trip photo picker */
+
+.trip-photo-picker {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #dfe7ee;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.admin-trip-photo-editor {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.trip-photo-picker-preview {
+  position: relative;
+  display: grid;
+  min-height: 168px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 12px;
+  background-position: center;
+  background-size: cover;
+  box-shadow: inset 0 0 0 1px rgba(23,52,77,.06);
+}
+
+.trip-photo-picker-preview.is-empty {
+  background:
+    radial-gradient(circle at 20% 18%, rgba(255,255,255,.72), transparent 30%),
+    linear-gradient(135deg, #e4eef5 0%, #f7fafc 52%, #dce8f1 100%);
+}
+
+.trip-photo-picker-preview.is-empty > div {
+  display: grid;
+  max-width: 280px;
+  place-items: center;
+  gap: 5px;
+  color: #638096;
+  text-align: center;
+}
+
+.trip-photo-picker-preview.is-empty svg {
+  color: #2677d9;
+}
+
+.trip-photo-picker-preview.is-empty strong {
+  color: #31526b;
+  font-size: 9px;
+}
+
+.trip-photo-picker-preview.is-empty span {
+  color: #7e8f9d;
+  font-size: 7px;
+  line-height: 1.45;
+}
+
+.trip-photo-picker-selected {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  border-radius: 999px;
+  padding: 5px 8px;
+  color: #214d6f;
+  background: rgba(255,255,255,.9);
+  font-size: 7px;
+  font-weight: 800;
+  backdrop-filter: blur(10px);
+}
+
+.trip-photo-picker-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.trip-photo-picker-actions button {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid #dbe5ec;
+  border-radius: 9px;
+  padding: 0 9px;
+  color: #45657e;
+  background: #fff;
+  font-size: 7px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.trip-photo-picker-actions button.active {
+  border-color: #b8d4eb;
+  color: #1f639d;
+  background: #edf5fd;
+}
+
+.trip-photo-picker-actions button.danger {
+  color: #98443e;
+  background: #fff8f7;
+}
+
+.trip-photo-picker-actions button:disabled {
+  opacity: .48;
+  cursor: not-allowed;
+}
+
+.trip-photo-picker-file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.trip-photo-picker-processing {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #5f788b;
+  font-size: 8px;
+}
+
+.trip-photo-picker-processing .spin {
+  animation: trip-photo-spin .9s linear infinite;
+}
+
+@keyframes trip-photo-spin {
+  to { transform: rotate(360deg); }
+}
+
+.trip-photo-picker-url {
+  display: grid;
+  gap: 6px;
+}
+
+.trip-photo-picker-url > span {
+  color: #4c687d;
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.trip-photo-picker-url input,
+.trip-photo-suggestions-search input {
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  border: 1px solid #dbe4eb;
+  border-radius: 9px;
+  padding: 0 10px;
+  color: #183044;
+  background: #fff;
+  font-size: 8px;
+  outline: 0;
+}
+
+.trip-photo-picker-url input:focus,
+.trip-photo-suggestions-search input:focus {
+  border-color: #9dc2e4;
+  box-shadow: 0 0 0 3px rgba(38,119,217,.08);
+}
+
+.trip-photo-picker-url small {
+  color: #80909d;
+  font-size: 7px;
+}
+
+.trip-photo-suggestions {
+  display: grid;
+  gap: 9px;
+}
+
+.trip-photo-suggestions-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px;
+}
+
+.trip-photo-suggestions-search label {
+  position: relative;
+  min-width: 0;
+}
+
+.trip-photo-suggestions-search label svg {
+  position: absolute;
+  top: 50%;
+  left: 10px;
+  color: #8294a2;
+  transform: translateY(-50%);
+}
+
+.trip-photo-suggestions-search input {
+  padding-left: 32px;
+}
+
+.trip-photo-suggestions-search > button {
+  min-height: 38px;
+  border: 0;
+  border-radius: 9px;
+  padding: 0 13px;
+  color: #fff;
+  background: #2677d9;
+  font-size: 8px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.trip-photo-suggestions-search > button:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.trip-photo-suggestions-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.trip-photo-suggestion {
+  display: grid;
+  grid-template-columns: 94px minmax(0, 1fr);
+  gap: 9px;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #e0e8ee;
+  border-radius: 11px;
+  padding: 0;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.trip-photo-suggestion:hover {
+  border-color: #b9d2e6;
+  box-shadow: 0 8px 20px rgba(34,73,105,.07);
+}
+
+.trip-photo-suggestion-image {
+  min-height: 74px;
+  background-position: center;
+  background-size: cover;
+}
+
+.trip-photo-suggestion-copy {
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px 8px 8px 0;
+}
+
+.trip-photo-suggestion-copy strong,
+.trip-photo-suggestion-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trip-photo-suggestion-copy strong {
+  color: #315069;
+  font-size: 8px;
+  white-space: nowrap;
+}
+
+.trip-photo-suggestion-copy small {
+  display: -webkit-box;
+  color: #83929d;
+  font-size: 7px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.trip-photo-suggestions-empty {
+  display: flex;
+  min-height: 76px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px dashed #d9e4eb;
+  border-radius: 10px;
+  color: #718798;
+  font-size: 8px;
+  background: #fff;
+}
+
+.trip-photo-suggestions-empty svg {
+  color: #2677d9;
+}
+
+.trip-photo-picker-error {
+  border-radius: 9px;
+  padding: 8px 9px;
+  color: #9b403a;
+  background: #fff1f0;
+  font-size: 8px;
+}
+
+.admin-bus-control .admin-trip-photo-editor {
+  grid-column: 1 / -1;
+}
+
+.admin-bus-control .trip-photo-picker-preview {
+  min-height: 120px;
+}
+
+@media (max-width: 720px) {
+  .trip-photo-picker-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .trip-photo-picker-actions button {
+    width: 100%;
+  }
+
+  .trip-photo-suggestions-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .trip-photo-suggestions-search {
+    grid-template-columns: 1fr;
+  }
+
+  .trip-photo-suggestions-search > button {
+    width: 100%;
+  }
+}
