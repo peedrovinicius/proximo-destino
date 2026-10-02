@@ -4,6 +4,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common'
 import {
   ClientCreditTransactionType,
@@ -23,10 +24,13 @@ import { CreateReservationDto, UpdateReservationPassengersDto } from './dto/rese
 export class AdminService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly paymentConnection: PaymentConnectionService,
+    @Optional() private readonly paymentConnection?: PaymentConnectionService,
   ) {}
 
   private async mercadoPagoClient() {
+    if (!this.paymentConnection) {
+      throw new BadGatewayException('Integração financeira indisponível')
+    }
     const accessToken = await this.paymentConnection.getAccessToken()
     return new MercadoPagoConfig({
       accessToken,
