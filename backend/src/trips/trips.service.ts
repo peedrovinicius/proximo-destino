@@ -85,6 +85,28 @@ function normalizeBlockedSeats(
   return normalized
 }
 
+type StoredTripImageFile = {
+  buffer: Buffer
+  mimetype: string
+  size: number
+}
+
+type WikimediaImageInfo = {
+  url?: string
+  thumburl?: string
+  descriptionurl?: string
+  mime?: string
+  extmetadata?: Record<string, { value?: string }>
+}
+
+function stripHtml(value: string | undefined) {
+  return (value ?? '')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .trim()
+}
+
 @Injectable()
 export class TripsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -109,7 +131,7 @@ export class TripsService {
       dateFilter = { gte: new Date() }
     }
 
-    return this.prisma.trip.findMany({
+    const trips = await this.prisma.trip.findMany({
       where: {
         status: { in: [TripStatus.ACTIVE, TripStatus.SCHEDULED] },
         departureDate: dateFilter,
@@ -133,11 +155,18 @@ export class TripsService {
         priceCents: true,
         summary: true,
         imageUrl: true,
+        imageMimeType: true,
+        imageUpdatedAt: true,
         status: true,
       },
       orderBy: [{ departureDate: 'asc' }, { destination: 'asc' }],
       take: 100,
     })
+
+    return trips.map(({ imageMimeType, ...trip }) => ({
+      ...trip,
+      hasUploadedImage: Boolean(imageMimeType),
+    }))
   }
 
   async findPublicSeatMap(id: string) {
@@ -1095,6 +1124,156 @@ export class TripsService {
     return { trip, events }
   }
 
+  async imageSuggestions(query?: string) {
+    const normalized = query?.trim()
+    if (!normalized || normalized.length < 2) return []
+
+    const params = new URLSearchParams({
+      action: 'query',
+      generator: 'search',
+      gsrsearch: normalized + ' turismo',
+      gsrnamespace: '6',
+      gsrlimit: '12',
+      prop: 'imageinfo',
+      iiprop: 'url|mime|extmetadata',
+      iiurlwidth: '1200',
+      format: 'json',
+      origin: '*',
+    })
+
+    try {
+      const response = await fetch(
+        `https://commons.wikimedia.org/w/api.php?${params.toString()}`,
+        {
+          headers: {
+            'User-Agent':
+              'ProximoDestino/1.0 (travel image suggestions; contact via application administrator)',
+          },
+          signal: AbortSignal.timeout(6500),
+        },
+      )
+
+      if (!response.ok) return []
+
+      const payload = (await response.json()) as {
+        query?: {
+          pages?: Record<
+            string,
+            {
+              pageid?: number
+              title?: string
+              imageinfo?: WikimediaImageInfo[]
+            }
+          >
+        }
+      }
+
+      return Object.values(payload.query?.pages ?? {})
+        .map((page) => {
+          const info = page.imageinfo?.[0]
+          const mime = info?.mime ?? ''
+          if (
+            !info?.url ||
+            !info.thumburl ||
+            !['image/jpeg', 'image/png', 'image/webp'].includes(mime)
+          ) {
+            return null
+          }
+
+          const metadata = info.extmetadata ?? {}
+          return {
+            id: String(page.pageid ?? info.url),
+            title: page.title?.replace(/^File:/, '') ?? normalized,
+            imageUrl: info.thumburl,
+            sourceUrl: info.descriptionurl ?? info.url,
+            author: stripHtml(metadata.Artist?.value) || null,
+            license:
+              stripHtml(metadata.LicenseShortName?.value) ||
+              stripHtml(metadata.UsageTerms?.value) ||
+              null,
+          }
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null)
+        .slice(0, 8)
+    } catch {
+      return []
+    }
+  }
+
+  async uploadTripImage(id: string, file?: StoredTripImageFile) {
+    if (!file) throw new BadRequestException('Selecione uma imagem para enviar')
+
+    const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp']
+    if (!allowedMimeTypes.includes(file.mimetype)) {
+      throw new BadRequestException('Envie uma imagem JPG, PNG ou WebP')
+    }
+    if (file.size < 1 || file.size > 2_500_000) {
+      throw new BadRequestException('A imagem deve ter no máximo 2,5 MB')
+    }
+
+    const exists = await this.prisma.trip.findUnique({
+      where: { id },
+      select: { id: true },
+    })
+    if (!exists) throw new NotFoundException('Viagem não encontrada')
+
+    await this.prisma.trip.update({
+      where: { id },
+      data: {
+        imageData: file.buffer,
+        imageMimeType: file.mimetype,
+        imageUpdatedAt: new Date(),
+        imageUrl: null,
+      },
+    })
+
+    return this.findAdminTrip(id)
+  }
+
+  async clearTripImage(id: string) {
+    const exists = await this.prisma.trip.findUnique({
+      where: { id },
+      select: { id: true },
+    })
+    if (!exists) throw new NotFoundException('Viagem não encontrada')
+
+    await this.prisma.trip.update({
+      where: { id },
+      data: {
+        imageData: null,
+        imageMimeType: null,
+        imageUpdatedAt: null,
+        imageUrl: null,
+      },
+    })
+
+    return this.findAdminTrip(id)
+  }
+
+  async publicTripImage(id: string) {
+    const image = await this.prisma.trip.findFirst({
+      where: {
+        id,
+        status: { in: [TripStatus.ACTIVE, TripStatus.SCHEDULED] },
+      },
+      select: {
+        imageData: true,
+        imageMimeType: true,
+        imageUpdatedAt: true,
+      },
+    })
+
+    if (!image?.imageData || !image.imageMimeType) {
+      throw new NotFoundException('Imagem não encontrada')
+    }
+
+    return {
+      data: image.imageData,
+      mimeType: image.imageMimeType,
+      updatedAt: image.imageUpdatedAt,
+    }
+  }
+
   async findPublicById(id: string) {
     const trip = await this.prisma.trip.findFirst({
       where: {
@@ -1114,18 +1293,59 @@ export class TripsService {
         priceCents: true,
         summary: true,
         imageUrl: true,
+        imageMimeType: true,
+        imageUpdatedAt: true,
         status: true,
       },
     })
 
     if (!trip) throw new NotFoundException('Viagem não encontrada')
-    return trip
+    const { imageMimeType, ...publicTrip } = trip
+    return {
+      ...publicTrip,
+      hasUploadedImage: Boolean(imageMimeType),
+    }
   }
 
-  listAdmin(query?: string) {
+  private async findAdminTrip(id: string) {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        title: true,
+        origin: true,
+        destination: true,
+        departureDate: true,
+        returnDate: true,
+        status: true,
+        capacity: true,
+        busTemplate: true,
+        seatLayout: true,
+        deckCount: true,
+        lowerDeckCapacity: true,
+        vehicleFeatures: true,
+        blockedSeats: true,
+        priceCents: true,
+        summary: true,
+        imageUrl: true,
+        imageMimeType: true,
+        imageUpdatedAt: true,
+        _count: { select: { reservations: true } },
+      },
+    })
+
+    if (!trip) throw new NotFoundException('Viagem não encontrada')
+    const { imageMimeType, ...adminTrip } = trip
+    return {
+      ...adminTrip,
+      hasUploadedImage: Boolean(imageMimeType),
+    }
+  }
+
+  async listAdmin(query?: string) {
     const q = query?.trim()
 
-    return this.prisma.trip.findMany({
+    const trips = await this.prisma.trip.findMany({
       where: q
         ? {
             OR: [
@@ -1135,13 +1355,39 @@ export class TripsService {
             ],
           }
         : undefined,
-      include: { _count: { select: { reservations: true } } },
+      select: {
+        id: true,
+        title: true,
+        origin: true,
+        destination: true,
+        departureDate: true,
+        returnDate: true,
+        status: true,
+        capacity: true,
+        busTemplate: true,
+        seatLayout: true,
+        deckCount: true,
+        lowerDeckCapacity: true,
+        vehicleFeatures: true,
+        blockedSeats: true,
+        priceCents: true,
+        summary: true,
+        imageUrl: true,
+        imageMimeType: true,
+        imageUpdatedAt: true,
+        _count: { select: { reservations: true } },
+      },
       orderBy: { departureDate: 'asc' },
       take: 100,
     })
+
+    return trips.map(({ imageMimeType, ...trip }) => ({
+      ...trip,
+      hasUploadedImage: Boolean(imageMimeType),
+    }))
   }
 
-  create(data: CreateTripDto) {
+  async create(data: CreateTripDto) {
     const busConfig = data.busTemplate
       ? resolveBusTemplate(
           data.busTemplate,
@@ -1172,7 +1418,7 @@ export class TripsService {
       ? normalizeBlockedSeats(data.blockedSeats, capacity)
       : []
 
-    return this.prisma.trip.create({
+    const created = await this.prisma.trip.create({
       data: {
         title: data.title.trim(),
         origin: data.origin.trim(),
@@ -1191,7 +1437,10 @@ export class TripsService {
         summary: data.summary?.trim(),
         imageUrl: data.imageUrl?.trim(),
       },
+      select: { id: true },
     })
+
+    return this.findAdminTrip(created.id)
   }
 
   async update(id: string, data: UpdateTripDto) {
@@ -1319,7 +1568,7 @@ export class TripsService {
       }
     }
 
-    return this.prisma.trip.update({
+    await this.prisma.trip.update({
       where: { id },
       data: {
         title: data.title?.trim(),
@@ -1341,7 +1590,16 @@ export class TripsService {
           data.imageUrl === null
             ? null
             : data.imageUrl?.trim(),
+        ...(data.imageUrl !== undefined
+          ? {
+              imageData: null,
+              imageMimeType: null,
+              imageUpdatedAt: null,
+            }
+          : {}),
       },
     })
+
+    return this.findAdminTrip(id)
   }
 }
