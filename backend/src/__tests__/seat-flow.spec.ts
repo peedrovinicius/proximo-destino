@@ -84,6 +84,35 @@ describe('fluxo de escolha de assentos', () => {
 
     assert.deepEqual(first.selectedSeats, [1, 2])
 
+    const firstClient = await prisma.client.findUniqueOrThrow({
+      where: { email: firstEmail },
+      select: { id: true },
+    })
+
+    const changedSeats = await portal.updateClientSeats(
+      firstClient.id,
+      first.reservation.id,
+      { selectedSeats: [1, 4] },
+    )
+    assert.equal(changedSeats.canChangeSeats, true)
+    assert.deepEqual(
+      changedSeats.seatAssignments.map((seat) => seat.seatNumber),
+      [1, 4],
+    )
+
+    const changedMap = await trips.findPublicSeatMap(tripId)
+    assert.deepEqual(changedMap.occupiedSeats, [1, 4])
+
+    const restoredSeats = await portal.updateClientSeats(
+      firstClient.id,
+      first.reservation.id,
+      { selectedSeats: [1, 2] },
+    )
+    assert.deepEqual(
+      restoredSeats.seatAssignments.map((seat) => seat.seatNumber),
+      [1, 2],
+    )
+
     const occupiedMap = await trips.findPublicSeatMap(tripId)
     assert.equal(occupiedMap.availableCount, 2)
     assert.deepEqual(occupiedMap.occupiedSeats, [1, 2])
@@ -143,5 +172,27 @@ describe('fluxo de escolha de assentos', () => {
     const finalMap = await trips.findPublicSeatMap(tripId)
     assert.equal(finalMap.availableCount, 1)
     assert.deepEqual(finalMap.occupiedSeats, [1, 2, 3])
+
+    const thirdClient = await prisma.client.findUniqueOrThrow({
+      where: { email: thirdEmail },
+      select: { id: true },
+    })
+
+    await prisma.trip.update({
+      where: { id: tripId },
+      data: { departureDate: new Date(Date.now() + 12 * 60 * 60 * 1000) },
+    })
+
+    await assert.rejects(
+      () =>
+        portal.updateClientSeats(
+          thirdClient.id,
+          third.reservation.id,
+          { selectedSeats: [1, 4] },
+        ),
+      (error: unknown) =>
+        error instanceof ConflictException &&
+        error.message.includes('24 horas'),
+    )
   })
 })
