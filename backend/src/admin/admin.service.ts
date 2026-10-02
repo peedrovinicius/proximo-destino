@@ -1,5 +1,18 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
-import { ReservationStatus, TripStatus } from '@prisma/client'
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common'
+import {
+  ClientCreditTransactionType,
+  InstallmentStatus,
+  PurchaseStatus,
+  QuoteStatus,
+  ReservationServiceStatus,
+  ReservationStatus,
+  TripStatus,
+} from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { CreateReservationDto, UpdateReservationPassengersDto } from './dto/reservation.dto'
 
@@ -61,8 +74,8 @@ export class AdminService {
     }
   }
 
-  listReservations() {
-    return this.prisma.reservation.findMany({
+  async listReservations() {
+    const reservations = await this.prisma.reservation.findMany({
       select: {
         id: true,
         status: true,
@@ -71,9 +84,20 @@ export class AdminService {
           select: { seatNumber: true },
           orderBy: { seatNumber: 'asc' },
         },
+        purchaseOrder: {
+          select: { status: true, totalCents: true },
+        },
         createdAt: true,
         updatedAt: true,
-        client: { select: { id: true, fullName: true, email: true, phone: true } },
+        client: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            phone: true,
+            creditTransactions: { select: { amountCents: true } },
+          },
+        },
         trip: {
           select: {
             id: true,
@@ -86,6 +110,23 @@ export class AdminService {
       },
       orderBy: { createdAt: 'desc' },
       take: 100,
+    })
+
+    return reservations.map((reservation) => {
+      const { creditTransactions, ...client } = reservation.client
+      return {
+        ...reservation,
+        client: {
+          ...client,
+          bonusBalanceCents: Math.max(
+            0,
+            creditTransactions.reduce(
+              (sum, transaction) => sum + transaction.amountCents,
+              0,
+            ),
+          ),
+        },
+      }
     })
   }
 
@@ -399,19 +440,267 @@ export class AdminService {
     if (!exists) throw new NotFoundException('Reserva não encontrada')
 
     if (status === ReservationStatus.CANCELLED) {
-      return this.prisma.$transaction(async (tx) => {
-        await tx.seatAssignment.deleteMany({ where: { reservationId: id } })
-        return tx.reservation.update({
-          where: { id },
-          data: { status },
-        })
-      })
+      throw new BadRequestException(
+        'Use a ação de cancelamento para definir bônus e motivo',
+      )
     }
 
     return this.prisma.reservation.update({
       where: { id },
       data: { status },
     })
+  }
+
+  async cancelReservation(
+    id: string,
+    creditAsBonus: boolean,
+    reason: string | undefined,
+    actorUserId: string,
+  ) {
+    const reservation = await this.prisma.reservation.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        clientId: true,
+        status: true,
+        purchaseOrder: {
+          select: {
+            id: true,
+            status: true,
+            totalCents: true,
+          },
+        },
+        financePlan: {
+          select: {
+            installments: {
+              select: { amountCents: true, status: true },
+            },
+          },
+        },
+      },
+    })
+
+    if (!reservation) throw new NotFoundException('Reserva não encontrada')
+    if (reservation.status === ReservationStatus.COMPLETED) {
+      throw new ConflictException('Reserva concluída não pode ser cancelada')
+    }
+
+    const paidCents = reservation.purchaseOrder?.status === PurchaseStatus.PAID
+      ? reservation.purchaseOrder.totalCents
+      : reservation.financePlan?.installments
+          .filter((item) => item.status === InstallmentStatus.PAID)
+          .reduce((sum, item) => sum + item.amountCents, 0) ?? 0
+
+    if (reservation.status === ReservationStatus.CANCELLED) {
+      const credit = await this.prisma.clientCreditTransaction.findUnique({
+        where: { sourceKey: `cancellation:${id}` },
+        select: { amountCents: true },
+      })
+      return {
+        cancelled: true,
+        alreadyCancelled: true,
+        paidCents,
+        bonusGrantedCents: credit?.amountCents ?? 0,
+      }
+    }
+
+    let bonusGrantedCents = 0
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.seatAssignment.deleteMany({ where: { reservationId: id } })
+
+      await tx.reservationService.updateMany({
+        where: {
+          reservationId: id,
+          status: {
+            in: [
+              ReservationServiceStatus.PENDING,
+              ReservationServiceStatus.CONFIRMED,
+            ],
+          },
+        },
+        data: { status: ReservationServiceStatus.CANCELLED },
+      })
+
+      if (reservation.financePlan) {
+        const plan = await tx.financePlan.findUnique({
+          where: { reservationId: id },
+          select: { id: true },
+        })
+        if (plan) {
+          await tx.installment.updateMany({
+            where: {
+              financePlanId: plan.id,
+              status: {
+                in: [InstallmentStatus.OPEN, InstallmentStatus.OVERDUE],
+              },
+            },
+            data: { status: InstallmentStatus.CANCELLED },
+          })
+        }
+      }
+
+      if (reservation.purchaseOrder) {
+        await tx.purchaseOrder.update({
+          where: { id: reservation.purchaseOrder.id },
+          data: { status: PurchaseStatus.CANCELLED },
+        })
+      }
+
+      await tx.reservation.update({
+        where: { id },
+        data: { status: ReservationStatus.CANCELLED },
+      })
+
+      if (creditAsBonus && paidCents > 0) {
+        const credit = await tx.clientCreditTransaction.upsert({
+          where: { sourceKey: `cancellation:${id}` },
+          update: {},
+          create: {
+            clientId: reservation.clientId,
+            reservationId: id,
+            type: ClientCreditTransactionType.CANCELLATION_CREDIT,
+            amountCents: paidCents,
+            note:
+              reason?.trim() ||
+              'Crédito gerado pelo cancelamento da reserva',
+            sourceKey: `cancellation:${id}`,
+            actorUserId,
+          },
+          select: { amountCents: true },
+        })
+        bonusGrantedCents = credit.amountCents
+      }
+
+      await tx.authAuditEvent.create({
+        data: {
+          userId: actorUserId,
+          eventType: 'OPS_RESERVATION_CANCELLED',
+          metadata: {
+            reservationId: id,
+            clientId: reservation.clientId,
+            paidCents,
+            creditAsBonus,
+            bonusGrantedCents: creditAsBonus ? paidCents : 0,
+            reason: reason?.trim() || null,
+          },
+        },
+      })
+    })
+
+    return {
+      cancelled: true,
+      alreadyCancelled: false,
+      paidCents,
+      bonusGrantedCents,
+    }
+  }
+
+  async applyBonus(
+    id: string,
+    amountCents: number,
+    note: string | undefined,
+    actorUserId: string,
+  ) {
+    const reservation = await this.prisma.reservation.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        clientId: true,
+        status: true,
+        financePlan: { select: { id: true } },
+      },
+    })
+    if (!reservation) throw new NotFoundException('Reserva não encontrada')
+    if (
+      reservation.status === ReservationStatus.CANCELLED ||
+      reservation.status === ReservationStatus.COMPLETED
+    ) {
+      throw new ConflictException(
+        'Não é possível usar bônus nesta reserva',
+      )
+    }
+    if (reservation.financePlan) {
+      throw new ConflictException(
+        'O bônus deve ser aplicado antes de gerar o plano financeiro',
+      )
+    }
+
+    const balance = await this.prisma.clientCreditTransaction.aggregate({
+      where: { clientId: reservation.clientId },
+      _sum: { amountCents: true },
+    })
+    const balanceCents = Math.max(0, balance._sum.amountCents ?? 0)
+    if (amountCents > balanceCents) {
+      throw new BadRequestException(
+        'O valor supera o saldo de bônus disponível',
+      )
+    }
+
+    const quote = await this.prisma.quote.findFirst({
+      where: {
+        reservationId: id,
+        status: QuoteStatus.APPROVED,
+      },
+      orderBy: { revision: 'desc' },
+      select: {
+        id: true,
+        discountCents: true,
+        totalCents: true,
+        marginCents: true,
+      },
+    })
+    if (!quote) {
+      throw new BadRequestException(
+        'A reserva precisa ter uma cotação aprovada para aplicar o bônus',
+      )
+    }
+    if (amountCents > quote.totalCents) {
+      throw new BadRequestException(
+        'O bônus não pode superar o valor restante da cotação',
+      )
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.quote.update({
+        where: { id: quote.id },
+        data: {
+          discountCents: { increment: amountCents },
+          totalCents: { decrement: amountCents },
+          marginCents: { decrement: amountCents },
+        },
+      })
+
+      await tx.clientCreditTransaction.create({
+        data: {
+          clientId: reservation.clientId,
+          reservationId: id,
+          type: ClientCreditTransactionType.BONUS_USED,
+          amountCents: -amountCents,
+          note: note?.trim() || 'Bônus usado como desconto na viagem',
+          actorUserId,
+        },
+      })
+
+      await tx.authAuditEvent.create({
+        data: {
+          userId: actorUserId,
+          eventType: 'OPS_CLIENT_BONUS_USED',
+          metadata: {
+            reservationId: id,
+            clientId: reservation.clientId,
+            quoteId: quote.id,
+            amountCents,
+          },
+        },
+      })
+    })
+
+    return {
+      appliedCents: amountCents,
+      remainingBonusCents: balanceCents - amountCents,
+      quoteTotalCents: quote.totalCents - amountCents,
+    }
   }
 
   async search(rawQuery: string) {
