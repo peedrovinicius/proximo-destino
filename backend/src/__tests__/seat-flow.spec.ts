@@ -4,7 +4,7 @@ import { after, before, describe, it } from 'node:test'
 import { ConflictException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { JwtService } from '@nestjs/jwt'
-import { ReservationStatus, TripStatus } from '@prisma/client'
+import { TripStatus, UserRole } from '@prisma/client'
 import { AdminService } from '../admin/admin.service'
 import { PortalService } from '../portal/portal.service'
 import { PrismaService } from '../prisma/prisma.service'
@@ -17,6 +17,7 @@ describe('fluxo de escolha de assentos', () => {
   const firstEmail = `seat-first-${suffix}@example.com`
   const secondEmail = `seat-second-${suffix}@example.com`
   const thirdEmail = `seat-third-${suffix}@example.com`
+  const actorUserId = `seat-admin-${suffix}`
 
   const portal = new PortalService(
     prisma,
@@ -30,6 +31,15 @@ describe('fluxo de escolha de assentos', () => {
 
   before(async () => {
     await prisma.$connect()
+    await prisma.user.create({
+      data: {
+        id: actorUserId,
+        email: `seat-admin-${suffix}@example.com`,
+        passwordHash: 'test-hash',
+        role: UserRole.ADMIN,
+      },
+    })
+
     await prisma.trip.create({
       data: {
         id: tripId,
@@ -51,6 +61,8 @@ describe('fluxo de escolha de assentos', () => {
       where: { email: { in: [firstEmail, secondEmail, thirdEmail] } },
     })
     await prisma.trip.deleteMany({ where: { id: tripId } })
+    await prisma.authAuditEvent.deleteMany({ where: { userId: actorUserId } })
+    await prisma.user.deleteMany({ where: { id: actorUserId } })
     await prisma.$disconnect()
   })
 
@@ -106,9 +118,11 @@ describe('fluxo de escolha de assentos', () => {
     assert.equal(threeOccupied.availableCount, 1)
     assert.deepEqual(threeOccupied.occupiedSeats, [1, 2, 3])
 
-    await admin.updateReservationStatus(
+    await admin.cancelReservation(
       first.reservation.id,
-      ReservationStatus.CANCELLED,
+      false,
+      'Cancelamento do teste de assentos',
+      actorUserId,
     )
 
     const afterCancellation = await trips.findPublicSeatMap(tripId)
