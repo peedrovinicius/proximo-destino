@@ -79,6 +79,11 @@ export type AdminReservation = {
   id: string
   status: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED'
   passengerCount: number
+  cancellationRequestStatus: 'PENDING' | 'APPROVED' | 'REJECTED' | null
+  cancellationRequestedAt: string | null
+  cancellationRequestReason: string | null
+  cancellationRequestResolvedAt: string | null
+  cancellationRequestResolutionNote: string | null
   seatAssignments: Array<{ seatNumber: number }>
   createdAt: string
   client: {
@@ -970,6 +975,20 @@ export const adminApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  rejectCancellationRequest: (
+    token: string,
+    id: string,
+    note?: string,
+  ) =>
+    adminFetch<{ rejected: boolean }>(
+      token,
+      `/admin/reservations/${encodeURIComponent(id)}/cancel-request/reject`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ note }),
+      },
+    ),
 
   applyReservationBonus: (
     token: string,
