@@ -25,9 +25,6 @@ type HomePageProps = {
   onInstitutionalNavigate: (page: InstitutionalPageKey) => void
 }
 
-const fallbackImage =
-  'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=84'
-
 const money = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
   currency: 'BRL',
@@ -269,8 +266,11 @@ export function HomePage({
               return (
                 <article className="public-destination-card" key={trip.id}>
                   <div
-                    className="public-destination-image"
-                    style={{ backgroundImage: `url(${trip.imageUrl || fallbackImage})` }}
+                    className={
+                      'public-destination-image' +
+                      (trip.imageUrl ? '' : ' public-destination-image--empty')
+                    }
+                    style={trip.imageUrl ? { backgroundImage: `url("${trip.imageUrl}")` } : undefined}
                   >
                     <span>{trip.title}</span>
                     <em>{trip.status === 'ACTIVE' ? 'Disponível agora' : 'Programada'}</em>
