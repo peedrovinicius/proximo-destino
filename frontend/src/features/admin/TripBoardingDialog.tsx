@@ -1,5 +1,6 @@
 import {
   Check,
+  CheckCircle2,
   Clock3,
   Download,
   Printer,
@@ -19,6 +20,7 @@ type Props = {
   accessToken: string
   tripId: string
   onClose: () => void
+  onCompleted: () => Promise<void>
 }
 
 const statusLabel: Record<BoardingStatus, string> = {
@@ -54,6 +56,7 @@ export function TripBoardingDialog({
   accessToken,
   tripId,
   onClose,
+  onCompleted,
 }: Props) {
   const [data, setData] = useState<AdminBoardingList | null>(null)
   const [loading, setLoading] = useState(true)
@@ -62,6 +65,8 @@ export function TripBoardingDialog({
   const [filter, setFilter] = useState<'ALL' | BoardingStatus>('ALL')
   const [savingPassengerId, setSavingPassengerId] = useState<string | null>(null)
   const [savingBulk, setSavingBulk] = useState(false)
+  const [completing, setCompleting] = useState(false)
+  const [confirmComplete, setConfirmComplete] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
@@ -206,6 +211,30 @@ export function TripBoardingDialog({
       )
     } finally {
       setSavingBulk(false)
+    }
+  }
+
+  async function completeTrip() {
+    if (!data || data.summary.pending > 0 || completing) return
+
+    setCompleting(true)
+    setError('')
+
+    try {
+      await adminApi.completeTrip(accessToken, tripId)
+      const refreshed = await adminApi.boardingList(accessToken, tripId)
+      setData(refreshed)
+      setConfirmComplete(false)
+      setSelectedIds(new Set())
+      await onCompleted()
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'Não foi possível concluir a viagem.',
+      )
+    } finally {
+      setCompleting(false)
     }
   }
 
@@ -414,6 +443,76 @@ export function TripBoardingDialog({
               <span>Ausentes</span>
             </button>
           </div>
+        ) : null}
+
+        {data ? (
+          <section className={
+            'boarding-completion ' +
+            (data.trip.status === 'COMPLETED'
+              ? 'boarding-completion--done'
+              : data.summary.pending > 0
+                ? 'boarding-completion--pending'
+                : 'boarding-completion--ready')
+          }>
+            <div className="boarding-completion-copy">
+              <CheckCircle2 size={18} />
+              <div>
+                <strong>
+                  {data.trip.status === 'COMPLETED'
+                    ? 'Viagem concluída'
+                    : data.summary.pending > 0
+                      ? 'Encerramento pendente'
+                      : 'Pronta para encerramento'}
+                </strong>
+                <span>
+                  {data.trip.status === 'COMPLETED'
+                    ? 'A operação foi encerrada e as reservas ativas foram concluídas.'
+                    : data.summary.pending > 0
+                      ? data.summary.pending + ' passageiro(s) ainda precisam ser marcados como Embarcou ou Ausente.'
+                      : data.summary.boarded + ' embarcaram · ' + data.summary.absent + ' ausente(s) · nenhum passageiro aguardando.'}
+                </span>
+              </div>
+            </div>
+
+            {data.trip.status !== 'COMPLETED' && data.trip.status !== 'CANCELLED' ? (
+              data.summary.pending > 0 ? (
+                <button
+                  type="button"
+                  disabled
+                  title="Resolva todos os passageiros aguardando antes de concluir"
+                >
+                  Concluir viagem
+                </button>
+              ) : confirmComplete ? (
+                <div className="boarding-completion-confirm">
+                  <span>Confirma o encerramento definitivo desta viagem?</span>
+                  <button
+                    type="button"
+                    className="confirm"
+                    disabled={completing}
+                    onClick={() => void completeTrip()}
+                  >
+                    {completing ? 'Concluindo...' : 'Sim, concluir'}
+                  </button>
+                  <button
+                    type="button"
+                    className="cancel"
+                    disabled={completing}
+                    onClick={() => setConfirmComplete(false)}
+                  >
+                    Voltar
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmComplete(true)}
+                >
+                  Conferir e concluir
+                </button>
+              )
+            ) : null}
+          </section>
         ) : null}
 
         <div className="boarding-toolbar">
