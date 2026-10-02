@@ -94,7 +94,7 @@ export type ReservationRequestResult = {
   }>
   purchaseOrder: {
     id: string
-    status: 'PENDING_PAYMENT' | 'PAID' | 'CANCELLED' | 'EXPIRED'
+    status: 'PENDING_PAYMENT' | 'PAID' | 'PARTIALLY_REFUNDED' | 'REFUNDED' | 'CANCELLED' | 'EXPIRED'
     paymentMethod: PurchasePaymentMethod
     unitPriceCents: number
     passengerCount: number
