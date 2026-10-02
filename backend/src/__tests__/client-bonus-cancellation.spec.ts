@@ -178,8 +178,13 @@ describe('cancelamento com bônus do cliente', () => {
     assert.equal(reservation?.seatAssignments.length, 0)
     assert.equal(
       reservation?.purchaseOrder?.status,
-      PurchaseStatus.CANCELLED,
+      PurchaseStatus.PAID,
     )
+
+    const finance = await admin.reservationFinance(reservationId)
+    assert.equal(finance.summary.grossPaidCents, 32000)
+    assert.equal(finance.summary.refundedCents, 0)
+    assert.equal(finance.summary.refundableCents, 32000)
 
     const second = await admin.cancelReservation(
       reservationId,
