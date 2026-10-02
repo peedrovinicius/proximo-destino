@@ -244,7 +244,7 @@ export function AdminDashboard({
   const metrics = useMemo(() => [
     { label: 'Clientes cadastrados', value: dashboard?.metrics.clients ?? 0, icon: Users },
     { label: 'Reservas pendentes', value: dashboard?.metrics.pendingReservations ?? 0, icon: FileText },
-    { label: 'Viagens ativas/programadas', value: dashboard?.metrics.activeTrips ?? 0, icon: Plane },
+    { label: 'Viagens ativas/programadas', value: dashboard?.metrics.activeTrips ?? 0, icon: Bus },
     { label: 'Reservas confirmadas', value: dashboard?.metrics.confirmedReservations ?? 0, icon: CircleDollarSign },
   ], [dashboard])
 
