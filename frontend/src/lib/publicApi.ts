@@ -13,6 +13,8 @@ export type PublicTrip = {
   priceCents: number | null
   summary: string | null
   imageUrl: string | null
+  hasUploadedImage: boolean
+  imageUpdatedAt: string | null
   status: 'ACTIVE' | 'SCHEDULED'
 }
 
@@ -112,6 +114,18 @@ async function parseError(response: Response) {
     // sem corpo JSON
   }
   return 'Não foi possível concluir a operação.'
+}
+
+export function publicTripImageUrl(
+  trip: Pick<PublicTrip, 'id' | 'imageUrl' | 'hasUploadedImage' | 'imageUpdatedAt'>,
+) {
+  if (trip.hasUploadedImage) {
+    const version = trip.imageUpdatedAt
+      ? '?v=' + encodeURIComponent(trip.imageUpdatedAt)
+      : ''
+    return `${API_BASE}/public/trips/${encodeURIComponent(trip.id)}/image${version}`
+  }
+  return trip.imageUrl
 }
 
 export async function fetchPublicPaymentConfig() {
