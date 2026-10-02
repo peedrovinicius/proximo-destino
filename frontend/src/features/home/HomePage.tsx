@@ -15,7 +15,11 @@ import { Brand } from '../../components/Brand'
 import { PublicFooter, type InstitutionalPageKey } from '../../components/PublicFooter'
 import { TravelAiAssistant } from '../../components/TravelAiAssistant'
 import { WhatsAppButton } from '../../components/WhatsAppButton'
-import { fetchPublicTrips, type PublicTrip } from '../../lib/publicApi'
+import {
+  fetchPublicTrips,
+  publicTripImageUrl,
+  type PublicTrip,
+} from '../../lib/publicApi'
 import { openWhatsApp } from '../../lib/whatsapp'
 import { TripDetailsPage } from './TripDetailsPage'
 
@@ -252,6 +256,7 @@ export function HomePage({
 
           <div className="public-destination-grid" id="viagens">
             {results.map((trip) => {
+              const imageUrl = publicTripImageUrl(trip)
               const nights = trip.returnDate
                 ? Math.max(
                     0,
@@ -268,9 +273,9 @@ export function HomePage({
                   <div
                     className={
                       'public-destination-image' +
-                      (trip.imageUrl ? '' : ' public-destination-image--empty')
+                      (imageUrl ? '' : ' public-destination-image--empty')
                     }
-                    style={trip.imageUrl ? { backgroundImage: `url("${trip.imageUrl}")` } : undefined}
+                    style={imageUrl ? { backgroundImage: `url("${imageUrl}")` } : undefined}
                   >
                     <span>{trip.title}</span>
                     <em>{trip.status === 'ACTIVE' ? 'Disponível agora' : 'Programada'}</em>
