@@ -5,6 +5,7 @@ import {
   Clock3,
   History,
   Lock,
+  QrCode,
   Unlock,
   UserCheck,
   UserPlus,
@@ -29,6 +30,7 @@ const eventLabels: Record<string, string> = {
   OPS_SEAT_MOVED: 'Passageiro mudou de poltrona',
   OPS_BOARDING_UPDATED: 'Embarque atualizado',
   OPS_BOARDING_BULK_UPDATED: 'Embarque em massa atualizado',
+  OPS_BOARDING_QR_SCANNED: 'QR da passagem lido',
   OPS_TRIP_COMPLETED: 'Viagem concluída',
 }
 
@@ -38,6 +40,7 @@ function EventIcon({ eventType }: { eventType: string }) {
   if (eventType === 'OPS_SEAT_BLOCKED') return <Lock size={16} />
   if (eventType === 'OPS_SEAT_RELEASED') return <Unlock size={16} />
   if (eventType === 'OPS_TRIP_COMPLETED') return <CheckCircle2 size={16} />
+  if (eventType === 'OPS_BOARDING_QR_SCANNED') return <QrCode size={16} />
   if (eventType.includes('BOARDING')) return <UserCheck size={16} />
   return <History size={16} />
 }
@@ -95,6 +98,18 @@ function metaText(
         : ''
     const to = typeof metadata.toStatus === 'string' ? metadata.toStatus : ''
     return [count, to].filter(Boolean).join(' · ')
+  }
+
+  if (eventType === 'OPS_BOARDING_QR_SCANNED') {
+    const document =
+      typeof metadata.documentNumber === 'string'
+        ? metadata.documentNumber
+        : ''
+    const count =
+      typeof metadata.passengerCount === 'number'
+        ? metadata.passengerCount + ' passageiro(s)'
+        : ''
+    return [document, reservation, count].filter(Boolean).join(' · ')
   }
 
   return ''
