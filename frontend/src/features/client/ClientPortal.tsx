@@ -342,9 +342,13 @@ export function ClientPortal({ accessToken, onLogout }: ClientPortalProps) {
                 <h2>
                   {data.purchaseOrder.status === 'PAID'
                     ? 'Pagamento confirmado'
-                    : data.purchaseOrder.status === 'PENDING_PAYMENT'
-                      ? 'Pagamento pendente'
-                      : 'Pagamento encerrado'}
+                    : data.purchaseOrder.status === 'PARTIALLY_REFUNDED'
+                      ? 'Pagamento com estorno parcial'
+                      : data.purchaseOrder.status === 'REFUNDED'
+                        ? 'Pagamento estornado'
+                        : data.purchaseOrder.status === 'PENDING_PAYMENT'
+                          ? 'Pagamento pendente'
+                          : 'Pagamento encerrado'}
                 </h2>
                 <p>
                   {data.purchaseOrder.paymentMethod === 'PIX'
@@ -359,11 +363,15 @@ export function ClientPortal({ accessToken, onLogout }: ClientPortalProps) {
               <strong className={'client-payment-status client-payment-status--' + data.purchaseOrder.status.toLowerCase()}>
                 {data.purchaseOrder.status === 'PAID'
                   ? 'Pago'
-                  : data.purchaseOrder.status === 'PENDING_PAYMENT'
-                    ? 'Aguardando'
-                    : data.purchaseOrder.status === 'EXPIRED'
-                      ? 'Expirado'
-                      : 'Cancelado'}
+                  : data.purchaseOrder.status === 'PARTIALLY_REFUNDED'
+                    ? 'Estorno parcial'
+                    : data.purchaseOrder.status === 'REFUNDED'
+                      ? 'Estornado'
+                      : data.purchaseOrder.status === 'PENDING_PAYMENT'
+                        ? 'Aguardando'
+                        : data.purchaseOrder.status === 'EXPIRED'
+                          ? 'Expirado'
+                          : 'Cancelado'}
               </strong>
             </div>
 
