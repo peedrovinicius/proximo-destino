@@ -53,10 +53,13 @@ describe('imagens administráveis de viagem', () => {
   })
 
   it('troca upload por URL e remove os bytes antigos', async () => {
-    const updated = await trips.update(tripId, {
+    await trips.update(tripId, {
       imageUrl: 'https://images.example.com/jericoacoara.jpg',
     })
 
+    const listed = await trips.listAdmin('Viagem com foto')
+    const updated = listed.find((trip) => trip.id === tripId)
+    assert.ok(updated)
     assert.equal(updated.hasUploadedImage, false)
     assert.equal(
       updated.imageUrl,
