@@ -26,6 +26,7 @@ import {
   BulkUpdateBoardingStatusDto,
   CreateTripDto,
   MoveSeatAssignmentDto,
+  ScanBoardingQrDto,
   UpdateBoardingStatusDto,
   UpdateSeatBlockDto,
   UpdateTripDto,
@@ -140,6 +141,20 @@ export class AdminTripsController {
   @Roles(UserRole.ADMIN)
   boardingList(@Param('id') id: string) {
     return this.trips.boardingList(id)
+  }
+
+  @Post(':id/boarding/scan')
+  @Roles(UserRole.ADMIN)
+  scanBoardingQr(
+    @Param('id') id: string,
+    @Body() body: ScanBoardingQrDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.trips.scanBoardingQr(
+      id,
+      body.code,
+      request.user.id,
+    )
   }
 
   @Patch(':id/boarding')
