@@ -1232,7 +1232,7 @@ function TripBusControl({
         </span>
       </div>
 
-      <div className="admin-trip-photo-control">
+      <div className="admin-trip-photo-editor">
         <TripPhotoPicker
           accessToken={accessToken}
           destination={trip.destination}
