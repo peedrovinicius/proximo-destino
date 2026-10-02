@@ -400,6 +400,13 @@ export const adminApi = {
       `/admin/trips/${encodeURIComponent(tripId)}/boarding`,
     ),
 
+  completeTrip: (token: string, tripId: string) =>
+    adminFetch<AdminTrip>(
+      token,
+      `/admin/trips/${encodeURIComponent(tripId)}/complete`,
+      { method: 'POST' },
+    ),
+
   updateBoardingStatus: (
     token: string,
     tripId: string,
