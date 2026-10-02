@@ -87,3 +87,16 @@ export class ApplyReservationBonusDto {
   @MaxLength(300)
   note?: string
 }
+
+
+export class RefundReservationPaymentDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  amountCents!: number
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  reason?: string
+}
