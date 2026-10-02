@@ -6,14 +6,17 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common'
 import { UserRole } from '@prisma/client'
-import { JwtAuthGuard } from '../auth/jwt-auth.guard'
+import { JwtAuthGuard, type AuthenticatedRequest } from '../auth/jwt-auth.guard'
 import { Roles } from '../auth/roles.decorator'
 import { RolesGuard } from '../auth/roles.guard'
 import { AdminService } from './admin.service'
 import {
+  ApplyReservationBonusDto,
+  CancelReservationDto,
   CreateReservationDto,
   UpdateReservationPassengersDto,
   UpdateReservationStatusDto,
@@ -75,5 +78,35 @@ export class AdminController {
     @Body() body: UpdateReservationStatusDto,
   ) {
     return this.admin.updateReservationStatus(id, body.status)
+  }
+
+  @Post('reservations/:id/cancel')
+  @Roles(UserRole.ADMIN)
+  cancelReservation(
+    @Param('id') id: string,
+    @Body() body: CancelReservationDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.admin.cancelReservation(
+      id,
+      body.creditAsBonus ?? false,
+      body.reason,
+      request.user.id,
+    )
+  }
+
+  @Post('reservations/:id/bonus/apply')
+  @Roles(UserRole.ADMIN)
+  applyBonus(
+    @Param('id') id: string,
+    @Body() body: ApplyReservationBonusDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.admin.applyBonus(
+      id,
+      body.amountCents,
+      body.note,
+      request.user.id,
+    )
   }
 }
