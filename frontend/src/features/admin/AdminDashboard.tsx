@@ -733,6 +733,7 @@ function TripsView({
   const [destination, setDestination] = useState('')
   const [departureDate, setDepartureDate] = useState('')
   const [price, setPrice] = useState('')
+  const [imageUrl, setImageUrl] = useState('')
   const [busTemplates, setBusTemplates] = useState<BusTemplateOption[]>([])
   const [busTemplate, setBusTemplate] = useState('')
   const [capacity, setCapacity] = useState('')
@@ -850,12 +851,14 @@ function TripsView({
         vehicleFeatures: busTemplate ? vehicleFeatures : undefined,
         blockedSeats: busTemplate ? normalizedBlocked : undefined,
         priceCents: price ? Math.round(Number(price.replace(',', '.')) * 100) : undefined,
+        imageUrl: imageUrl.trim() || undefined,
       })
       setTitle('')
       setOrigin('')
       setDestination('')
       setDepartureDate('')
       setPrice('')
+      setImageUrl('')
       setBusTemplate('')
       setCapacity('')
       setSeatLayout('TWO_BY_TWO')
@@ -878,6 +881,25 @@ function TripsView({
         <input placeholder="Destino" value={destination} onChange={(e) => setDestination(e.target.value)} required />
         <input type="date" value={departureDate} onChange={(e) => setDepartureDate(e.target.value)} required />
         <input inputMode="decimal" placeholder="Preço por pessoa em R$" value={price} onChange={(e) => setPrice(e.target.value)} />
+
+        <div className="admin-trip-photo-field">
+          <label htmlFor="trip-image-url">Foto da viagem</label>
+          <input
+            id="trip-image-url"
+            type="url"
+            placeholder="https://.../foto-da-viagem.jpg"
+            value={imageUrl}
+            onChange={(event) => setImageUrl(event.target.value)}
+          />
+          <small>Use o link da foto oficial que você quer exibir no site. A imagem será a mesma na vitrine e nos detalhes da viagem.</small>
+          <div
+            className={'admin-trip-photo-preview' + (imageUrl.trim() ? '' : ' is-empty')}
+            style={imageUrl.trim() ? { backgroundImage: `url("${imageUrl.trim()}")` } : undefined}
+            aria-label={imageUrl.trim() ? 'Prévia da foto da viagem' : 'Sem foto definida'}
+          >
+            {!imageUrl.trim() ? <span>Sem foto definida</span> : null}
+          </div>
+        </div>
 
         <div className="admin-bus-field">
           <label htmlFor="trip-bus-template">Ônibus e mapa de assentos</label>
@@ -1022,6 +1044,7 @@ function TripBusControl({
   const [blockedSeats, setBlockedSeats] = useState(
     trip.blockedSeats.join(', '),
   )
+  const [imageUrl, setImageUrl] = useState(trip.imageUrl ?? '')
   const [saving, setSaving] = useState(false)
   const [showSeatMap, setShowSeatMap] = useState(false)
   const [showBoarding, setShowBoarding] = useState(false)
@@ -1035,6 +1058,7 @@ function TripBusControl({
     setLowerDeckCapacity(trip.lowerDeckCapacity?.toString() ?? '')
     setFeatures(trip.vehicleFeatures ?? [])
     setBlockedSeats(trip.blockedSeats.join(', '))
+    setImageUrl(trip.imageUrl ?? '')
   }, [
     trip.busTemplate,
     trip.capacity,
@@ -1043,6 +1067,7 @@ function TripBusControl({
     trip.lowerDeckCapacity,
     trip.vehicleFeatures,
     trip.blockedSeats,
+    trip.imageUrl,
   ])
 
   const selected = templates.find((template) => template.key === templateKey)
@@ -1107,6 +1132,7 @@ function TripBusControl({
           lowerDeckCapacity: null,
           vehicleFeatures: [],
           blockedSeats: [],
+          imageUrl: imageUrl.trim() || null,
         })
         await onChanged()
       } finally {
@@ -1139,6 +1165,7 @@ function TripBusControl({
             deckCount === 2 ? Number(lowerDeckCapacity) : null,
           vehicleFeatures: features,
           blockedSeats: normalizedBlocked,
+          imageUrl: imageUrl.trim() || null,
         })
         await onChanged()
       } finally {
@@ -1153,6 +1180,7 @@ function TripBusControl({
         busTemplate: templateKey,
         vehicleFeatures: features,
         blockedSeats: normalizedBlocked,
+        imageUrl: imageUrl.trim() || null,
       })
       await onChanged()
     } finally {
@@ -1176,6 +1204,27 @@ function TripBusControl({
               (trip.blockedSeats.length ? ' · ' + trip.blockedSeats.length + ' bloqueado(s)' : '')
             : 'Mapa não exibido ao viajante'}
         </span>
+      </div>
+
+      <div className="admin-trip-photo-control">
+        <div
+          className={'admin-trip-photo-thumb' + (imageUrl.trim() ? '' : ' is-empty')}
+          style={imageUrl.trim() ? { backgroundImage: `url("${imageUrl.trim()}")` } : undefined}
+          aria-hidden="true"
+        >
+          {!imageUrl.trim() ? <span>Sem foto</span> : null}
+        </div>
+        <label>
+          <span>Foto da viagem</span>
+          <input
+            type="url"
+            value={imageUrl}
+            onChange={(event) => setImageUrl(event.target.value)}
+            placeholder="Cole a URL da foto"
+            aria-label={'Foto de ' + trip.title}
+          />
+          <small>Troque o link e salve para atualizar a imagem pública.</small>
+        </label>
       </div>
 
       <select
@@ -1239,7 +1288,7 @@ function TripBusControl({
       ) : null}
 
       <button type="submit" disabled={saving}>
-        {saving ? 'Salvando' : 'Aplicar configuração'}
+        {saving ? 'Salvando' : 'Salvar alterações'}
       </button>
 
       {canManageSeats ? (
