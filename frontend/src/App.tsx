@@ -27,9 +27,20 @@ const screens = new Set<Screen>([
 
 const institutionalPages = new Set<InstitutionalPageKey>([
   'about',
+  'culture',
+  'purpose',
+  'contact',
+  'sales',
+  'payments',
+  'cancellation',
   'terms',
   'privacy',
-  'cancellation',
+  'cookies',
+  'who-can-travel',
+  'anti-harassment',
+  'sustainability',
+  'boarding-points',
+  'ethics',
 ])
 
 function screenFromLocation(): Screen {
@@ -69,8 +80,11 @@ function updateLocation(
     url.searchParams.delete('page')
   }
 
-  const method = options.replace ? 'replaceState' : 'pushState'
-  window.history[method]({ screen }, '', url)
+  if (options.replace) {
+    window.history.replaceState({ screen }, '', url)
+  } else {
+    window.history.pushState({ screen }, '', url)
+  }
 }
 
 function App() {
