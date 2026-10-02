@@ -12054,3 +12054,587 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
     grid-column: 1 / -1;
   }
 }
+
+
+/* Reservation finance center */
+
+.admin-reservation-finance {
+  min-height: 34px;
+  border: 1px solid #cfdfea;
+  border-radius: 9px;
+  padding: 0 10px;
+  color: #285f89;
+  background: #f3f8fc;
+  font-size: 8px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.reservation-finance-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 340;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(8, 23, 36, .5);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.reservation-finance-dialog {
+  width: min(920px, 100%);
+  max-height: calc(100dvh - 36px);
+  overflow: hidden auto;
+  border: 1px solid rgba(255,255,255,.82);
+  border-radius: 24px;
+  background: #fff;
+  box-shadow: 0 34px 100px rgba(17, 42, 63, .26);
+}
+
+.reservation-finance-header {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px;
+  border-bottom: 1px solid #e8eef2;
+  background: rgba(255,255,255,.96);
+  backdrop-filter: blur(14px);
+}
+
+.reservation-finance-header > div {
+  display: grid;
+  gap: 3px;
+}
+
+.reservation-finance-header span,
+.reservation-finance-section-head span {
+  color: #778b9a;
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.reservation-finance-header h2 {
+  margin: 0;
+  color: #18364e;
+  font: 700 21px 'Manrope', sans-serif;
+}
+
+.reservation-finance-header small {
+  color: #81919e;
+  font-size: 8px;
+}
+
+.reservation-finance-header > button {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  color: #566f82;
+  background: #f1f5f7;
+  cursor: pointer;
+}
+
+.reservation-finance-header > button:disabled {
+  opacity: .45;
+}
+
+.reservation-finance-loading {
+  padding: 34px 20px;
+  color: #718596;
+  font-size: 9px;
+}
+
+.reservation-finance-success {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 14px 18px 0;
+  border: 1px solid #cae4d6;
+  border-radius: 11px;
+  padding: 10px 12px;
+  color: #2d7357;
+  background: #f1faf5;
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.reservation-finance-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 18px 18px 6px;
+}
+
+.reservation-finance-summary article {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid #e0e8ee;
+  border-radius: 14px;
+  padding: 13px;
+  background: #fbfcfd;
+}
+
+.reservation-finance-summary span {
+  color: #758a9a;
+  font-size: 7px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.reservation-finance-summary strong {
+  color: #173f60;
+  font: 700 18px 'Manrope', sans-serif;
+}
+
+.reservation-finance-summary small {
+  color: #87949e;
+  font-size: 7px;
+}
+
+.reservation-finance-provider,
+.reservation-finance-installments,
+.reservation-finance-credits,
+.reservation-finance-refund,
+.reservation-finance-history {
+  margin: 12px 18px 0;
+  border: 1px solid #e1e8ed;
+  border-radius: 15px;
+  padding: 14px;
+  background: #fff;
+}
+
+.reservation-finance-history {
+  margin-bottom: 20px;
+}
+
+.reservation-finance-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.reservation-finance-section-head > div {
+  display: grid;
+  gap: 3px;
+}
+
+.reservation-finance-section-head strong {
+  color: #314f65;
+  font-size: 10px;
+}
+
+.reservation-finance-section-head > svg {
+  color: #507897;
+}
+
+.reservation-finance-status {
+  display: inline-flex;
+  min-height: 26px;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0 9px;
+  color: #586f80;
+  background: #eff3f6;
+  font-size: 7px;
+  font-weight: 800;
+}
+
+.reservation-finance-status--paid {
+  color: #257253;
+  background: #eaf7f1;
+}
+
+.reservation-finance-status--partially_refunded {
+  color: #8b641f;
+  background: #fff6df;
+}
+
+.reservation-finance-status--refunded {
+  color: #6d5d8e;
+  background: #f3eefb;
+}
+
+.reservation-finance-status--pending_payment {
+  color: #7a5b24;
+  background: #fff5dd;
+}
+
+.reservation-finance-status--cancelled,
+.reservation-finance-status--expired {
+  color: #8c5550;
+  background: #fff0ef;
+}
+
+.reservation-finance-provider-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0,1fr));
+  gap: 8px;
+}
+
+.reservation-finance-provider-grid > div {
+  display: grid;
+  gap: 4px;
+  border-radius: 10px;
+  padding: 10px;
+  background: #f7fafc;
+}
+
+.reservation-finance-provider-grid span {
+  color: #80909d;
+  font-size: 7px;
+}
+
+.reservation-finance-provider-grid strong {
+  overflow: hidden;
+  color: #36536a;
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reservation-finance-provider-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 11px;
+}
+
+.reservation-finance-provider-actions button,
+.reservation-finance-refund-start,
+.reservation-finance-refund-form > button,
+.reservation-finance-refund-confirm button {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 9px;
+  padding: 0 12px;
+  color: #fff;
+  background: #2677d9;
+  font-size: 8px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.reservation-finance-provider-actions button:disabled,
+.reservation-finance-refund-start:disabled,
+.reservation-finance-refund-confirm button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.reservation-finance-installment-list,
+.reservation-finance-credit-list {
+  display: grid;
+  gap: 7px;
+}
+
+.reservation-finance-installment-list article {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 50px;
+  border-bottom: 1px solid #edf1f4;
+  padding: 6px 0;
+}
+
+.reservation-finance-installment-list article:last-child {
+  border-bottom: 0;
+}
+
+.reservation-finance-installment-list article > div {
+  display: grid;
+  gap: 2px;
+}
+
+.reservation-finance-installment-list article > div strong,
+.reservation-finance-installment-list article > strong {
+  color: #36536a;
+  font-size: 8px;
+}
+
+.reservation-finance-installment-list article > div span {
+  color: #81909d;
+  font-size: 7px;
+}
+
+.reservation-finance-installment-status {
+  min-width: 74px;
+  border-radius: 999px;
+  padding: 6px 8px;
+  color: #657a8b;
+  background: #f0f3f5;
+  font-size: 7px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.reservation-finance-installment-status--paid {
+  color: #267254;
+  background: #eaf7f1;
+}
+
+.reservation-finance-installment-status--overdue {
+  color: #9b4b44;
+  background: #fff0ee;
+}
+
+.reservation-finance-credit-list article,
+.reservation-finance-history article {
+  display: grid;
+  grid-template-columns: 30px minmax(0,1fr) auto;
+  align-items: center;
+  gap: 9px;
+  min-height: 48px;
+  border-bottom: 1px solid #edf1f4;
+}
+
+.reservation-finance-credit-list article:last-child,
+.reservation-finance-history article:last-child {
+  border-bottom: 0;
+}
+
+.reservation-finance-credit-list article > div,
+.reservation-finance-history article > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.reservation-finance-credit-list article > div strong,
+.reservation-finance-history article > div strong {
+  color: #36536a;
+  font-size: 8px;
+}
+
+.reservation-finance-credit-list article > div span,
+.reservation-finance-history article > div span {
+  overflow: hidden;
+  color: #83919c;
+  font-size: 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reservation-finance-credit-list article > strong,
+.reservation-finance-history article > strong {
+  font-size: 8px;
+}
+
+.reservation-finance-credit-list .positive {
+  color: #267254;
+}
+
+.reservation-finance-credit-list .negative {
+  color: #9b4b44;
+}
+
+.reservation-finance-refundable {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 10px;
+  border: 1px solid #d7e5ee;
+  border-radius: 11px;
+  padding: 10px;
+  color: #2d6d99;
+  background: #f4f9fd;
+}
+
+.reservation-finance-refundable > div {
+  display: grid;
+  gap: 2px;
+}
+
+.reservation-finance-refundable span {
+  color: #708697;
+  font-size: 7px;
+}
+
+.reservation-finance-refundable strong {
+  color: #174d84;
+  font: 700 16px 'Manrope', sans-serif;
+}
+
+.reservation-finance-refund-form {
+  display: grid;
+  grid-template-columns: 160px auto minmax(0,1fr);
+  gap: 8px;
+  align-items: end;
+}
+
+.reservation-finance-refund-form label {
+  display: grid;
+  gap: 5px;
+  color: #647c8e;
+  font-size: 7px;
+  font-weight: 800;
+}
+
+.reservation-finance-refund-form label.reason {
+  min-width: 0;
+}
+
+.reservation-finance-refund-form input {
+  width: 100%;
+  height: 39px;
+  min-width: 0;
+  border: 1px solid #dae4eb;
+  border-radius: 9px;
+  padding: 0 10px;
+  color: #2d4c62;
+  background: #fff;
+  font-size: 8px;
+}
+
+.reservation-finance-refund-form > button.secondary,
+.reservation-finance-refund-confirm button.secondary {
+  border: 1px solid #d7e1e8;
+  color: #587184;
+  background: #fff;
+}
+
+.reservation-finance-refund-start {
+  margin-top: 10px;
+  background: #a94e47;
+}
+
+.reservation-finance-refund-confirm {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  border: 1px solid #efd1ce;
+  border-radius: 11px;
+  padding: 11px;
+  background: #fff7f6;
+}
+
+.reservation-finance-refund-confirm > div {
+  display: grid;
+  gap: 3px;
+}
+
+.reservation-finance-refund-confirm > div strong {
+  color: #87453f;
+  font-size: 9px;
+}
+
+.reservation-finance-refund-confirm > div span {
+  color: #8e706d;
+  font-size: 7px;
+  line-height: 1.45;
+}
+
+.reservation-finance-refund-confirm button.danger {
+  background: #a94e47;
+}
+
+.reservation-finance-note {
+  margin: 0;
+  color: #7b8d9a;
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.reservation-finance-history-icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 8px;
+  color: #386b90;
+  background: #edf5fa;
+}
+
+.admin-payment-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 860px) {
+  .reservation-finance-summary,
+  .reservation-finance-provider-grid {
+    grid-template-columns: repeat(2, minmax(0,1fr));
+  }
+
+  .reservation-finance-refund-form {
+    grid-template-columns: 1fr auto;
+  }
+
+  .reservation-finance-refund-form label.reason {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 640px) {
+  .reservation-finance-overlay {
+    padding: 0;
+  }
+
+  .reservation-finance-dialog {
+    width: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .reservation-finance-summary,
+  .reservation-finance-provider-grid,
+  .admin-payment-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .reservation-finance-provider,
+  .reservation-finance-installments,
+  .reservation-finance-credits,
+  .reservation-finance-refund,
+  .reservation-finance-history {
+    margin-inline: 12px;
+  }
+
+  .reservation-finance-refund-form {
+    grid-template-columns: 1fr;
+  }
+
+  .reservation-finance-refund-form label.reason {
+    grid-column: auto;
+  }
+
+  .reservation-finance-refund-form > button {
+    width: 100%;
+  }
+
+  .reservation-finance-refund-confirm {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .reservation-finance-refund-confirm > div {
+    grid-column: 1 / -1;
+  }
+
+  .reservation-finance-installment-list article {
+    grid-template-columns: minmax(0,1fr) auto;
+  }
+
+  .reservation-finance-installment-status {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
