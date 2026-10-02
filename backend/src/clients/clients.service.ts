@@ -8,14 +8,68 @@ import { UpdateClientDto } from './dto/update-client.dto'
 export class ClientsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  create(data: CreateClientDto) {
+  private normalizeCpf(value?: string | null) {
+    const digits = value?.replace(/\D/g, '') ?? ''
+    return digits || undefined
+  }
+
+  private isValidCpf(value: string) {
+    if (!/^\d{11}$/.test(value) || /^(\d)\1{10}$/.test(value)) {
+      return false
+    }
+
+    const digit = (base: string, factor: number) => {
+      let total = 0
+      for (const char of base) {
+        total += Number(char) * factor
+        factor -= 1
+      }
+      const remainder = (total * 10) % 11
+      return remainder === 10 ? 0 : remainder
+    }
+
+    return (
+      digit(value.slice(0, 9), 10) === Number(value[9]) &&
+      digit(value.slice(0, 10), 11) === Number(value[10])
+    )
+  }
+
+  private async validateCpf(
+    value?: string | null,
+    excludeClientId?: string,
+  ) {
+    const cpf = this.normalizeCpf(value)
+    if (!cpf) return undefined
+
+    if (!this.isValidCpf(cpf)) {
+      throw new BadRequestException('CPF inválido')
+    }
+
+    const duplicate = await this.prisma.client.findFirst({
+      where: {
+        document: cpf,
+        ...(excludeClientId ? { id: { not: excludeClientId } } : {}),
+      },
+      select: { id: true },
+    })
+
+    if (duplicate) {
+      throw new BadRequestException('Este CPF já está cadastrado')
+    }
+
+    return cpf
+  }
+
+  async create(data: CreateClientDto) {
+    const cpf = await this.validateCpf(data.document)
+
     return this.prisma.client.create({
       data: {
         fullName: data.fullName.trim(),
         email: data.email?.trim().toLowerCase(),
         phone: data.phone?.trim(),
         birthDate: data.birthDate,
-        document: data.document?.trim(),
+        document: cpf,
         notes: data.notes?.trim(),
         companions: data.companions?.length
           ? {
@@ -34,6 +88,7 @@ export class ClientsService {
 
   async list(query?: string) {
     const q = query?.trim()
+    const documentQuery = q?.replace(/\D/g, '')
 
     const clients = await this.prisma.client.findMany({
       where: q
@@ -42,6 +97,9 @@ export class ClientsService {
               { fullName: { contains: q, mode: 'insensitive' } },
               { email: { contains: q, mode: 'insensitive' } },
               { phone: { contains: q, mode: 'insensitive' } },
+              ...(documentQuery
+                ? [{ document: { contains: documentQuery } }]
+                : []),
             ],
           }
         : undefined,
@@ -51,6 +109,7 @@ export class ClientsService {
         email: true,
         phone: true,
         birthDate: true,
+        document: true,
         createdAt: true,
         _count: { select: { companions: true, reservations: true } },
       },
@@ -180,6 +239,11 @@ export class ClientsService {
   async update(id: string, data: UpdateClientDto) {
     await this.findById(id)
 
+    const cpf =
+      data.document === undefined
+        ? undefined
+        : await this.validateCpf(data.document, id)
+
     return this.prisma.client.update({
       where: { id },
       data: {
@@ -187,7 +251,9 @@ export class ClientsService {
         email: data.email?.trim().toLowerCase(),
         phone: data.phone?.trim(),
         birthDate: data.birthDate,
-        document: data.document?.trim(),
+        ...(data.document !== undefined
+          ? { document: cpf ?? null }
+          : {}),
         notes: data.notes?.trim(),
       },
     })
