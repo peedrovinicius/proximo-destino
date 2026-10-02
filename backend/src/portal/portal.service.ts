@@ -424,6 +424,18 @@ export class PortalService {
         },
       })
 
+      await this.prisma.purchaseOrder.update({
+        where: { id: purchase.id },
+        data: {
+          providerPaymentId:
+            response.id !== undefined && response.id !== null
+              ? String(response.id)
+              : undefined,
+          providerStatus: response.status ?? 'pending',
+          lastReconciledAt: new Date(),
+        },
+      })
+
       const transaction = response.point_of_interaction?.transaction_data
       if (!transaction?.qr_code) {
         throw new BadGatewayException('O PIX não pôde ser gerado')
@@ -486,6 +498,15 @@ export class PortalService {
         },
       })
 
+      await this.prisma.purchaseOrder.update({
+        where: { id: purchase.id },
+        data: {
+          providerOrderId: response.id ? String(response.id) : undefined,
+          providerStatus: response.status ?? 'created',
+          lastReconciledAt: new Date(),
+        },
+      })
+
       if (!response.checkout_url) {
         throw new BadGatewayException('O checkout não pôde ser iniciado')
       }
@@ -504,10 +525,18 @@ export class PortalService {
   private async applyPurchaseStatus(
     purchaseOrderId: string,
     status: PurchaseStatus,
+    provider: {
+      paymentId?: string
+      orderId?: string
+      providerStatus?: string
+    } = {},
   ) {
     const purchase = await this.prisma.purchaseOrder.findUnique({
       where: { id: purchaseOrderId },
-      select: { reservationId: true },
+      select: {
+        reservationId: true,
+        paidAt: true,
+      },
     })
 
     if (!purchase) return { ignored: true }
@@ -515,7 +544,17 @@ export class PortalService {
     await this.prisma.$transaction(async (tx) => {
       await tx.purchaseOrder.update({
         where: { id: purchaseOrderId },
-        data: { status },
+        data: {
+          status,
+          providerPaymentId: provider.paymentId,
+          providerOrderId: provider.orderId,
+          providerStatus: provider.providerStatus,
+          lastReconciledAt: new Date(),
+          paidAt:
+            status === PurchaseStatus.PAID
+              ? purchase.paidAt ?? new Date()
+              : undefined,
+        },
       })
 
       if (status === PurchaseStatus.PAID) {
@@ -528,7 +567,8 @@ export class PortalService {
 
       if (
         status === PurchaseStatus.CANCELLED ||
-        status === PurchaseStatus.EXPIRED
+        status === PurchaseStatus.EXPIRED ||
+        status === PurchaseStatus.REFUNDED
       ) {
         await tx.seatAssignment.deleteMany({
           where: { reservationId: purchase.reservationId },
@@ -603,13 +643,18 @@ export class PortalService {
       const status =
         payment.status === 'approved'
           ? PurchaseStatus.PAID
-          : ['cancelled', 'rejected', 'refunded', 'charged_back'].includes(
-                payment.status ?? '',
-              )
-            ? PurchaseStatus.CANCELLED
-            : PurchaseStatus.PENDING_PAYMENT
+          : payment.status === 'refunded'
+            ? PurchaseStatus.REFUNDED
+            : ['cancelled', 'rejected', 'charged_back'].includes(
+                  payment.status ?? '',
+                )
+              ? PurchaseStatus.CANCELLED
+              : PurchaseStatus.PENDING_PAYMENT
 
-      return this.applyPurchaseStatus(purchaseId, status)
+      return this.applyPurchaseStatus(purchaseId, status, {
+        paymentId: String(payment.id ?? input.dataId),
+        providerStatus: payment.status ?? 'unknown',
+      })
     }
 
     if (input.type === 'order' || input.action?.startsWith('order.')) {
@@ -636,11 +681,18 @@ export class PortalService {
           ? PurchaseStatus.PAID
           : order.status === 'expired'
             ? PurchaseStatus.EXPIRED
-            : ['canceled', 'failed', 'refunded'].includes(order.status ?? '')
-              ? PurchaseStatus.CANCELLED
-              : PurchaseStatus.PENDING_PAYMENT
+            : order.status === 'refunded'
+              ? PurchaseStatus.REFUNDED
+              : ['canceled', 'failed'].includes(order.status ?? '')
+                ? PurchaseStatus.CANCELLED
+                : PurchaseStatus.PENDING_PAYMENT
 
-      return this.applyPurchaseStatus(purchaseId, status)
+      return this.applyPurchaseStatus(purchaseId, status, {
+        orderId: String(order.id ?? input.dataId),
+        providerStatus: [order.status, order.status_detail]
+          .filter(Boolean)
+          .join(':'),
+      })
     }
 
     return { ignored: true }
