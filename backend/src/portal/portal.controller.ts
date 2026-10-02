@@ -17,6 +17,7 @@ import { DocumentsService } from '../documents/documents.service'
 import { ClientPortalGuard, type ClientPortalRequest } from './client-portal.guard'
 import {
   ClientPortalLoginDto,
+  RequestCancellationDto,
   RequestReservationDto,
   UpdateClientPassengersDto,
   UpdateClientSeatsDto,
@@ -104,6 +105,20 @@ export class PortalController {
       request.portal.clientId,
       request.portal.reservationId,
       body,
+    )
+  }
+
+  @Post('client/cancellation-request')
+  @UseGuards(ClientPortalGuard)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  requestCancellation(
+    @Req() request: ClientPortalRequest,
+    @Body() body: RequestCancellationDto,
+  ) {
+    return this.portal.requestCancellation(
+      request.portal.clientId,
+      request.portal.reservationId,
+      body.reason,
     )
   }
 
