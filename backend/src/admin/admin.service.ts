@@ -1,4 +1,5 @@
 import {
+  BadGatewayException,
   BadRequestException,
   ConflictException,
   Injectable,
@@ -13,12 +14,25 @@ import {
   ReservationStatus,
   TripStatus,
 } from '@prisma/client'
+import { MercadoPagoConfig, Order, Payment, PaymentRefund } from 'mercadopago'
+import { PaymentConnectionService } from '../payments/payment-connection.service'
 import { PrismaService } from '../prisma/prisma.service'
 import { CreateReservationDto, UpdateReservationPassengersDto } from './dto/reservation.dto'
 
 @Injectable()
 export class AdminService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly paymentConnection: PaymentConnectionService,
+  ) {}
+
+  private async mercadoPagoClient() {
+    const accessToken = await this.paymentConnection.getAccessToken()
+    return new MercadoPagoConfig({
+      accessToken,
+      options: { timeout: 12_000 },
+    })
+  }
 
   async dashboard() {
     const [clients, pendingReservations, activeTrips, confirmedReservations, birthdays] =
@@ -335,6 +349,13 @@ export class AdminService {
         unitPriceCents: true,
         passengerCount: true,
         totalCents: true,
+        providerPaymentId: true,
+        providerOrderId: true,
+        providerStatus: true,
+        paidAt: true,
+        refundedCents: true,
+        refundedAt: true,
+        lastReconciledAt: true,
         createdAt: true,
         updatedAt: true,
         reservation: {
@@ -372,31 +393,541 @@ export class AdminService {
     const summary = orders.reduce(
       (acc, order) => {
         acc.totalOrders += 1
-        if (order.status === 'PAID') {
+        if (
+          order.status === PurchaseStatus.PAID ||
+          order.status === PurchaseStatus.PARTIALLY_REFUNDED
+        ) {
           acc.paidOrders += 1
-          acc.paidCents += order.totalCents
-        } else if (order.status === 'PENDING_PAYMENT') {
+          acc.paidCents += Math.max(order.totalCents - order.refundedCents, 0)
+        } else if (order.status === PurchaseStatus.PENDING_PAYMENT) {
           acc.pendingOrders += 1
           acc.pendingCents += order.totalCents
-        } else if (order.status === 'CANCELLED') {
+        } else if (order.status === PurchaseStatus.REFUNDED) {
+          acc.refundedOrders += 1
+        } else if (order.status === PurchaseStatus.CANCELLED) {
           acc.cancelledOrders += 1
-        } else if (order.status === 'EXPIRED') {
+        } else if (order.status === PurchaseStatus.EXPIRED) {
           acc.expiredOrders += 1
         }
+        acc.refundedCents += order.refundedCents
         return acc
       },
       {
         totalOrders: 0,
         paidOrders: 0,
         pendingOrders: 0,
+        refundedOrders: 0,
         cancelledOrders: 0,
         expiredOrders: 0,
         paidCents: 0,
         pendingCents: 0,
+        refundedCents: 0,
       },
     )
 
     return { summary, orders }
+  }
+
+  async reservationFinance(id: string) {
+    const reservation = await this.prisma.reservation.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        status: true,
+        passengerCount: true,
+        createdAt: true,
+        client: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            phone: true,
+          },
+        },
+        trip: {
+          select: {
+            id: true,
+            title: true,
+            origin: true,
+            destination: true,
+            departureDate: true,
+          },
+        },
+        purchaseOrder: {
+          select: {
+            id: true,
+            status: true,
+            paymentMethod: true,
+            unitPriceCents: true,
+            passengerCount: true,
+            totalCents: true,
+            providerPaymentId: true,
+            providerOrderId: true,
+            providerStatus: true,
+            paidAt: true,
+            refundedCents: true,
+            refundedAt: true,
+            lastReconciledAt: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
+        financePlan: {
+          select: {
+            id: true,
+            totalCents: true,
+            downPaymentCents: true,
+            installmentCount: true,
+            refundedCents: true,
+            createdAt: true,
+            installments: {
+              select: {
+                id: true,
+                sequence: true,
+                dueDate: true,
+                amountCents: true,
+                status: true,
+                paidAt: true,
+                paymentMethod: true,
+              },
+              orderBy: { sequence: 'asc' },
+            },
+          },
+        },
+        quotes: {
+          where: { status: QuoteStatus.APPROVED },
+          select: {
+            id: true,
+            revision: true,
+            title: true,
+            subtotalSaleCents: true,
+            discountCents: true,
+            totalCents: true,
+            approvedAt: true,
+          },
+          orderBy: { revision: 'desc' },
+          take: 1,
+        },
+        creditTransactions: {
+          select: {
+            id: true,
+            type: true,
+            amountCents: true,
+            note: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+    })
+
+    if (!reservation) throw new NotFoundException('Reserva não encontrada')
+
+    const manualPaidCents =
+      reservation.financePlan?.installments
+        .filter((item) => item.status === InstallmentStatus.PAID)
+        .reduce((sum, item) => sum + item.amountCents, 0) ?? 0
+
+    const providerWasPaid = Boolean(
+      reservation.purchaseOrder?.paidAt ||
+      reservation.purchaseOrder?.status === PurchaseStatus.PAID ||
+      reservation.purchaseOrder?.status === PurchaseStatus.PARTIALLY_REFUNDED ||
+      reservation.purchaseOrder?.status === PurchaseStatus.REFUNDED,
+    )
+
+    const grossPaidCents = reservation.purchaseOrder
+      ? providerWasPaid
+        ? reservation.purchaseOrder.totalCents
+        : 0
+      : manualPaidCents
+
+    const refundedCents =
+      reservation.purchaseOrder?.refundedCents ??
+      reservation.financePlan?.refundedCents ??
+      0
+
+    const totalCents =
+      reservation.purchaseOrder?.totalCents ??
+      reservation.financePlan?.totalCents ??
+      reservation.quotes[0]?.totalCents ??
+      0
+
+    const events = await this.prisma.authAuditEvent.findMany({
+      where: {
+        eventType: {
+          in: ['OPS_PAYMENT_REFUNDED', 'OPS_PAYMENT_RECONCILED'],
+        },
+        metadata: {
+          path: ['reservationId'],
+          equals: id,
+        },
+      },
+      select: {
+        id: true,
+        eventType: true,
+        metadata: true,
+        createdAt: true,
+        user: {
+          select: { id: true, email: true, role: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    })
+
+    return {
+      reservation: {
+        id: reservation.id,
+        status: reservation.status,
+        passengerCount: reservation.passengerCount,
+        createdAt: reservation.createdAt,
+        client: reservation.client,
+        trip: reservation.trip,
+      },
+      purchaseOrder: reservation.purchaseOrder,
+      financePlan: reservation.financePlan,
+      quote: reservation.quotes[0] ?? null,
+      credits: reservation.creditTransactions,
+      summary: {
+        totalCents,
+        grossPaidCents,
+        refundedCents,
+        netPaidCents: Math.max(grossPaidCents - refundedCents, 0),
+        outstandingCents: Math.max(totalCents - grossPaidCents, 0),
+        refundableCents:
+          reservation.status === ReservationStatus.CANCELLED
+            ? Math.max(grossPaidCents - refundedCents, 0)
+            : 0,
+      },
+      events,
+    }
+  }
+
+  async reconcileReservationPayment(
+    id: string,
+    actorUserId: string,
+  ) {
+    const current = await this.reservationFinance(id)
+    const purchase = current.purchaseOrder
+
+    if (!purchase) {
+      throw new BadRequestException(
+        'Esta reserva não possui pagamento online para reconciliar',
+      )
+    }
+
+    if (!purchase.providerPaymentId && !purchase.providerOrderId) {
+      throw new ConflictException(
+        'O pagamento ainda não possui identificador do Mercado Pago',
+      )
+    }
+
+    const client = await this.mercadoPagoClient()
+    let status = purchase.status
+    let providerStatus = purchase.providerStatus
+    let refundedCents = purchase.refundedCents
+    let providerPaymentId = purchase.providerPaymentId
+    let paidAt = purchase.paidAt
+
+    try {
+      if (purchase.providerPaymentId) {
+        const payment = await new Payment(client).get({
+          id: purchase.providerPaymentId,
+        })
+        const refunds = await new PaymentRefund(client).list({
+          payment_id: purchase.providerPaymentId,
+        })
+        refundedCents = Math.min(
+          purchase.totalCents,
+          Math.round(
+            refunds.reduce(
+              (sum, refund) => sum + (refund.amount ?? 0),
+              0,
+            ) * 100,
+          ),
+        )
+        providerStatus = payment.status ?? 'unknown'
+        providerPaymentId = String(
+          payment.id ?? purchase.providerPaymentId,
+        )
+        paidAt = payment.date_approved
+          ? new Date(payment.date_approved)
+          : purchase.paidAt
+
+        if (refundedCents >= purchase.totalCents) {
+          status = PurchaseStatus.REFUNDED
+        } else if (refundedCents > 0) {
+          status = PurchaseStatus.PARTIALLY_REFUNDED
+        } else if (payment.status === 'approved') {
+          status = PurchaseStatus.PAID
+        } else if (
+          ['cancelled', 'rejected', 'charged_back'].includes(
+            payment.status ?? '',
+          )
+        ) {
+          status = PurchaseStatus.CANCELLED
+        } else {
+          status = PurchaseStatus.PENDING_PAYMENT
+        }
+      } else if (purchase.providerOrderId) {
+        const order = await new Order(client).get({
+          id: purchase.providerOrderId,
+        })
+        const refunds = order.transactions?.refunds ?? []
+        refundedCents = Math.min(
+          purchase.totalCents,
+          Math.round(
+            refunds.reduce(
+              (sum, refund) => sum + Number(refund.amount ?? '0'),
+              0,
+            ) * 100,
+          ),
+        )
+        providerStatus = [order.status, order.status_detail]
+          .filter(Boolean)
+          .join(':')
+        providerPaymentId =
+          order.transactions?.payments?.[0]?.id ??
+          purchase.providerPaymentId
+
+        if (refundedCents >= purchase.totalCents) {
+          status = PurchaseStatus.REFUNDED
+        } else if (refundedCents > 0) {
+          status = PurchaseStatus.PARTIALLY_REFUNDED
+        } else if (
+          order.status === 'processed' &&
+          order.status_detail === 'accredited'
+        ) {
+          status = PurchaseStatus.PAID
+          paidAt = purchase.paidAt ?? new Date()
+        } else if (order.status === 'expired') {
+          status = PurchaseStatus.EXPIRED
+        } else if (['canceled', 'failed'].includes(order.status ?? '')) {
+          status = PurchaseStatus.CANCELLED
+        } else {
+          status = PurchaseStatus.PENDING_PAYMENT
+        }
+      }
+    } catch (error) {
+      throw new BadGatewayException(
+        error instanceof Error
+          ? 'Falha ao consultar o Mercado Pago: ' + error.message
+          : 'Falha ao consultar o Mercado Pago',
+      )
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.purchaseOrder.update({
+        where: { id: purchase.id },
+        data: {
+          status,
+          providerPaymentId,
+          providerStatus,
+          paidAt,
+          refundedCents,
+          refundedAt:
+            refundedCents > 0
+              ? purchase.refundedAt ?? new Date()
+              : null,
+          lastReconciledAt: new Date(),
+        },
+      })
+
+      await tx.authAuditEvent.create({
+        data: {
+          userId: actorUserId,
+          eventType: 'OPS_PAYMENT_RECONCILED',
+          metadata: {
+            reservationId: id,
+            purchaseOrderId: purchase.id,
+            status,
+            providerStatus,
+            refundedCents,
+          },
+        },
+      })
+    })
+
+    return this.reservationFinance(id)
+  }
+
+  async refundReservationPayment(
+    id: string,
+    amountCents: number,
+    reason: string | undefined,
+    actorUserId: string,
+  ) {
+    const current = await this.reservationFinance(id)
+    const purchase = current.purchaseOrder
+
+    if (!purchase) {
+      throw new BadRequestException(
+        'Esta reserva não possui pagamento online para estornar',
+      )
+    }
+    if (current.reservation.status !== ReservationStatus.CANCELLED) {
+      throw new ConflictException(
+        'Cancele a reserva antes de realizar o estorno financeiro',
+      )
+    }
+    if (
+      purchase.status !== PurchaseStatus.PAID &&
+      purchase.status !== PurchaseStatus.PARTIALLY_REFUNDED
+    ) {
+      throw new ConflictException(
+        'Este pagamento não está disponível para estorno',
+      )
+    }
+
+    const refundableCents = Math.max(
+      purchase.totalCents - purchase.refundedCents,
+      0,
+    )
+    if (amountCents > refundableCents) {
+      throw new BadRequestException(
+        'O valor do estorno supera o saldo reembolsável',
+      )
+    }
+
+    const client = await this.mercadoPagoClient()
+    let providerRefundId: string | null = null
+
+    try {
+      if (purchase.paymentMethod === 'PIX') {
+        if (!purchase.providerPaymentId) {
+          throw new ConflictException(
+            'O pagamento PIX ainda não possui identificador do Mercado Pago',
+          )
+        }
+
+        const refunds = new PaymentRefund(client)
+        const response =
+          amountCents === refundableCents &&
+          purchase.refundedCents === 0
+            ? await refunds.total({
+                payment_id: purchase.providerPaymentId,
+                requestOptions: {
+                  idempotencyKey:
+                    `${purchase.id}-refund-${purchase.refundedCents}-${amountCents}`,
+                },
+              })
+            : await refunds.create({
+                payment_id: purchase.providerPaymentId,
+                body: { amount: amountCents / 100 },
+                requestOptions: {
+                  idempotencyKey:
+                    `${purchase.id}-refund-${purchase.refundedCents}-${amountCents}`,
+                },
+              })
+
+        providerRefundId =
+          response.id !== undefined && response.id !== null
+            ? String(response.id)
+            : null
+      } else if (purchase.paymentMethod === 'CARD') {
+        if (!purchase.providerOrderId) {
+          throw new ConflictException(
+            'O pedido de cartão ainda não possui identificador do Mercado Pago',
+          )
+        }
+
+        const orders = new Order(client)
+        const remote = await orders.get({
+          id: purchase.providerOrderId,
+        })
+        const transactionId = remote.transactions?.payments?.[0]?.id
+        if (!transactionId) {
+          throw new ConflictException(
+            'O Mercado Pago não retornou a transação do cartão',
+          )
+        }
+
+        const response =
+          amountCents === refundableCents &&
+          purchase.refundedCents === 0
+            ? await orders.refund({
+                id: purchase.providerOrderId,
+                requestOptions: {
+                  idempotencyKey:
+                    `${purchase.id}-refund-${purchase.refundedCents}-${amountCents}`,
+                },
+              })
+            : await orders.refund({
+                id: purchase.providerOrderId,
+                body: {
+                  transactions: [
+                    {
+                      id: transactionId,
+                      amount: (amountCents / 100).toFixed(2),
+                    },
+                  ],
+                },
+                requestOptions: {
+                  idempotencyKey:
+                    `${purchase.id}-refund-${purchase.refundedCents}-${amountCents}`,
+                },
+              })
+
+        const providerRefunds = response.transactions?.refunds ?? []
+        providerRefundId =
+          providerRefunds[providerRefunds.length - 1]?.id ?? null
+      } else {
+        throw new BadRequestException(
+          'Este método de pagamento não possui estorno automático',
+        )
+      }
+    } catch (error) {
+      if (
+        error instanceof ConflictException ||
+        error instanceof BadRequestException
+      ) {
+        throw error
+      }
+      throw new BadGatewayException(
+        error instanceof Error
+          ? 'Falha ao solicitar estorno ao Mercado Pago: ' + error.message
+          : 'Falha ao solicitar estorno ao Mercado Pago',
+      )
+    }
+
+    const refundedCents = purchase.refundedCents + amountCents
+    const status =
+      refundedCents >= purchase.totalCents
+        ? PurchaseStatus.REFUNDED
+        : PurchaseStatus.PARTIALLY_REFUNDED
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.purchaseOrder.update({
+        where: { id: purchase.id },
+        data: {
+          status,
+          refundedCents,
+          refundedAt: new Date(),
+          providerStatus:
+            status === PurchaseStatus.REFUNDED
+              ? 'refunded'
+              : 'partially_refunded',
+          lastReconciledAt: new Date(),
+        },
+      })
+
+      await tx.authAuditEvent.create({
+        data: {
+          userId: actorUserId,
+          eventType: 'OPS_PAYMENT_REFUNDED',
+          metadata: {
+            reservationId: id,
+            purchaseOrderId: purchase.id,
+            amountCents,
+            refundedCents,
+            providerRefundId,
+            reason: reason?.trim() || null,
+          },
+        },
+      })
+    })
+
+    return this.reservationFinance(id)
   }
 
   async createReservation(data: CreateReservationDto) {
@@ -468,6 +999,7 @@ export class AdminService {
             id: true,
             status: true,
             totalCents: true,
+            refundedCents: true,
           },
         },
         financePlan: {
@@ -485,8 +1017,17 @@ export class AdminService {
       throw new ConflictException('Reserva concluída não pode ser cancelada')
     }
 
-    const paidCents = reservation.purchaseOrder?.status === PurchaseStatus.PAID
-      ? reservation.purchaseOrder.totalCents
+    const paidCents = reservation.purchaseOrder
+      ? Math.max(
+          (
+            reservation.purchaseOrder.status === PurchaseStatus.PAID ||
+            reservation.purchaseOrder.status === PurchaseStatus.PARTIALLY_REFUNDED ||
+            reservation.purchaseOrder.status === PurchaseStatus.REFUNDED
+              ? reservation.purchaseOrder.totalCents
+              : 0
+          ) - (reservation.purchaseOrder.refundedCents ?? 0),
+          0,
+        )
       : reservation.financePlan?.installments
           .filter((item) => item.status === InstallmentStatus.PAID)
           .reduce((sum, item) => sum + item.amountCents, 0) ?? 0
@@ -540,7 +1081,13 @@ export class AdminService {
         }
       }
 
-      if (reservation.purchaseOrder) {
+      if (
+        reservation.purchaseOrder &&
+        (
+          reservation.purchaseOrder.status === PurchaseStatus.PENDING_PAYMENT ||
+          reservation.purchaseOrder.status === PurchaseStatus.EXPIRED
+        )
+      ) {
         await tx.purchaseOrder.update({
           where: { id: reservation.purchaseOrder.id },
           data: { status: PurchaseStatus.CANCELLED },
