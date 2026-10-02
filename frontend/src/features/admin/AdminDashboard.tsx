@@ -1905,6 +1905,15 @@ function ReservationsView({
                     ? ' · Bônus ' + money.format(reservation.client.bonusBalanceCents / 100)
                     : ''}
                 </span>
+                {reservation.cancellationRequestStatus === 'PENDING' ? (
+                  <span className="admin-cancellation-request-badge">
+                    Cancelamento solicitado pelo passageiro
+                  </span>
+                ) : reservation.cancellationRequestStatus === 'REJECTED' ? (
+                  <span className="admin-cancellation-request-badge admin-cancellation-request-badge--rejected">
+                    Solicitação de cancelamento recusada
+                  </span>
+                ) : null}
               </div>
               <div className="admin-reservation-actions">
                 <select
@@ -1970,7 +1979,9 @@ function ReservationsView({
                     className="admin-reservation-cancel"
                     onClick={() => setCancelReservationId(reservation.id)}
                   >
-                    Cancelar
+                    {reservation.cancellationRequestStatus === 'PENDING'
+                      ? 'Analisar cancelamento'
+                      : 'Cancelar'}
                   </button>
                 ) : null}
               </div>
