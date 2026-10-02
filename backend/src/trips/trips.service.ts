@@ -1043,6 +1043,138 @@ export class TripsService {
     }
   }
 
+  async scanBoardingQr(
+    id: string,
+    rawCode: string,
+    actorUserId?: string,
+  ) {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id },
+      select: { id: true, status: true },
+    })
+
+    if (!trip) throw new NotFoundException('Viagem não encontrada')
+    if (
+      trip.status === TripStatus.CANCELLED ||
+      trip.status === TripStatus.COMPLETED
+    ) {
+      throw new ConflictException(
+        'O embarque não pode ser alterado nesta viagem',
+      )
+    }
+
+    const normalized = rawCode.trim()
+    if (!normalized) {
+      throw new BadRequestException('QR Code vazio')
+    }
+
+    let verificationCode = normalized
+
+    if (normalized.startsWith('PD-VERIFY:')) {
+      verificationCode = normalized.slice('PD-VERIFY:'.length)
+    } else {
+      try {
+        const url = new URL(normalized)
+        const match = url.pathname.match(
+          /\/public\/documents\/verify\/([^/?#]+)/i,
+        )
+        if (match?.[1]) {
+          verificationCode = decodeURIComponent(match[1])
+        }
+      } catch {
+        const match = normalized.match(
+          /\/public\/documents\/verify\/([^/?#]+)/i,
+        )
+        if (match?.[1]) {
+          verificationCode = decodeURIComponent(match[1])
+        }
+      }
+    }
+
+    verificationCode = verificationCode.trim().toUpperCase()
+
+    const document = await this.prisma.travelDocument.findUnique({
+      where: { verificationCode },
+      select: {
+        id: true,
+        type: true,
+        documentNumber: true,
+        reservation: {
+          select: {
+            id: true,
+            tripId: true,
+            status: true,
+            client: {
+              select: {
+                fullName: true,
+              },
+            },
+          },
+        },
+      },
+    })
+
+    if (!document || document.type !== 'TRAVEL_VOUCHER') {
+      throw new NotFoundException('Passagem com QR Code não encontrada')
+    }
+
+    if (document.reservation.tripId !== id) {
+      throw new ConflictException(
+        'Este QR Code pertence a outra viagem',
+      )
+    }
+
+    if (document.reservation.status === ReservationStatus.CANCELLED) {
+      throw new ConflictException('Esta reserva foi cancelada')
+    }
+
+    await this.ensureTripPassengers(id)
+
+    const passengers = await this.prisma.reservationPassenger.findMany({
+      where: {
+        reservationId: document.reservation.id,
+      },
+      select: {
+        id: true,
+        sequence: true,
+        fullName: true,
+        boardingStatus: true,
+        seatAssignment: { select: { seatNumber: true } },
+      },
+      orderBy: { sequence: 'asc' },
+    })
+
+    if (!passengers.length) {
+      throw new NotFoundException(
+        'Nenhum passageiro encontrado nesta passagem',
+      )
+    }
+
+    if (actorUserId) {
+      await this.prisma.authAuditEvent.create({
+        data: {
+          userId: actorUserId,
+          eventType: 'OPS_BOARDING_QR_SCANNED',
+          metadata: {
+            tripId: id,
+            reservationId: document.reservation.id,
+            documentId: document.id,
+            documentNumber: document.documentNumber,
+            passengerCount: passengers.length,
+          },
+        },
+      })
+    }
+
+    return {
+      reservationId: document.reservation.id,
+      documentNumber: document.documentNumber,
+      clientName: document.reservation.client.fullName,
+      passengerIds: passengers.map((passenger) => passenger.id),
+      passengers,
+    }
+  }
+
   async updateBoardingStatus(
     id: string,
     passengerId: string,
