@@ -1,19 +1,23 @@
 import {
+  ArrowLeft,
   Bell,
   CalendarHeart,
   CircleDollarSign,
   FileText,
   Gift,
+  Globe2,
   CreditCard,
+  ChevronDown,
   ExternalLink,
   Settings,
   CheckCircle2,
+  LogOut,
   Plane,
   Search,
   ShieldCheck,
   Users,
 } from 'lucide-react'
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Brand } from '../../components/Brand'
 import { FinanceWorkspace, QuotesWorkspace } from './CommercialWorkspace'
 import { AdminSeatMapDialog } from './AdminSeatMap'
@@ -40,10 +44,29 @@ import { openWhatsApp } from '../../lib/whatsapp'
 
 type AdminDashboardProps = {
   accessToken: string
+  onExitToSite: () => void
   onLogout: () => void
 }
 
 type Tab = 'overview' | 'clients' | 'trips' | 'reservations' | 'quotes' | 'payments' | 'finance' | 'settings'
+
+const adminTabs = new Set<Tab>([
+  'overview',
+  'clients',
+  'trips',
+  'reservations',
+  'quotes',
+  'payments',
+  'finance',
+  'settings',
+])
+
+function tabFromLocation(): Tab {
+  const params = new URLSearchParams(window.location.search)
+  if (params.has('paymentConnection')) return 'settings'
+  const value = params.get('tab')
+  return value && adminTabs.has(value as Tab) ? (value as Tab) : 'overview'
+}
 
 const money = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -63,11 +86,12 @@ function roleFromToken(token: string) {
   }
 }
 
-export function AdminDashboard({ accessToken, onLogout }: AdminDashboardProps) {
-  const [tab, setTab] = useState<Tab>(() => {
-    const params = new URLSearchParams(window.location.search)
-    return params.has('paymentConnection') ? 'settings' : 'overview'
-  })
+export function AdminDashboard({
+  accessToken,
+  onExitToSite,
+  onLogout,
+}: AdminDashboardProps) {
+  const [tab, setTab] = useState<Tab>(() => tabFromLocation())
   const [dashboard, setDashboard] = useState<DashboardData | null>(null)
   const [clients, setClients] = useState<AdminClient[]>([])
   const [trips, setTrips] = useState<AdminTrip[]>([])
@@ -76,9 +100,38 @@ export function AdminDashboard({ accessToken, onLogout }: AdminDashboardProps) {
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false)
+  const scrollPositions = useRef<Partial<Record<Tab, number>>>({})
   const userRole = useMemo(() => roleFromToken(accessToken), [accessToken])
   const isAdmin = userRole === 'ADMIN'
   const canViewPayments = userRole === 'ADMIN' || userRole === 'FINANCE'
+
+  function navigateTab(next: Tab, replace = false) {
+    if (next === tab) return
+
+    scrollPositions.current[tab] = window.scrollY
+
+    const url = new URL(window.location.href)
+    url.searchParams.set('screen', 'admin')
+    url.searchParams.set('tab', next)
+    url.searchParams.delete('paymentConnection')
+    window.history[replace ? 'replaceState' : 'pushState'](
+      { screen: 'admin', tab: next },
+      '',
+      url,
+    )
+
+    setTab(next)
+    setSearchResult(null)
+    setAccountMenuOpen(false)
+
+    window.requestAnimationFrame(() => {
+      window.scrollTo({
+        top: scrollPositions.current[next] ?? 0,
+        behavior: 'auto',
+      })
+    })
+  }
 
   async function reload() {
     setLoading(true)
@@ -106,10 +159,56 @@ export function AdminDashboard({ accessToken, onLogout }: AdminDashboardProps) {
   }, [accessToken])
 
   useEffect(() => {
+    const url = new URL(window.location.href)
+    if (!url.searchParams.has('screen')) {
+      url.searchParams.set('screen', 'admin')
+    }
+    if (!url.searchParams.has('tab')) {
+      url.searchParams.set('tab', tab)
+    }
+    window.history.replaceState({ screen: 'admin', tab }, '', url)
+  }, [])
+
+  useEffect(() => {
+    function onPopState() {
+      const next = tabFromLocation()
+      scrollPositions.current[tab] = window.scrollY
+      setTab(next)
+      setSearchResult(null)
+      setAccountMenuOpen(false)
+      window.requestAnimationFrame(() => {
+        window.scrollTo({
+          top: scrollPositions.current[next] ?? 0,
+          behavior: 'auto',
+        })
+      })
+    }
+
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [tab])
+
+  useEffect(() => {
+    if (
+      (!isAdmin && tab === 'settings') ||
+      (!canViewPayments && tab === 'payments')
+    ) {
+      navigateTab('overview', true)
+    }
+  }, [canViewPayments, isAdmin, tab])
+
+  useEffect(() => {
     if (tab !== 'settings') return
-    const params = new URLSearchParams(window.location.search)
-    if (!params.has('paymentConnection')) return
-    window.history.replaceState({}, '', window.location.pathname + window.location.hash)
+    const url = new URL(window.location.href)
+    if (!url.searchParams.has('paymentConnection')) return
+    url.searchParams.delete('paymentConnection')
+    url.searchParams.set('screen', 'admin')
+    url.searchParams.set('tab', 'settings')
+    window.history.replaceState(
+      { screen: 'admin', tab: 'settings' },
+      '',
+      url,
+    )
   }, [tab])
 
   async function handleSearch(event: FormEvent<HTMLFormElement>) {
@@ -139,17 +238,17 @@ export function AdminDashboard({ accessToken, onLogout }: AdminDashboardProps) {
         <Brand compact />
 
         <nav className="admin-nav" aria-label="Administração">
-          <button className={tab === 'overview' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => setTab('overview')} type="button">Visão geral</button>
-          <button className={tab === 'clients' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => setTab('clients')} type="button">Clientes</button>
-          <button className={tab === 'trips' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => setTab('trips')} type="button">Viagens</button>
-          <button className={tab === 'reservations' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => setTab('reservations')} type="button">Reservas</button>
-          <button className={tab === 'quotes' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => setTab('quotes')} type="button">Cotações</button>
+          <button className={tab === 'overview' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('overview')} type="button">Visão geral</button>
+          <button className={tab === 'clients' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('clients')} type="button">Clientes</button>
+          <button className={tab === 'trips' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('trips')} type="button">Viagens</button>
+          <button className={tab === 'reservations' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('reservations')} type="button">Reservas</button>
+          <button className={tab === 'quotes' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('quotes')} type="button">Cotações</button>
           {canViewPayments ? (
-            <button className={tab === 'payments' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => setTab('payments')} type="button">Pagamentos</button>
+            <button className={tab === 'payments' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('payments')} type="button">Pagamentos</button>
           ) : null}
-          <button className={tab === 'finance' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => setTab('finance')} type="button">Financeiro</button>
+          <button className={tab === 'finance' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('finance')} type="button">Financeiro</button>
           {isAdmin ? (
-            <button className={tab === 'settings' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => setTab('settings')} type="button">Configurações</button>
+            <button className={tab === 'settings' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('settings')} type="button">Configurações</button>
           ) : null}
         </nav>
 
@@ -166,7 +265,64 @@ export function AdminDashboard({ accessToken, onLogout }: AdminDashboardProps) {
             />
           </form>
           <button className="round-action" type="button" aria-label="Notificações"><Bell size={17} /></button>
-          <button className="admin-avatar" type="button" onClick={onLogout} title="Sair">PV</button>
+          <button
+            className="admin-site-return"
+            type="button"
+            onClick={onExitToSite}
+            title="Voltar ao site sem sair"
+          >
+            <ArrowLeft size={15} />
+            <span>Site</span>
+          </button>
+          <div className="admin-account">
+            <button
+              className="admin-avatar"
+              type="button"
+              onClick={() => setAccountMenuOpen((open) => !open)}
+              aria-expanded={accountMenuOpen}
+              aria-haspopup="menu"
+              title="Minha conta"
+            >
+              PV
+              <ChevronDown size={12} />
+            </button>
+            {accountMenuOpen ? (
+              <div className="admin-account-menu" role="menu">
+                <div className="admin-account-menu-head">
+                  <strong>Área administrativa</strong>
+                  <span>Sessão protegida e renovada automaticamente</span>
+                </div>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={onExitToSite}
+                >
+                  <Globe2 size={15} />
+                  Voltar ao site
+                  <small>Sem encerrar a sessão</small>
+                </button>
+                {isAdmin ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => navigateTab('settings')}
+                  >
+                    <Settings size={15} />
+                    Configurações
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="danger"
+                  onClick={onLogout}
+                >
+                  <LogOut size={15} />
+                  Sair da conta
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
       </header>
 
@@ -192,15 +348,27 @@ export function AdminDashboard({ accessToken, onLogout }: AdminDashboardProps) {
             <div className="admin-search-columns">
               <div>
                 <strong>Clientes</strong>
-                {searchResult.clients.length ? searchResult.clients.map((item) => <span key={item.id}>{item.fullName}<small>{item.email || item.phone || 'Sem contato'}</small></span>) : <em>Nenhum resultado</em>}
+                {searchResult.clients.length ? searchResult.clients.map((item) => (
+                  <button type="button" className="admin-search-result-link" key={item.id} onClick={() => navigateTab('clients')}>
+                    {item.fullName}<small>{item.email || item.phone || 'Sem contato'}</small>
+                  </button>
+                )) : <em>Nenhum resultado</em>}
               </div>
               <div>
                 <strong>Viagens</strong>
-                {searchResult.trips.length ? searchResult.trips.map((item) => <span key={item.id}>{item.title}<small>{item.origin} → {item.destination}</small></span>) : <em>Nenhum resultado</em>}
+                {searchResult.trips.length ? searchResult.trips.map((item) => (
+                  <button type="button" className="admin-search-result-link" key={item.id} onClick={() => navigateTab('trips')}>
+                    {item.title}<small>{item.origin} → {item.destination}</small>
+                  </button>
+                )) : <em>Nenhum resultado</em>}
               </div>
               <div>
                 <strong>Reservas</strong>
-                {searchResult.reservations.length ? searchResult.reservations.map((item) => <span key={item.id}>{item.client.fullName}<small>{item.trip.title} · {item.status}</small></span>) : <em>Nenhum resultado</em>}
+                {searchResult.reservations.length ? searchResult.reservations.map((item) => (
+                  <button type="button" className="admin-search-result-link" key={item.id} onClick={() => navigateTab('reservations')}>
+                    {item.client.fullName}<small>{item.trip.title} · {item.status}</small>
+                  </button>
+                )) : <em>Nenhum resultado</em>}
               </div>
             </div>
           </section>
