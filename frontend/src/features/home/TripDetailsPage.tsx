@@ -16,6 +16,7 @@ import {
   fetchPublicPaymentConfig,
   fetchPublicTrip,
   fetchPublicTripSeats,
+  publicTripImageUrl,
   requestReservation,
   type PublicPaymentConfig,
   type PublicSeatMap,
@@ -315,6 +316,7 @@ export function TripDetailsPage({
   const totalCents = hasPublishedPrice
     ? trip.priceCents! * passengerCount
     : null
+  const heroImageUrl = publicTripImageUrl(trip)
 
   return (
     <div className="trip-details-page">
@@ -331,7 +333,7 @@ export function TripDetailsPage({
       <main className="trip-details-shell">
         <section
           className="trip-details-hero"
-          style={trip.imageUrl ? { backgroundImage: `linear-gradient(90deg, rgba(10,35,56,.82), rgba(10,35,56,.28)), url("${trip.imageUrl}")` } : undefined}
+          style={heroImageUrl ? { backgroundImage: `linear-gradient(90deg, rgba(10,35,56,.82), rgba(10,35,56,.28)), url("${heroImageUrl}")` } : undefined}
         >
           <div>
             <span className="public-kicker">{trip.status === 'ACTIVE' ? 'Disponível agora' : 'Viagem programada'}</span>
