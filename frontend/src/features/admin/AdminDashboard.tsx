@@ -19,6 +19,7 @@ import { FinanceWorkspace, QuotesWorkspace } from './CommercialWorkspace'
 import { AdminSeatMapDialog } from './AdminSeatMap'
 import { ReservationPassengersDialog } from './ReservationPassengersDialog'
 import { TripBoardingDialog } from './TripBoardingDialog'
+import { TripAuditDialog } from './TripAuditDialog'
 import {
   adminApi,
   type AdminClient,
@@ -1024,6 +1025,7 @@ function TripBusControl({
   const [saving, setSaving] = useState(false)
   const [showSeatMap, setShowSeatMap] = useState(false)
   const [showBoarding, setShowBoarding] = useState(false)
+  const [showAudit, setShowAudit] = useState(false)
 
   useEffect(() => {
     setTemplateKey(trip.busTemplate ?? (trip.capacity ? 'CUSTOM' : ''))
@@ -1259,6 +1261,14 @@ function TripBusControl({
           >
             Lista de embarque
           </button>
+
+          <button
+            type="button"
+            className="admin-audit-open"
+            onClick={() => setShowAudit(true)}
+          >
+            Auditoria
+          </button>
         </div>
       ) : null}
 
@@ -1277,6 +1287,14 @@ function TripBusControl({
           tripId={trip.id}
           onClose={() => setShowBoarding(false)}
           onCompleted={onChanged}
+        />
+      ) : null}
+
+      {showAudit ? (
+        <TripAuditDialog
+          accessToken={accessToken}
+          tripId={trip.id}
+          onClose={() => setShowAudit(false)}
         />
       ) : null}
     </form>
