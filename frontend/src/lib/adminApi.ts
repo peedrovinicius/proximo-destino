@@ -118,7 +118,14 @@ export type AdminClientDetail = {
     passengerCount: number
     createdAt: string
     seatAssignments: Array<{ seatNumber: number }>
-    trip: AdminTrip
+    trip: {
+      id: string
+      title: string
+      origin: string
+      destination: string
+      departureDate: string
+      status: AdminTrip['status']
+    }
   }>
 }
 
@@ -818,7 +825,7 @@ export const adminApi = {
       notes?: string
     },
   ) =>
-    adminFetch<AdminClientDetail>(
+    adminFetch<void>(
       token,
       `/admin/clients/${encodeURIComponent(clientId)}`,
       {
