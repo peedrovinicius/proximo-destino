@@ -215,8 +215,9 @@ describe('cadastro manual de cliente por poltrona', () => {
     )
     assert.ok(event)
     assert.equal(event.user?.id, actorUserId)
-    assert.equal(event.metadata?.fromSeatNumber, 2)
-    assert.equal(event.metadata?.toSeatNumber, 4)
+    const metadata = event.metadata as Record<string, unknown>
+    assert.equal(metadata.fromSeatNumber, 2)
+    assert.equal(metadata.toSeatNumber, 4)
   })
 
   it('protege poltrona comprada diretamente pelo site', async () => {
