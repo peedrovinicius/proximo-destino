@@ -13,9 +13,11 @@ import {
   Gift,
   ArrowDownCircle,
   ArrowUpCircle,
+  Armchair,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Brand } from '../../components/Brand'
+import { SeatSelector } from '../../components/SeatSelector'
 import { WhatsAppButton } from '../../components/WhatsAppButton'
 import { ClientPassengersPanel } from './ClientPassengersPanel'
 import {
@@ -24,6 +26,7 @@ import {
   openClientDocumentPdf,
   rejectClientQuote,
   retryClientPayment,
+  updateClientSeats,
   type ClientPaymentStartResult,
   type ClientPortalData,
 } from '../../lib/clientPortal'
@@ -40,6 +43,11 @@ const money = new Intl.NumberFormat('pt-BR', {
 
 const date = new Intl.DateTimeFormat('pt-BR', {
   dateStyle: 'long',
+})
+
+const dateTime = new Intl.DateTimeFormat('pt-BR', {
+  dateStyle: 'medium',
+  timeStyle: 'short',
 })
 
 const statusLabel: Record<ClientPortalData['status'], string> = {
@@ -79,6 +87,8 @@ export function ClientPortal({ accessToken, onLogout }: ClientPortalProps) {
   const [paymentStarting, setPaymentStarting] = useState(false)
   const [paymentResult, setPaymentResult] = useState<ClientPaymentStartResult | null>(null)
   const [pixCopied, setPixCopied] = useState(false)
+  const [seatSelectorOpen, setSeatSelectorOpen] = useState(false)
+  const [seatSaving, setSeatSaving] = useState(false)
 
   async function loadPortal() {
     setError('')
@@ -153,6 +163,43 @@ export function ClientPortal({ accessToken, onLogout }: ClientPortalProps) {
       window.setTimeout(() => setPixCopied(false), 1800)
     } catch {
       setPixCopied(false)
+    }
+  }
+
+  async function openSeatChange() {
+    setError('')
+    try {
+      const latest = await fetchClientPortal(accessToken)
+      setData(latest)
+      if (!latest.canChangeSeats) {
+        setError(
+          'A troca de poltrona não está mais disponível para esta viagem.',
+        )
+        return
+      }
+      setSeatSelectorOpen(true)
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'Não foi possível atualizar a disponibilidade dos assentos.',
+      )
+    }
+  }
+
+  async function saveSeats(selectedSeats: number[]) {
+    setSeatSaving(true)
+    setError('')
+    try {
+      setData(await updateClientSeats(accessToken, selectedSeats))
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'Não foi possível trocar a poltrona.',
+      )
+    } finally {
+      setSeatSaving(false)
     }
   }
 
@@ -333,6 +380,47 @@ export function ClientPortal({ accessToken, onLogout }: ClientPortalProps) {
           data={data}
           onUpdated={setData}
         />
+
+        {data.seatMap.enabled && data.seatMap.capacity ? (
+          <section className="client-seat-panel">
+            <div className="client-seat-panel-main">
+              <span className="client-seat-panel-icon">
+                <Armchair size={22} />
+              </span>
+              <div>
+                <span className="eyebrow">Poltronas da viagem</span>
+                <h2>
+                  {data.seatAssignments.length
+                    ? `Assentos ${data.seatAssignments
+                        .map((seat) => seat.seatNumber)
+                        .join(', ')}`
+                    : 'Escolha suas poltronas'}
+                </h2>
+                <p>
+                  {data.canChangeSeats
+                    ? 'Você pode trocar suas poltronas por lugares disponíveis até 24 horas antes do embarque.'
+                    : `Alterações encerradas em ${dateTime.format(
+                        new Date(data.seatChangeCutoffAt),
+                      )}.`}
+                </p>
+              </div>
+            </div>
+
+            <div className="client-seat-panel-actions">
+              <span>
+                {data.seatMap.availableCount ?? 0} lugares disponíveis no mapa
+              </span>
+              <button
+                type="button"
+                onClick={() => void openSeatChange()}
+                disabled={!data.canChangeSeats || seatSaving}
+              >
+                <Armchair size={16} />
+                {seatSaving ? 'Atualizando...' : 'Trocar poltrona'}
+              </button>
+            </div>
+          </section>
+        ) : null}
 
         {data.purchaseOrder ? (
           <section className="client-payment-panel">
@@ -627,6 +715,27 @@ export function ClientPortal({ accessToken, onLogout }: ClientPortalProps) {
           </section>
         ) : null}
       </main>
+
+      {seatSelectorOpen && data.seatMap.enabled && data.seatMap.capacity ? (
+        <SeatSelector
+          origin={data.trip.origin}
+          destination={data.trip.destination}
+          capacity={data.seatMap.capacity}
+          busLabel={data.seatMap.busLabel}
+          seatLayout={data.seatMap.seatLayout}
+          deckCount={data.seatMap.deckCount}
+          lowerDeckCapacity={data.seatMap.lowerDeckCapacity}
+          vehicleFeatures={data.seatMap.vehicleFeatures}
+          blockedSeats={data.seatMap.blockedSeats}
+          occupiedSeats={data.seatMap.occupiedSeats}
+          passengerCount={data.passengerCount}
+          selectedSeats={data.seatAssignments.map((seat) => seat.seatNumber)}
+          onConfirm={(seats) => {
+            void saveSeats(seats)
+          }}
+          onClose={() => setSeatSelectorOpen(false)}
+        />
+      ) : null}
 
       <WhatsAppButton message={`Olá! Preciso de ajuda com minha reserva ${data.id.slice(-8).toUpperCase()}.`} />
     </div>
