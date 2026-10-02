@@ -63,6 +63,8 @@ enum InstallmentStatus {
 enum PurchaseStatus {
   PENDING_PAYMENT
   PAID
+  PARTIALLY_REFUNDED
+  REFUNDED
   CANCELLED
   EXPIRED
 }
@@ -296,19 +298,28 @@ model SeatAssignment {
 }
 
 model PurchaseOrder {
-  id               String                @id @default(cuid())
-  reservationId    String                @unique
-  status           PurchaseStatus        @default(PENDING_PAYMENT)
-  paymentMethod    PurchasePaymentMethod
-  unitPriceCents   Int
-  passengerCount   Int
-  totalCents       Int
-  createdAt        DateTime              @default(now())
-  updatedAt        DateTime              @updatedAt
+  id                String                @id @default(cuid())
+  reservationId     String                @unique
+  status            PurchaseStatus        @default(PENDING_PAYMENT)
+  paymentMethod     PurchasePaymentMethod
+  unitPriceCents    Int
+  passengerCount    Int
+  totalCents        Int
+  providerPaymentId String?
+  providerOrderId   String?
+  providerStatus    String?
+  paidAt            DateTime?
+  refundedCents     Int                   @default(0)
+  refundedAt        DateTime?
+  lastReconciledAt  DateTime?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
 
   reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Restrict)
 
   @@index([status, createdAt])
+  @@index([providerPaymentId])
+  @@index([providerOrderId])
 }
 
 model Quote {
@@ -382,6 +393,7 @@ model FinancePlan {
   totalCents        Int
   downPaymentCents  Int      @default(0)
   installmentCount  Int
+  refundedCents     Int      @default(0)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
