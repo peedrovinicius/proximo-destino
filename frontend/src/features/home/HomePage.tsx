@@ -50,7 +50,6 @@ export function HomePage({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null)
-  const [openSeatsOnTrip, setOpenSeatsOnTrip] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -93,22 +92,13 @@ export function HomePage({
     [catalog, origin],
   )
 
-  const firstTripWithSeats = catalog.find(
-    (trip) =>
-      trip.capacity !== null &&
-      trip.capacity >= 1 &&
-      trip.capacity <= 80,
-  )
-
   if (selectedTripId) {
     return (
       <TripDetailsPage
         tripId={selectedTripId}
         defaultPassengers={Number(passengers)}
-        autoOpenSeats={openSeatsOnTrip}
         onBack={() => {
           setSelectedTripId(null)
-          setOpenSeatsOnTrip(false)
         }}
         onClientAccess={onClientAccess}
       />
@@ -201,19 +191,6 @@ export function HomePage({
                 <Bus size={17} />
                 Ver viagens
               </button>
-              {firstTripWithSeats ? (
-                <button
-                  type="button"
-                  className="public-hero-secondary"
-                  onClick={() => {
-                    setOpenSeatsOnTrip(true)
-                    setSelectedTripId(firstTripWithSeats.id)
-                  }}
-                >
-                  <Users size={17} />
-                  Escolher assentos
-                </button>
-              ) : null}
             </div>
           </div>
 
@@ -344,28 +321,12 @@ export function HomePage({
                         <button
                           type="button"
                           onClick={() => {
-                            setOpenSeatsOnTrip(false)
                             setSelectedTripId(trip.id)
                           }}
                         >
                           Abrir viagem
-                          <ChevronRight size={15} />
+                          <ChevronRight size={17} />
                         </button>
-                        {trip.capacity !== null &&
-                        trip.capacity >= 1 &&
-                        trip.capacity <= 80 ? (
-                          <button
-                            type="button"
-                            className="public-trip-seat-shortcut"
-                            onClick={() => {
-                              setOpenSeatsOnTrip(true)
-                              setSelectedTripId(trip.id)
-                            }}
-                          >
-                            <Bus size={15} />
-                            Escolher assentos
-                          </button>
-                        ) : null}
                       </div>
                     </div>
                   </div>
