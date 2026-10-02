@@ -19,6 +19,7 @@ import {
   ClientPortalLoginDto,
   RequestReservationDto,
   UpdateClientPassengersDto,
+  UpdateClientSeatsDto,
 } from './dto/portal.dto'
 import { PortalService } from './portal.service'
 
@@ -86,6 +87,20 @@ export class PortalController {
     @Body() body: UpdateClientPassengersDto,
   ) {
     return this.portal.updateClientPassengers(
+      request.portal.clientId,
+      request.portal.reservationId,
+      body,
+    )
+  }
+
+  @Patch('client/seats')
+  @UseGuards(ClientPortalGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  updateSeats(
+    @Req() request: ClientPortalRequest,
+    @Body() body: UpdateClientSeatsDto,
+  ) {
+    return this.portal.updateClientSeats(
       request.portal.clientId,
       request.portal.reservationId,
       body,
