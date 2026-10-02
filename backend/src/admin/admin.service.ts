@@ -1257,6 +1257,7 @@ export class AdminService {
   async search(rawQuery: string) {
     const query = rawQuery.trim()
     if (query.length < 2) return { clients: [], trips: [], reservations: [] }
+    const documentQuery = query.replace(/\D/g, '')
 
     const [clients, trips, reservations] = await Promise.all([
       this.prisma.client.findMany({
@@ -1265,9 +1266,18 @@ export class AdminService {
             { fullName: { contains: query, mode: 'insensitive' } },
             { email: { contains: query, mode: 'insensitive' } },
             { phone: { contains: query, mode: 'insensitive' } },
+            ...(documentQuery
+              ? [{ document: { contains: documentQuery } }]
+              : []),
           ],
         },
-        select: { id: true, fullName: true, email: true, phone: true },
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          phone: true,
+          document: true,
+        },
         take: 8,
       }),
       this.prisma.trip.findMany({
