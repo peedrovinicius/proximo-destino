@@ -3,13 +3,15 @@ import {
   CheckCircle2,
   Clock3,
   Download,
+  Camera,
   Printer,
+  QrCode,
   Search,
   UserCheck,
   UserX,
   X,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   adminApi,
   type AdminBoardingList,
@@ -68,6 +70,137 @@ export function TripBoardingDialog({
   const [completing, setCompleting] = useState(false)
   const [confirmComplete, setConfirmComplete] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [qrOpen, setQrOpen] = useState(false)
+  const [qrCode, setQrCode] = useState('')
+  const [qrScanning, setQrScanning] = useState(false)
+  const [qrMessage, setQrMessage] = useState('')
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const scanFrameRef = useRef<number | null>(null)
+
+  function stopCamera() {
+    if (scanFrameRef.current !== null) {
+      window.cancelAnimationFrame(scanFrameRef.current)
+      scanFrameRef.current = null
+    }
+    streamRef.current?.getTracks().forEach((track) => track.stop())
+    streamRef.current = null
+    if (videoRef.current) videoRef.current.srcObject = null
+    setQrScanning(false)
+  }
+
+  async function processQrCode(code: string) {
+    const normalized = code.trim()
+    if (!normalized) {
+      setError('Informe ou leia um QR Code válido.')
+      return
+    }
+
+    setQrScanning(true)
+    setError('')
+    setQrMessage('')
+
+    try {
+      const result = await adminApi.scanBoardingQr(
+        accessToken,
+        tripId,
+        normalized,
+      )
+
+      stopCamera()
+      setSelectedIds(new Set(result.passengerIds))
+      setFilter('ALL')
+      setQuery(result.reservationId)
+      setQrCode(normalized)
+      setQrMessage(
+        `Reserva de ${result.clientName} localizada: ${result.passengerIds.length} passageiro(s) selecionado(s). Confira e toque em Embarcar para confirmar.`,
+      )
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'Não foi possível validar este QR Code.',
+      )
+      setQrScanning(false)
+    }
+  }
+
+  async function startCamera() {
+    if (!data?.canUpdate) return
+
+    setQrOpen(true)
+    setQrMessage('')
+    setError('')
+
+    const Detector = (
+      window as unknown as {
+        BarcodeDetector?: new (options?: { formats?: string[] }) => {
+          detect: (source: CanvasImageSource) => Promise<Array<{ rawValue?: string }>>
+        }
+      }
+    ).BarcodeDetector
+
+    if (!Detector) {
+      setQrMessage(
+        'A leitura automática de QR não está disponível neste navegador. Cole o código ou o link da passagem abaixo.',
+      )
+      return
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false,
+      })
+      streamRef.current = stream
+
+      const video = videoRef.current
+      if (!video) {
+        stopCamera()
+        return
+      }
+
+      video.srcObject = stream
+      await video.play()
+      setQrScanning(true)
+
+      const detector = new Detector({ formats: ['qr_code'] })
+      let busy = false
+
+      const scan = async () => {
+        if (!streamRef.current || !videoRef.current) return
+
+        if (!busy && videoRef.current.readyState >= 2) {
+          busy = true
+          try {
+            const codes = await detector.detect(videoRef.current)
+            const raw = codes.find((item) => item.rawValue)?.rawValue
+            if (raw) {
+              await processQrCode(raw)
+              return
+            }
+          } catch {
+            // continua tentando enquanto a câmera estiver ativa
+          } finally {
+            busy = false
+          }
+        }
+
+        if (streamRef.current) {
+          scanFrameRef.current = window.requestAnimationFrame(() => {
+            void scan()
+          })
+        }
+      }
+
+      void scan()
+    } catch {
+      stopCamera()
+      setQrMessage(
+        'Não foi possível acessar a câmera. Autorize o uso da câmera ou cole o código da passagem abaixo.',
+      )
+    }
+  }
 
   useEffect(() => {
     let active = true
@@ -99,6 +232,7 @@ export function TripBoardingDialog({
     window.addEventListener('keydown', onKeyDown)
     return () => {
       active = false
+      stopCamera()
       document.body.style.overflow = previousOverflow
       window.removeEventListener('keydown', onKeyDown)
     }
@@ -526,6 +660,19 @@ export function TripBoardingDialog({
           </label>
 
           <div className="boarding-document-actions">
+            {data?.canUpdate ? (
+              <button
+                type="button"
+                className="boarding-qr-open"
+                onClick={() => {
+                  setQrOpen(true)
+                  void startCamera()
+                }}
+              >
+                <QrCode size={14} />
+                Ler QR
+              </button>
+            ) : null}
             <button type="button" onClick={exportCsv} disabled={!data?.passengers.length}>
               <Download size={14} />
               CSV
@@ -542,6 +689,88 @@ export function TripBoardingDialog({
             </span>
           ) : null}
         </div>
+
+        {qrOpen && data?.canUpdate ? (
+          <section className="boarding-qr-panel">
+            <div className="boarding-qr-panel-head">
+              <div>
+                <span>Check-in por QR Code</span>
+                <strong>Localizar passagem</strong>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  stopCamera()
+                  setQrOpen(false)
+                  setQrMessage('')
+                }}
+                aria-label="Fechar leitor de QR"
+              >
+                <X size={17} />
+              </button>
+            </div>
+
+            <div className="boarding-qr-camera">
+              <video
+                ref={videoRef}
+                muted
+                playsInline
+                aria-label="Câmera para leitura do QR Code"
+              />
+              <span className="boarding-qr-frame" aria-hidden="true" />
+              <div className="boarding-qr-camera-copy">
+                <Camera size={17} />
+                <span>
+                  {qrScanning
+                    ? 'Aponte a câmera para o QR da passagem'
+                    : 'Câmera inativa'}
+                </span>
+              </div>
+            </div>
+
+            <div className="boarding-qr-manual">
+              <label>
+                <span>Código ou link da passagem</span>
+                <input
+                  value={qrCode}
+                  onChange={(event) => setQrCode(event.target.value)}
+                  placeholder="Cole o QR, código ou link de verificação"
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      void processQrCode(qrCode)
+                    }
+                  }}
+                />
+              </label>
+              <button
+                type="button"
+                disabled={!qrCode.trim() || qrScanning}
+                onClick={() => void processQrCode(qrCode)}
+              >
+                <QrCode size={14} />
+                Validar
+              </button>
+              {!qrScanning ? (
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => void startCamera()}
+                >
+                  <Camera size={14} />
+                  Usar câmera
+                </button>
+              ) : null}
+            </div>
+
+            {qrMessage ? (
+              <div className="boarding-qr-message">
+                <CheckCircle2 size={16} />
+                <span>{qrMessage}</span>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
 
         {data?.canUpdate && filteredPassengers.length ? (
           <div className="boarding-selection-bar">
