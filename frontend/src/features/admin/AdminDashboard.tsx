@@ -104,6 +104,9 @@ export function AdminDashboard({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [pendingPaymentCount, setPendingPaymentCount] = useState(0)
+  const [notificationsLoading, setNotificationsLoading] = useState(false)
   const scrollPositions = useRef<Partial<Record<Tab, number>>>({})
   const userRole = useMemo(() => roleFromToken(accessToken), [accessToken])
   const isAdmin = userRole === 'ADMIN'
@@ -238,6 +241,53 @@ export function AdminDashboard({
     { label: 'Reservas confirmadas', value: dashboard?.metrics.confirmedReservations ?? 0, icon: CircleDollarSign },
   ], [dashboard])
 
+  const upcomingTripsCount = useMemo(() => {
+    const now = Date.now()
+    const limit = now + 7 * 86_400_000
+    return trips.filter((trip) => {
+      const departure = new Date(trip.departureDate).getTime()
+      return (
+        departure >= now &&
+        departure <= limit &&
+        trip.status !== 'CANCELLED' &&
+        trip.status !== 'COMPLETED'
+      )
+    }).length
+  }, [trips])
+
+  const upcomingBirthdaysCount = useMemo(
+    () => dashboard?.birthdays.filter((item) => item.daysUntil <= 7).length ?? 0,
+    [dashboard],
+  )
+
+  const notificationCount =
+    (dashboard?.metrics.pendingReservations ?? 0) +
+    pendingPaymentCount +
+    upcomingTripsCount +
+    upcomingBirthdaysCount
+
+  async function toggleNotifications() {
+    const next = !notificationsOpen
+    setNotificationsOpen(next)
+    setAccountMenuOpen(false)
+    if (!next || !canViewPayments) return
+
+    setNotificationsLoading(true)
+    try {
+      const payments = await adminApi.purchaseOrders(accessToken)
+      setPendingPaymentCount(payments.summary.pendingOrders)
+    } catch {
+      // mantém as demais notificações disponíveis
+    } finally {
+      setNotificationsLoading(false)
+    }
+  }
+
+  function openNotificationTab(next: Tab) {
+    setNotificationsOpen(false)
+    navigateTab(next)
+  }
+
   return (
     <div className="admin-shell">
       <header className="admin-topbar">
@@ -270,7 +320,86 @@ export function AdminDashboard({
               placeholder="Buscar cliente, viagem ou reserva..."
             />
           </form>
-          <button className="round-action" type="button" aria-label="Notificações"><Bell size={17} /></button>
+          <div className="admin-notifications">
+            <button
+              className="round-action"
+              type="button"
+              aria-label="Notificações"
+              aria-expanded={notificationsOpen}
+              onClick={() => void toggleNotifications()}
+            >
+              <Bell size={17} />
+              {notificationCount > 0 ? (
+                <span className="admin-notification-badge">
+                  {notificationCount > 99 ? '99+' : notificationCount}
+                </span>
+              ) : null}
+            </button>
+
+            {notificationsOpen ? (
+              <div className="admin-notification-menu">
+                <div className="admin-notification-menu-head">
+                  <div>
+                    <strong>Notificações</strong>
+                    <span>Pendências e próximos eventos da operação.</span>
+                  </div>
+                  <button type="button" onClick={() => setNotificationsOpen(false)}>
+                    Fechar
+                  </button>
+                </div>
+
+                {dashboard?.metrics.pendingReservations ? (
+                  <button type="button" onClick={() => openNotificationTab('reservations')}>
+                    <FileText size={16} />
+                    <div>
+                      <strong>{dashboard.metrics.pendingReservations} reserva(s) aguardando</strong>
+                      <span>Revisar solicitações e confirmar atendimento.</span>
+                    </div>
+                  </button>
+                ) : null}
+
+                {canViewPayments && pendingPaymentCount > 0 ? (
+                  <button type="button" onClick={() => openNotificationTab('payments')}>
+                    <CreditCard size={16} />
+                    <div>
+                      <strong>{pendingPaymentCount} pagamento(s) pendente(s)</strong>
+                      <span>Pedidos aguardando confirmação financeira.</span>
+                    </div>
+                  </button>
+                ) : null}
+
+                {upcomingTripsCount > 0 ? (
+                  <button type="button" onClick={() => openNotificationTab('trips')}>
+                    <Plane size={16} />
+                    <div>
+                      <strong>{upcomingTripsCount} viagem(ns) nos próximos 7 dias</strong>
+                      <span>Conferir assentos, passageiros e embarque.</span>
+                    </div>
+                  </button>
+                ) : null}
+
+                {upcomingBirthdaysCount > 0 ? (
+                  <button type="button" onClick={() => openNotificationTab('clients')}>
+                    <CalendarHeart size={16} />
+                    <div>
+                      <strong>{upcomingBirthdaysCount} aniversário(s) nesta semana</strong>
+                      <span>Oportunidade de relacionamento com clientes.</span>
+                    </div>
+                  </button>
+                ) : null}
+
+                {notificationsLoading ? (
+                  <span className="admin-notification-loading">
+                    Atualizando pagamentos...
+                  </span>
+                ) : notificationCount === 0 ? (
+                  <span className="admin-notification-empty">
+                    Nenhuma pendência importante agora.
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
           <button
             className="admin-site-return"
             type="button"
@@ -284,7 +413,10 @@ export function AdminDashboard({
             <button
               className="admin-avatar"
               type="button"
-              onClick={() => setAccountMenuOpen((open) => !open)}
+              onClick={() => {
+                setNotificationsOpen(false)
+                setAccountMenuOpen((open) => !open)
+              }}
               aria-expanded={accountMenuOpen}
               aria-haspopup="menu"
               title="Minha conta"
