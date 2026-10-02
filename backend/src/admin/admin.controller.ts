@@ -19,6 +19,7 @@ import {
   CancelReservationDto,
   CreateReservationDto,
   RefundReservationPaymentDto,
+  ResolveCancellationRequestDto,
   UpdateReservationPassengersDto,
   UpdateReservationStatusDto,
 } from './dto/reservation.dto'
@@ -92,6 +93,20 @@ export class AdminController {
       id,
       body.creditAsBonus ?? false,
       body.reason,
+      request.user.id,
+    )
+  }
+
+  @Post('reservations/:id/cancel-request/reject')
+  @Roles(UserRole.ADMIN)
+  rejectCancellationRequest(
+    @Param('id') id: string,
+    @Body() body: ResolveCancellationRequestDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.admin.rejectCancellationRequest(
+      id,
+      body.note,
       request.user.id,
     )
   }
