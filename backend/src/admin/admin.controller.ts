@@ -18,6 +18,7 @@ import {
   ApplyReservationBonusDto,
   CancelReservationDto,
   CreateReservationDto,
+  RefundReservationPaymentDto,
   UpdateReservationPassengersDto,
   UpdateReservationStatusDto,
 } from './dto/reservation.dto'
@@ -106,6 +107,39 @@ export class AdminController {
       id,
       body.amountCents,
       body.note,
+      request.user.id,
+    )
+  }
+
+  @Get('reservations/:id/finance')
+  @Roles(UserRole.ADMIN, UserRole.FINANCE)
+  reservationFinance(@Param('id') id: string) {
+    return this.admin.reservationFinance(id)
+  }
+
+  @Post('reservations/:id/finance/reconcile')
+  @Roles(UserRole.ADMIN, UserRole.FINANCE)
+  reconcileReservationPayment(
+    @Param('id') id: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.admin.reconcileReservationPayment(
+      id,
+      request.user.id,
+    )
+  }
+
+  @Post('reservations/:id/finance/refund')
+  @Roles(UserRole.ADMIN, UserRole.FINANCE)
+  refundReservationPayment(
+    @Param('id') id: string,
+    @Body() body: RefundReservationPaymentDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.admin.refundReservationPayment(
+      id,
+      body.amountCents,
+      body.reason,
       request.user.id,
     )
   }
