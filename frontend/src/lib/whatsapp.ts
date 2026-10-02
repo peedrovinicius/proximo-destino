@@ -9,3 +9,24 @@ export function getWhatsAppUrl(message: string) {
 export function openWhatsApp(message: string) {
   window.open(getWhatsAppUrl(message), '_blank', 'noopener,noreferrer')
 }
+
+
+export function getWhatsAppUrlForPhone(phone: string, message: string) {
+  const digits = phone.replace(/\D/g, '')
+  if (!digits) return getWhatsAppUrl(message)
+
+  const normalized =
+    digits.startsWith('55')
+      ? digits
+      : '55' + digits
+
+  return `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`
+}
+
+export function openWhatsAppTo(phone: string, message: string) {
+  window.open(
+    getWhatsAppUrlForPhone(phone, message),
+    '_blank',
+    'noopener,noreferrer',
+  )
+}
