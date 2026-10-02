@@ -24,6 +24,7 @@ export type AdminClient = {
   phone: string | null
   birthDate: string | null
   createdAt: string
+  bonusBalanceCents: number
   _count: { companions: number; reservations: number }
 }
 
@@ -79,8 +80,35 @@ export type AdminReservation = {
   passengerCount: number
   seatAssignments: Array<{ seatNumber: number }>
   createdAt: string
-  client: { id: string; fullName: string; email: string | null; phone: string | null }
+  client: {
+    id: string
+    fullName: string
+    email: string | null
+    phone: string | null
+    bonusBalanceCents: number
+  }
+  purchaseOrder: {
+    status: 'PENDING_PAYMENT' | 'PAID' | 'CANCELLED' | 'EXPIRED'
+    totalCents: number
+  } | null
   trip: { id: string; title: string; origin: string; destination: string; departureDate: string }
+}
+
+export type AdminClientCredits = {
+  client: { id: string; fullName: string }
+  balanceCents: number
+  transactions: Array<{
+    id: string
+    type: 'CANCELLATION_CREDIT' | 'BONUS_USED' | 'BONUS_REMOVED'
+    amountCents: number
+    note: string | null
+    createdAt: string
+    reservation: {
+      id: string
+      trip: { title: string; destination: string }
+    } | null
+    actor: { email: string } | null
+  }>
 }
 
 export type AdminReservationPassengers = {
@@ -599,6 +627,27 @@ export const adminApi = {
   clients: (token: string, query = '') =>
     adminFetch<AdminClient[]>(token, `/admin/clients${query ? `?q=${encodeURIComponent(query)}` : ''}`),
 
+  clientCredits: (token: string, clientId: string) =>
+    adminFetch<AdminClientCredits>(
+      token,
+      `/admin/clients/${encodeURIComponent(clientId)}/credits`,
+    ),
+
+  removeClientBonus: (
+    token: string,
+    clientId: string,
+    amountCents: number,
+    reason?: string,
+  ) =>
+    adminFetch<AdminClientCredits>(
+      token,
+      `/admin/clients/${encodeURIComponent(clientId)}/credits/remove`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ amountCents, reason }),
+      },
+    ),
+
   createClient: (
     token: string,
     data: { fullName: string; email?: string; phone?: string; birthDate?: string; document?: string },
@@ -698,6 +747,36 @@ export const adminApi = {
     adminFetch<void>(token, `/admin/reservations/${id}/status`, {
       method: 'PATCH',
       body: JSON.stringify({ status }),
+    }),
+
+  cancelReservation: (
+    token: string,
+    id: string,
+    data: { creditAsBonus: boolean; reason?: string },
+  ) =>
+    adminFetch<{
+      cancelled: boolean
+      alreadyCancelled: boolean
+      paidCents: number
+      bonusGrantedCents: number
+    }>(token, `/admin/reservations/${encodeURIComponent(id)}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  applyReservationBonus: (
+    token: string,
+    id: string,
+    amountCents: number,
+    note?: string,
+  ) =>
+    adminFetch<{
+      appliedCents: number
+      remainingBonusCents: number
+      quoteTotalCents: number
+    }>(token, `/admin/reservations/${encodeURIComponent(id)}/bonus/apply`, {
+      method: 'POST',
+      body: JSON.stringify({ amountCents, note }),
     }),
 
   quotes: (token: string, reservationId = '') =>
