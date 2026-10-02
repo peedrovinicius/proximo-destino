@@ -517,6 +517,32 @@ export const adminApi = {
       },
     ),
 
+  scanBoardingQr: (
+    token: string,
+    tripId: string,
+    code: string,
+  ) =>
+    adminFetch<{
+      reservationId: string
+      documentNumber: string
+      clientName: string
+      passengerIds: string[]
+      passengers: Array<{
+        id: string
+        sequence: number
+        fullName: string | null
+        boardingStatus: BoardingStatus
+        seatAssignment: { seatNumber: number } | null
+      }>
+    }>(
+      token,
+      `/admin/trips/${encodeURIComponent(tripId)}/boarding/scan`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ code }),
+      },
+    ),
+
   reservationPassengers: (token: string, reservationId: string) =>
     adminFetch<AdminReservationPassengers>(
       token,
