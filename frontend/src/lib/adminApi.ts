@@ -423,25 +423,23 @@ export type AdminReservationFinance = {
       departureDate: string
     }
   }
-  purchaseOrder: AdminPurchaseOrder extends infer _T
-    ? {
-        id: string
-        status: AdminPurchaseOrder['status']
-        paymentMethod: AdminPurchaseOrder['paymentMethod']
-        unitPriceCents: number
-        passengerCount: number
-        totalCents: number
-        providerPaymentId: string | null
-        providerOrderId: string | null
-        providerStatus: string | null
-        paidAt: string | null
-        refundedCents: number
-        refundedAt: string | null
-        lastReconciledAt: string | null
-        createdAt: string
-        updatedAt: string
-      }
-    : never
+  purchaseOrder: {
+    id: string
+    status: AdminPurchaseOrder['status']
+    paymentMethod: AdminPurchaseOrder['paymentMethod']
+    unitPriceCents: number
+    passengerCount: number
+    totalCents: number
+    providerPaymentId: string | null
+    providerOrderId: string | null
+    providerStatus: string | null
+    paidAt: string | null
+    refundedCents: number
+    refundedAt: string | null
+    lastReconciledAt: string | null
+    createdAt: string
+    updatedAt: string
+  } | null
   financePlan: {
     id: string
     totalCents: number
