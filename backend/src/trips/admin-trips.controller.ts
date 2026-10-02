@@ -100,6 +100,12 @@ export class AdminTripsController {
     return this.trips.updateBoardingStatus(id, passengerId, body.status)
   }
 
+  @Post(':id/complete')
+  @Roles(UserRole.ADMIN)
+  complete(@Param('id') id: string) {
+    return this.trips.completeTrip(id)
+  }
+
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.AGENT)
   update(@Param('id') id: string, @Body() body: UpdateTripDto) {
