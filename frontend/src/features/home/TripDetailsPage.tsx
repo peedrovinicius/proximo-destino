@@ -1,5 +1,6 @@
 import {
   ArrowLeft,
+  Armchair,
   CalendarDays,
   Check,
   CheckCircle2,
@@ -28,6 +29,7 @@ import {
 type TripDetailsPageProps = {
   tripId: string
   defaultPassengers: number
+  autoOpenSeats?: boolean
   onBack: () => void
   onClientAccess: () => void
 }
@@ -44,6 +46,7 @@ const date = new Intl.DateTimeFormat('pt-BR', {
 export function TripDetailsPage({
   tripId,
   defaultPassengers,
+  autoOpenSeats = false,
   onBack,
   onClientAccess,
 }: TripDetailsPageProps) {
@@ -95,6 +98,9 @@ export function TripDetailsPage({
       .then((result) => {
         if (!active) return
         setSeatMap(result)
+        if (autoOpenSeats && result.enabled && result.capacity) {
+          setSeatSelectorOpen(true)
+        }
         setSelectedSeats((current) =>
           current.filter(
           (seat) =>
@@ -114,7 +120,7 @@ export function TripDetailsPage({
       active = false
       document.title = 'Próximo Destino'
     }
-  }, [tripId])
+  }, [tripId, autoOpenSeats])
 
   useEffect(() => {
     if (
@@ -362,6 +368,64 @@ export function TripDetailsPage({
               <span>A partir de</span>
               <strong>{trip.priceCents == null ? 'Sob consulta' : money.format(trip.priceCents / 100)}</strong>
               <small>por pessoa. Serviços e condições finais são confirmados pela agência.</small>
+            </div>
+
+            <div
+              className={
+                'trip-seat-showcase' +
+                (selectedSeats.length ? ' trip-seat-showcase--selected' : '')
+              }
+            >
+              <div className="trip-seat-showcase-icon" aria-hidden="true">
+                <Armchair size={22} />
+              </div>
+
+              <div className="trip-seat-showcase-copy">
+                <span>Seleção de poltronas</span>
+                <strong>Escolha seus assentos</strong>
+                <small>
+                  {seatMapLoading
+                    ? 'Carregando o mapa do ônibus...'
+                    : seatMap?.enabled
+                      ? `${passengerCount} ${passengerCount === 1 ? 'passageiro' : 'passageiros'} · ${seatMap.availableCount ?? 0} lugares disponíveis`
+                      : seatSelectionExpected
+                        ? 'O mapa ainda não está disponível. Você pode tentar carregar novamente.'
+                        : 'O modelo de ônibus ainda não foi configurado para esta viagem.'}
+                </small>
+
+                {selectedSeats.length ? (
+                  <div className="trip-seat-showcase-selection">
+                    <span>
+                      {selectedSeats.length === 1
+                        ? 'Poltrona escolhida'
+                        : 'Poltronas escolhidas'}
+                    </span>
+                    <strong>{selectedSeats.join(', ')}</strong>
+                  </div>
+                ) : null}
+              </div>
+
+              <button
+                type="button"
+                className="trip-seat-showcase-button"
+                onClick={() => void openSeatSelector()}
+                disabled={
+                  seatMapLoading ||
+                  !seatSelectionExpected ||
+                  (seatMap !== null && !seatMap.enabled)
+                }
+              >
+                <Bus size={16} />
+                {seatMapLoading
+                  ? 'Carregando mapa'
+                  : selectedSeats.length
+                    ? 'Alterar assentos'
+                    : seatMap?.enabled
+                      ? 'Abrir mapa de assentos'
+                      : seatSelectionExpected
+                        ? 'Tentar carregar mapa'
+                        : 'Mapa não configurado'}
+              </button>
             </div>
 
             <div className="availability-note">
