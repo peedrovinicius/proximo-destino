@@ -20,8 +20,10 @@ import { AdminSeatMapDialog } from './AdminSeatMap'
 import { ReservationPassengersDialog } from './ReservationPassengersDialog'
 import { TripBoardingDialog } from './TripBoardingDialog'
 import { TripAuditDialog } from './TripAuditDialog'
+import { TripPhotoPicker } from './TripPhotoPicker'
 import {
   adminApi,
+  adminTripImageUrl,
   type AdminClient,
   type AdminPaymentsDashboard,
   type AdminPurchaseOrder,
@@ -734,6 +736,11 @@ function TripsView({
   const [departureDate, setDepartureDate] = useState('')
   const [price, setPrice] = useState('')
   const [imageUrl, setImageUrl] = useState('')
+  const [pendingImage, setPendingImage] = useState<{
+    blob: Blob
+    filename: string
+    previewUrl: string
+  } | null>(null)
   const [busTemplates, setBusTemplates] = useState<BusTemplateOption[]>([])
   const [busTemplate, setBusTemplate] = useState('')
   const [capacity, setCapacity] = useState('')
@@ -834,7 +841,7 @@ function TripsView({
 
     setSaving(true)
     try {
-      await adminApi.createTrip(accessToken, {
+      const created = await adminApi.createTrip(accessToken, {
         title,
         origin,
         destination,
@@ -853,12 +860,24 @@ function TripsView({
         priceCents: price ? Math.round(Number(price.replace(',', '.')) * 100) : undefined,
         imageUrl: imageUrl.trim() || undefined,
       })
+
+      if (pendingImage) {
+        await adminApi.uploadTripImage(
+          accessToken,
+          created.id,
+          pendingImage.blob,
+          pendingImage.filename,
+        )
+        URL.revokeObjectURL(pendingImage.previewUrl)
+      }
+
       setTitle('')
       setOrigin('')
       setDestination('')
       setDepartureDate('')
       setPrice('')
       setImageUrl('')
+      setPendingImage(null)
       setBusTemplate('')
       setCapacity('')
       setSeatLayout('TWO_BY_TWO')
@@ -882,24 +901,28 @@ function TripsView({
         <input type="date" value={departureDate} onChange={(e) => setDepartureDate(e.target.value)} required />
         <input inputMode="decimal" placeholder="Preço por pessoa em R$" value={price} onChange={(e) => setPrice(e.target.value)} />
 
-        <div className="admin-trip-photo-field">
-          <label htmlFor="trip-image-url">Foto da viagem</label>
-          <input
-            id="trip-image-url"
-            type="url"
-            placeholder="https://.../foto-da-viagem.jpg"
-            value={imageUrl}
-            onChange={(event) => setImageUrl(event.target.value)}
-          />
-          <small>Use o link da foto oficial que você quer exibir no site. A imagem será a mesma na vitrine e nos detalhes da viagem.</small>
-          <div
-            className={'admin-trip-photo-preview' + (imageUrl.trim() ? '' : ' is-empty')}
-            style={imageUrl.trim() ? { backgroundImage: `url("${imageUrl.trim()}")` } : undefined}
-            aria-label={imageUrl.trim() ? 'Prévia da foto da viagem' : 'Sem foto definida'}
-          >
-            {!imageUrl.trim() ? <span>Sem foto definida</span> : null}
-          </div>
-        </div>
+        <TripPhotoPicker
+          accessToken={accessToken}
+          destination={destination}
+          value={imageUrl}
+          previewUrl={pendingImage?.previewUrl}
+          busy={saving}
+          onChooseUrl={(url) => {
+            if (pendingImage) URL.revokeObjectURL(pendingImage.previewUrl)
+            setPendingImage(null)
+            setImageUrl(url)
+          }}
+          onPreparedFile={(blob, filename, previewUrl) => {
+            if (pendingImage) URL.revokeObjectURL(pendingImage.previewUrl)
+            setPendingImage({ blob, filename, previewUrl })
+            setImageUrl('')
+          }}
+          onClear={() => {
+            if (pendingImage) URL.revokeObjectURL(pendingImage.previewUrl)
+            setPendingImage(null)
+            setImageUrl('')
+          }}
+        />
 
         <div className="admin-bus-field">
           <label htmlFor="trip-bus-template">Ônibus e mapa de assentos</label>
@@ -1045,6 +1068,8 @@ function TripBusControl({
     trip.blockedSeats.join(', '),
   )
   const [imageUrl, setImageUrl] = useState(trip.imageUrl ?? '')
+  const [imageChanged, setImageChanged] = useState(false)
+  const [photoBusy, setPhotoBusy] = useState(false)
   const [saving, setSaving] = useState(false)
   const [showSeatMap, setShowSeatMap] = useState(false)
   const [showBoarding, setShowBoarding] = useState(false)
@@ -1059,6 +1084,7 @@ function TripBusControl({
     setFeatures(trip.vehicleFeatures ?? [])
     setBlockedSeats(trip.blockedSeats.join(', '))
     setImageUrl(trip.imageUrl ?? '')
+    setImageChanged(false)
   }, [
     trip.busTemplate,
     trip.capacity,
@@ -1132,7 +1158,7 @@ function TripBusControl({
           lowerDeckCapacity: null,
           vehicleFeatures: [],
           blockedSeats: [],
-          imageUrl: imageUrl.trim() || null,
+          ...(imageChanged ? { imageUrl: imageUrl.trim() || null } : {}),
         })
         await onChanged()
       } finally {
@@ -1165,7 +1191,7 @@ function TripBusControl({
             deckCount === 2 ? Number(lowerDeckCapacity) : null,
           vehicleFeatures: features,
           blockedSeats: normalizedBlocked,
-          imageUrl: imageUrl.trim() || null,
+          ...(imageChanged ? { imageUrl: imageUrl.trim() || null } : {}),
         })
         await onChanged()
       } finally {
@@ -1180,7 +1206,7 @@ function TripBusControl({
         busTemplate: templateKey,
         vehicleFeatures: features,
         blockedSeats: normalizedBlocked,
-        imageUrl: imageUrl.trim() || null,
+        ...(imageChanged ? { imageUrl: imageUrl.trim() || null } : {}),
       })
       await onChanged()
     } finally {
@@ -1207,24 +1233,45 @@ function TripBusControl({
       </div>
 
       <div className="admin-trip-photo-control">
-        <div
-          className={'admin-trip-photo-thumb' + (imageUrl.trim() ? '' : ' is-empty')}
-          style={imageUrl.trim() ? { backgroundImage: `url("${imageUrl.trim()}")` } : undefined}
-          aria-hidden="true"
-        >
-          {!imageUrl.trim() ? <span>Sem foto</span> : null}
-        </div>
-        <label>
-          <span>Foto da viagem</span>
-          <input
-            type="url"
-            value={imageUrl}
-            onChange={(event) => setImageUrl(event.target.value)}
-            placeholder="Cole a URL da foto"
-            aria-label={'Foto de ' + trip.title}
-          />
-          <small>Troque o link e salve para atualizar a imagem pública.</small>
-        </label>
+        <TripPhotoPicker
+          accessToken={accessToken}
+          destination={trip.destination}
+          value={imageUrl}
+          previewUrl={adminTripImageUrl(trip)}
+          busy={saving || photoBusy}
+          onChooseUrl={(url) => {
+            setImageUrl(url)
+            setImageChanged(true)
+          }}
+          onPreparedFile={async (blob, filename, previewUrl) => {
+            setPhotoBusy(true)
+            try {
+              await adminApi.uploadTripImage(
+                accessToken,
+                trip.id,
+                blob,
+                filename,
+              )
+              URL.revokeObjectURL(previewUrl)
+              setImageUrl('')
+              setImageChanged(false)
+              await onChanged()
+            } finally {
+              setPhotoBusy(false)
+            }
+          }}
+          onClear={async () => {
+            setPhotoBusy(true)
+            try {
+              await adminApi.clearTripImage(accessToken, trip.id)
+              setImageUrl('')
+              setImageChanged(false)
+              await onChanged()
+            } finally {
+              setPhotoBusy(false)
+            }
+          }}
+        />
       </div>
 
       <select
