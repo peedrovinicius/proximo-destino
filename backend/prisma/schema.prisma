@@ -212,6 +212,9 @@ model Trip {
   priceCents        Int?
   summary       String?
   imageUrl      String?
+  imageData     Bytes?
+  imageMimeType String?
+  imageUpdatedAt DateTime?
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 
