@@ -10909,3 +10909,160 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
     flex: 0 0 auto;
   }
 }
+
+
+/* Admin seat move */
+
+.admin-seat-move-start {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 10px;
+  border: 1px solid #c8d9e7;
+  border-radius: 9px;
+  padding: 0 11px;
+  color: #285f89;
+  background: #f4f9fc;
+  font-size: 8px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.admin-seat-move-panel {
+  display: grid;
+  gap: 11px;
+  margin-top: 12px;
+  border: 1px solid #cddfec;
+  border-radius: 14px;
+  padding: 13px;
+  background: #f4f9fc;
+}
+
+.admin-seat-move-panel-head {
+  display: grid;
+  gap: 3px;
+}
+
+.admin-seat-move-panel-head span {
+  color: #7a8d9c;
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.admin-seat-move-panel-head strong {
+  color: #244b68;
+  font-size: 10px;
+}
+
+.admin-seat-move-route {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-seat-move-route > div {
+  display: grid;
+  min-height: 66px;
+  place-items: center;
+  align-content: center;
+  gap: 3px;
+  border: 1px solid #dce6ed;
+  border-radius: 11px;
+  background: #fff;
+}
+
+.admin-seat-move-route > div.is-empty {
+  border-style: dashed;
+  background: #f9fbfc;
+}
+
+.admin-seat-move-route span {
+  color: #84939f;
+  font-size: 7px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.admin-seat-move-route strong {
+  color: #1f5f8f;
+  font: 700 18px 'Manrope', sans-serif;
+}
+
+.admin-seat-move-route > svg {
+  color: #3174a7;
+}
+
+.admin-seat-move-panel p {
+  margin: 0;
+  color: #647b8c;
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.admin-seat-move-actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 7px;
+}
+
+.admin-seat-move-actions button {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 9px;
+  padding: 0 10px;
+  font-size: 8px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.admin-seat-move-actions .confirm {
+  border: 0;
+  color: #fff;
+  background: #2677d9;
+}
+
+.admin-seat-move-actions .cancel {
+  border: 1px solid #dce5eb;
+  color: #5e7486;
+  background: #fff;
+}
+
+.admin-seat-move-actions button:disabled {
+  opacity: .48;
+  cursor: not-allowed;
+}
+
+.admin-seat-item--move-source {
+  outline: 3px solid rgba(37, 97, 145, .24);
+  outline-offset: 2px;
+}
+
+.admin-seat-item--move-option {
+  border-color: #9fc7e7 !important;
+  box-shadow: 0 0 0 2px rgba(38,119,217,.08);
+}
+
+.admin-seat-item--move-target {
+  border-color: #2f88d2 !important;
+  background: #eaf5ff !important;
+  box-shadow: 0 0 0 3px rgba(38,119,217,.16);
+}
+
+@media (max-width: 620px) {
+  .admin-seat-move-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-seat-move-route {
+    grid-template-columns: 1fr auto 1fr;
+    gap: 7px;
+  }
+}
