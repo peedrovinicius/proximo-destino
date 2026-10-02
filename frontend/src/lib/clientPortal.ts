@@ -96,7 +96,7 @@ export type ClientPortalData = {
   }>
   purchaseOrder: {
     id: string
-    status: 'PENDING_PAYMENT' | 'PAID' | 'CANCELLED' | 'EXPIRED'
+    status: 'PENDING_PAYMENT' | 'PAID' | 'PARTIALLY_REFUNDED' | 'REFUNDED' | 'CANCELLED' | 'EXPIRED'
     paymentMethod: 'PIX' | 'CARD' | 'BOLETO' | 'TRANSFER'
     unitPriceCents: number
     passengerCount: number
