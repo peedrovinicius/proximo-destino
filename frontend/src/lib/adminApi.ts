@@ -558,6 +558,21 @@ export const adminApi = {
       },
     ),
 
+  moveSeatAssignment: (
+    token: string,
+    tripId: string,
+    fromSeatNumber: number,
+    toSeatNumber: number,
+  ) =>
+    adminFetch<AdminSeatMap>(
+      token,
+      `/admin/trips/${encodeURIComponent(tripId)}/seats/${fromSeatNumber}/assignment`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ toSeatNumber }),
+      },
+    ),
+
   purchaseOrders: (token: string) =>
     adminFetch<AdminPaymentsDashboard>(token, '/admin/payments/orders'),
 
