@@ -24,6 +24,7 @@ import { AdminSeatMapDialog } from './AdminSeatMap'
 import { ReservationPassengersDialog } from './ReservationPassengersDialog'
 import { ReservationCancelDialog } from './ReservationCancelDialog'
 import { ReservationBonusDialog } from './ReservationBonusDialog'
+import { ReservationFinanceDialog } from './ReservationFinanceDialog'
 import { ClientBonusDialog } from './ClientBonusDialog'
 import { TripBoardingDialog } from './TripBoardingDialog'
 import { TripAuditDialog } from './TripAuditDialog'
@@ -586,6 +587,7 @@ export function AdminDashboard({
             trips={trips}
             reservations={reservations}
             canManagePassengers={isAdmin}
+            canViewFinance={canViewPayments}
             onChanged={reload}
           />
         ) : null}
@@ -613,6 +615,8 @@ export function AdminDashboard({
 function paymentStatusLabel(status: AdminPurchaseOrder['status']) {
   if (status === 'PAID') return 'Pago'
   if (status === 'PENDING_PAYMENT') return 'Aguardando'
+  if (status === 'PARTIALLY_REFUNDED') return 'Estorno parcial'
+  if (status === 'REFUNDED') return 'Estornado'
   if (status === 'EXPIRED') return 'Expirado'
   return 'Cancelado'
 }
@@ -699,7 +703,12 @@ function PaymentsWorkspace({ accessToken }: { accessToken: string }) {
         <article>
           <small>Pedidos</small>
           <strong>{summary?.totalOrders ?? 0}</strong>
-          <span>{(summary?.cancelledOrders ?? 0) + (summary?.expiredOrders ?? 0)} encerrados</span>
+          <span>{(summary?.cancelledOrders ?? 0) + (summary?.expiredOrders ?? 0) + (summary?.refundedOrders ?? 0)} encerrados</span>
+        </article>
+        <article>
+          <small>Estornado</small>
+          <strong>{money.format((summary?.refundedCents ?? 0) / 100)}</strong>
+          <span>{summary?.refundedOrders ?? 0} estorno(s) total(is)</span>
         </article>
       </div>
 
@@ -722,6 +731,8 @@ function PaymentsWorkspace({ accessToken }: { accessToken: string }) {
             <option value="ALL">Todos</option>
             <option value="PENDING_PAYMENT">Aguardando</option>
             <option value="PAID">Pago</option>
+            <option value="PARTIALLY_REFUNDED">Estorno parcial</option>
+            <option value="REFUNDED">Estornado</option>
             <option value="CANCELLED">Cancelado</option>
             <option value="EXPIRED">Expirado</option>
           </select>
@@ -1771,6 +1782,7 @@ function ReservationsView({
   trips,
   reservations,
   canManagePassengers,
+  canViewFinance,
   onChanged,
 }: {
   accessToken: string
@@ -1778,6 +1790,7 @@ function ReservationsView({
   trips: AdminTrip[]
   reservations: AdminReservation[]
   canManagePassengers: boolean
+  canViewFinance: boolean
   onChanged: () => Promise<void>
 }) {
   const [clientId, setClientId] = useState('')
@@ -1786,6 +1799,7 @@ function ReservationsView({
   const [passengersReservationId, setPassengersReservationId] = useState<string | null>(null)
   const [cancelReservationId, setCancelReservationId] = useState<string | null>(null)
   const [bonusReservationId, setBonusReservationId] = useState<string | null>(null)
+  const [financeReservationId, setFinanceReservationId] = useState<string | null>(null)
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -1860,6 +1874,15 @@ function ReservationsView({
                     Passageiros
                   </button>
                 ) : null}
+                {canViewFinance ? (
+                  <button
+                    type="button"
+                    className="admin-reservation-finance"
+                    onClick={() => setFinanceReservationId(reservation.id)}
+                  >
+                    Financeiro
+                  </button>
+                ) : null}
                 {reservation.client.phone ? (
                   <button
                     type="button"
@@ -1930,6 +1953,15 @@ function ReservationsView({
             reservations.find((item) => item.id === bonusReservationId)!
           }
           onClose={() => setBonusReservationId(null)}
+          onChanged={onChanged}
+        />
+      ) : null}
+
+      {financeReservationId ? (
+        <ReservationFinanceDialog
+          accessToken={accessToken}
+          reservationId={financeReservationId}
+          onClose={() => setFinanceReservationId(null)}
           onChanged={onChanged}
         />
       ) : null}
