@@ -2,7 +2,12 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, describe, it } from 'node:test'
 import { BadRequestException, ConflictException } from '@nestjs/common'
-import { BoardingStatus, ReservationStatus, TripStatus } from '@prisma/client'
+import {
+  BoardingStatus,
+  ReservationStatus,
+  TripStatus,
+  UserRole,
+} from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { TripsService } from '../trips/trips.service'
 
@@ -13,9 +18,19 @@ describe('lista de embarque administrativa', () => {
   const tripId = `boarding-trip-${suffix}`
   const clientId = `boarding-client-${suffix}`
   const reservationId = `boarding-reservation-${suffix}`
+  const actorUserId = `boarding-actor-${suffix}`
 
   before(async () => {
     await prisma.$connect()
+
+    await prisma.user.create({
+      data: {
+        id: actorUserId,
+        email: `boarding-admin-${suffix}@example.com`,
+        passwordHash: 'test-hash',
+        role: UserRole.ADMIN,
+      },
+    })
 
     await prisma.client.create({
       data: {
@@ -59,6 +74,8 @@ describe('lista de embarque administrativa', () => {
     await prisma.reservation.deleteMany({ where: { id: reservationId } })
     await prisma.trip.deleteMany({ where: { id: tripId } })
     await prisma.client.deleteMany({ where: { id: clientId } })
+    await prisma.authAuditEvent.deleteMany({ where: { userId: actorUserId } })
+    await prisma.user.deleteMany({ where: { id: actorUserId } })
     await prisma.$disconnect()
   })
 
@@ -87,6 +104,7 @@ describe('lista de embarque administrativa', () => {
       tripId,
       [first.id, second.id],
       BoardingStatus.BOARDED,
+      actorUserId,
     )
 
     assert.equal(bulkBoarded.summary.boarded, 2)
@@ -109,6 +127,7 @@ describe('lista de embarque administrativa', () => {
       tripId,
       [first.id, second.id],
       BoardingStatus.PENDING,
+      actorUserId,
     )
     assert.equal(reset.summary.pending, 2)
     assert.equal(reset.summary.boarded, 0)
@@ -117,6 +136,7 @@ describe('lista de embarque administrativa', () => {
       tripId,
       first.id,
       BoardingStatus.BOARDED,
+      actorUserId,
     )
 
     assert.equal(boarded.summary.boarded, 1)
@@ -135,13 +155,14 @@ describe('lista de embarque administrativa', () => {
       tripId,
       second.id,
       BoardingStatus.ABSENT,
+      actorUserId,
     )
 
     assert.equal(absent.summary.boarded, 1)
     assert.equal(absent.summary.absent, 1)
     assert.equal(absent.summary.pending, 0)
 
-    const completed = await trips.completeTrip(tripId)
+    const completed = await trips.completeTrip(tripId, actorUserId)
     assert.equal(completed?.status, TripStatus.COMPLETED)
 
     const completedReservation = await prisma.reservation.findUnique({
@@ -149,6 +170,25 @@ describe('lista de embarque administrativa', () => {
       select: { status: true },
     })
     assert.equal(completedReservation?.status, ReservationStatus.COMPLETED)
+
+    const audit = await trips.operationalAudit(tripId)
+    assert.ok(
+      audit.events.some(
+        (event) =>
+          event.eventType === 'OPS_BOARDING_BULK_UPDATED' &&
+          event.user?.id === actorUserId,
+      ),
+    )
+    assert.ok(
+      audit.events.some(
+        (event) => event.eventType === 'OPS_BOARDING_UPDATED',
+      ),
+    )
+    assert.ok(
+      audit.events.some(
+        (event) => event.eventType === 'OPS_TRIP_COMPLETED',
+      ),
+    )
 
     await assert.rejects(
       () =>
