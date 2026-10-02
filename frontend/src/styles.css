@@ -13143,3 +13143,115 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
     width: 100%;
   }
 }
+
+
+/* Client portal seat changes */
+
+.client-seat-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: 18px;
+  border: 1px solid #d9e7f0;
+  border-radius: 20px;
+  padding: 18px 20px;
+  background:
+    radial-gradient(circle at 0 0, rgba(38,119,217,.08), transparent 34%),
+    #fff;
+  box-shadow: 0 16px 36px rgba(28,70,103,.07);
+}
+
+.client-seat-panel-main {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.client-seat-panel-icon {
+  display: grid;
+  width: 50px;
+  height: 50px;
+  flex: 0 0 50px;
+  place-items: center;
+  border-radius: 15px;
+  color: #2677d9;
+  background: #eaf4fb;
+}
+
+.client-seat-panel-main > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.client-seat-panel-main h2 {
+  margin: 0;
+  color: #1f4968;
+  font: 700 17px 'Manrope', sans-serif;
+}
+
+.client-seat-panel-main p {
+  max-width: 620px;
+  margin: 0;
+  color: #728797;
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.client-seat-panel-actions {
+  display: grid;
+  justify-items: end;
+  gap: 7px;
+  flex: 0 0 auto;
+}
+
+.client-seat-panel-actions > span {
+  color: #80909c;
+  font-size: 8px;
+}
+
+.client-seat-panel-actions button {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 11px;
+  padding: 0 15px;
+  color: #fff;
+  background: #2677d9;
+  box-shadow: 0 9px 20px rgba(38,119,217,.18);
+  font-size: 9px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.client-seat-panel-actions button:disabled {
+  color: #8797a3;
+  background: #edf1f4;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+@media (max-width: 720px) {
+  .client-seat-panel {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 16px;
+  }
+
+  .client-seat-panel-actions {
+    justify-items: stretch;
+  }
+
+  .client-seat-panel-actions > span {
+    text-align: left;
+  }
+
+  .client-seat-panel-actions button {
+    width: 100%;
+  }
+}
