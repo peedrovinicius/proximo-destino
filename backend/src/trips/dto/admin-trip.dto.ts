@@ -179,7 +179,7 @@ export class UpdateTripDto extends TripVehicleFieldsDto {
   @IsOptional()
   @IsUrl({ require_tld: false })
   @MaxLength(1000)
-  imageUrl?: string
+  imageUrl?: string | null
 }
 
 
