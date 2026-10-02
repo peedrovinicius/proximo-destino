@@ -43,7 +43,7 @@ import {
   type SearchResult,
   type VehicleFeature,
 } from '../../lib/adminApi'
-import { openWhatsApp } from '../../lib/whatsapp'
+import { openWhatsApp, openWhatsAppTo } from '../../lib/whatsapp'
 
 type AdminDashboardProps = {
   accessToken: string
@@ -650,9 +650,27 @@ function PaymentsWorkspace({ accessToken }: { accessToken: string }) {
               <span>{money.format(order.unitPriceCents / 100)} por passageiro</span>
             </div>
 
-            <span className={'admin-payment-status admin-payment-status--' + order.status.toLowerCase()}>
-              {paymentStatusLabel(order.status)}
-            </span>
+            <div className="admin-payment-status-actions">
+              <span className={'admin-payment-status admin-payment-status--' + order.status.toLowerCase()}>
+                {paymentStatusLabel(order.status)}
+              </span>
+              {order.reservation.client.phone ? (
+                <button
+                  type="button"
+                  className="admin-payment-whatsapp"
+                  onClick={() =>
+                    openWhatsAppTo(
+                      order.reservation.client.phone!,
+                      order.status === 'PAID'
+                        ? `Olá, ${order.reservation.client.fullName}! Recebemos seu pagamento de ${money.format(order.totalCents / 100)} referente a ${order.reservation.trip.title}. Sua reserva está registrada com a Próximo Destino.`
+                        : `Olá, ${order.reservation.client.fullName}! Seu pagamento de ${money.format(order.totalCents / 100)} para ${order.reservation.trip.title} ainda está ${order.status === 'PENDING_PAYMENT' ? 'aguardando confirmação' : 'encerrado'}. Se precisar de ajuda, fale conosco.`,
+                    )
+                  }
+                >
+                  WhatsApp
+                </button>
+              ) : null}
+            </div>
           </div>
         )) : (
           <p className="admin-empty">Nenhum pagamento encontrado.</p>
@@ -1587,6 +1605,30 @@ function TripBusControl({
   )
 }
 
+function reservationWhatsAppMessage(reservation: AdminReservation) {
+  const seats = reservation.seatAssignments.length
+    ? ' Assentos: ' +
+      reservation.seatAssignments
+        .map((seat) => seat.seatNumber)
+        .join(', ') +
+      '.'
+    : ''
+
+  if (reservation.status === 'CONFIRMED') {
+    return `Olá, ${reservation.client.fullName}! Sua reserva para ${reservation.trip.title} está confirmada. Embarque: ${date.format(new Date(reservation.trip.departureDate))}.${seats} Qualquer dúvida, fale com a Próximo Destino.`
+  }
+
+  if (reservation.status === 'CANCELLED') {
+    const bonus =
+      reservation.client.bonusBalanceCents > 0
+        ? ` Você possui ${money.format(reservation.client.bonusBalanceCents / 100)} em bônus disponível para uma próxima viagem.`
+        : ''
+    return `Olá, ${reservation.client.fullName}. Sua reserva para ${reservation.trip.title} foi cancelada.${bonus} Se precisar, estamos à disposição.`
+  }
+
+  return `Olá, ${reservation.client.fullName}! Estamos acompanhando sua reserva para ${reservation.trip.title}, com embarque em ${date.format(new Date(reservation.trip.departureDate))}.${seats} Próximo Destino Turismo e Viagens.`
+}
+
 function ReservationsView({
   accessToken,
   clients,
@@ -1680,6 +1722,20 @@ function ReservationsView({
                     onClick={() => setPassengersReservationId(reservation.id)}
                   >
                     Passageiros
+                  </button>
+                ) : null}
+                {reservation.client.phone ? (
+                  <button
+                    type="button"
+                    className="admin-reservation-whatsapp"
+                    onClick={() =>
+                      openWhatsAppTo(
+                        reservation.client.phone!,
+                        reservationWhatsAppMessage(reservation),
+                      )
+                    }
+                  >
+                    WhatsApp
                   </button>
                 ) : null}
                 {canManagePassengers &&
