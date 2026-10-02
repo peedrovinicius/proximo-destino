@@ -946,6 +946,28 @@ export class PortalService {
             fullName: true,
             email: true,
             phone: true,
+            creditTransactions: {
+              select: {
+                id: true,
+                type: true,
+                amountCents: true,
+                note: true,
+                createdAt: true,
+                reservation: {
+                  select: {
+                    id: true,
+                    trip: {
+                      select: {
+                        title: true,
+                        destination: true,
+                      },
+                    },
+                  },
+                },
+              },
+              orderBy: { createdAt: 'desc' },
+              take: 30,
+            },
           },
         },
         trip: {
@@ -1052,8 +1074,22 @@ export class PortalService {
 
     if (!reservation) throw new NotFoundException('Reserva não encontrada')
 
+    const { creditTransactions, ...client } = reservation.client
+    const bonusBalanceCents = Math.max(
+      0,
+      creditTransactions.reduce(
+        (sum, transaction) => sum + transaction.amountCents,
+        0,
+      ),
+    )
+
     return {
       ...reservation,
+      client,
+      bonus: {
+        balanceCents: bonusBalanceCents,
+        transactions: creditTransactions,
+      },
       canEditPassengers:
         reservation.trip.departureDate.getTime() > Date.now() &&
         reservation.status !== ReservationStatus.CANCELLED &&
