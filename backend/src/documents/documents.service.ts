@@ -36,6 +36,12 @@ type TravelVoucherSnapshot = {
     email: string | null
     phone: string | null
   }
+  passengers: Array<{
+    sequence: number
+    fullName: string
+    document: string | null
+    seatNumber: number | null
+  }>
   trip: {
     title: string
     origin: string
@@ -84,6 +90,12 @@ type PurchaseReceiptSnapshot = {
     email: string | null
     phone: string | null
   }
+  passengers: Array<{
+    sequence: number
+    fullName: string
+    document: string | null
+    seatNumber: number | null
+  }>
   trip: {
     title: string
     origin: string
@@ -142,6 +154,15 @@ export class DocumentsService {
             email: true,
             phone: true,
           },
+        },
+        passengers: {
+          select: {
+            sequence: true,
+            fullName: true,
+            document: true,
+            seatAssignment: { select: { seatNumber: true } },
+          },
+          orderBy: { sequence: 'asc' },
         },
         trip: {
           select: {
@@ -205,6 +226,16 @@ export class DocumentsService {
             passengerCount: reservation.passengerCount,
           },
           traveler: reservation.client,
+          passengers: reservation.passengers.map((passenger) => ({
+            sequence: passenger.sequence,
+            fullName:
+              passenger.fullName ||
+              (passenger.sequence === 1
+                ? reservation.client.fullName
+                : 'Passageiro não identificado'),
+            document: passenger.document,
+            seatNumber: passenger.seatAssignment?.seatNumber ?? null,
+          })),
           trip: {
             title: reservation.trip.title,
             origin: reservation.trip.origin,
@@ -264,6 +295,15 @@ export class DocumentsService {
             email: true,
             phone: true,
           },
+        },
+        passengers: {
+          select: {
+            sequence: true,
+            fullName: true,
+            document: true,
+            seatAssignment: { select: { seatNumber: true } },
+          },
+          orderBy: { sequence: 'asc' },
         },
         trip: {
           select: {
@@ -345,6 +385,16 @@ export class DocumentsService {
             passengerCount: reservation.passengerCount,
           },
           buyer: reservation.client,
+          passengers: reservation.passengers.map((passenger) => ({
+            sequence: passenger.sequence,
+            fullName:
+              passenger.fullName ||
+              (passenger.sequence === 1
+                ? reservation.client.fullName
+                : 'Passageiro não identificado'),
+            document: passenger.document,
+            seatNumber: passenger.seatAssignment?.seatNumber ?? null,
+          })),
           trip: {
             title: reservation.trip.title,
             origin: reservation.trip.origin,
@@ -450,6 +500,7 @@ export class DocumentsService {
         issuedAt: true,
         reservation: {
           select: {
+            id: true,
             trip: {
               select: {
                 origin: true,
@@ -471,6 +522,7 @@ export class DocumentsService {
       documentNumber: document.documentNumber,
       verificationCode: document.verificationCode,
       issuedAt: document.issuedAt,
+      reservationId: document.reservation.id,
       route: {
         origin: document.reservation.trip.origin,
         destination: document.reservation.trip.destination,
@@ -708,6 +760,9 @@ export class DocumentsService {
     }
 
     let y = 344
+    y = this.drawPassengers(doc, snapshot.passengers, y)
+    y += 16
+
     const details: Array<[string, string]> = [
       ['Companhia / fornecedor', snapshot.flight.airline || 'A confirmar'],
       ['Voo', snapshot.flight.flightNumber || 'A confirmar'],
@@ -815,6 +870,8 @@ export class DocumentsService {
       )
 
     y += 105
+    y = this.drawPassengers(doc, snapshot.passengers, y)
+    y += 16
     this.drawKeyValueGrid(
       doc,
       [
@@ -921,6 +978,67 @@ export class DocumentsService {
         .fontSize(8)
         .text(snapshot.notes, 44, y + 14, { width: 507 })
     }
+  }
+
+  private drawPassengers(
+    doc: PDFKit.PDFDocument,
+    passengers: Array<{
+      sequence: number
+      fullName: string
+      document: string | null
+      seatNumber: number | null
+    }>,
+    startY: number,
+  ) {
+    let y = this.ensureSpace(doc, startY, 42)
+
+    doc
+      .fillColor('#172B3D')
+      .font('Helvetica-Bold')
+      .fontSize(10)
+      .text('PASSAGEIROS E ASSENTOS', 44, y)
+    y += 18
+
+    for (const passenger of passengers) {
+      y = this.ensureSpace(doc, y, 30)
+      doc
+        .fillColor('#243B4E')
+        .font('Helvetica-Bold')
+        .fontSize(8)
+        .text(
+          `${passenger.sequence}. ${passenger.fullName}`,
+          44,
+          y,
+          { width: 300 },
+        )
+      doc
+        .fillColor('#718493')
+        .font('Helvetica')
+        .fontSize(7)
+        .text(
+          passenger.document
+            ? `Documento ${passenger.document}`
+            : 'Documento não informado',
+          44,
+          y + 12,
+          { width: 300 },
+        )
+      doc
+        .fillColor('#174D84')
+        .font('Helvetica-Bold')
+        .fontSize(8)
+        .text(
+          passenger.seatNumber
+            ? `Poltrona ${passenger.seatNumber}`
+            : 'Poltrona a definir',
+          415,
+          y,
+          { width: 136, align: 'right' },
+        )
+      y += 28
+    }
+
+    return y
   }
 
   private drawKeyValueGrid(
