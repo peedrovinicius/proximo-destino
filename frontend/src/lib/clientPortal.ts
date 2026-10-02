@@ -1,3 +1,5 @@
+import type { VehicleFeature } from './publicApi'
+
 const API_BASE = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '')
 
 export type ClientPaymentStartResult =
@@ -28,6 +30,21 @@ export type ClientPortalData = {
   passengerCount: number
   createdAt: string
   canEditPassengers: boolean
+  canChangeSeats: boolean
+  seatChangeCutoffAt: string
+  seatMap: {
+    enabled: boolean
+    capacity: number | null
+    busTemplate: string | null
+    busLabel: string | null
+    seatLayout: 'TWO_BY_TWO' | 'TWO_BY_ONE'
+    deckCount: 1 | 2
+    lowerDeckCapacity: number | null
+    vehicleFeatures: VehicleFeature[]
+    blockedSeats: number[]
+    occupiedSeats: number[]
+    availableCount: number | null
+  }
   passengers: Array<{
     id: string
     sequence: number
@@ -184,6 +201,23 @@ export async function updateClientPassengers(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ passengers }),
+  })
+
+  if (!response.ok) throw new Error(await parseError(response))
+  return response.json() as Promise<ClientPortalData>
+}
+
+export async function updateClientSeats(
+  accessToken: string,
+  selectedSeats: number[],
+) {
+  const response = await fetch(`${API_BASE}/client/seats`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ selectedSeats }),
   })
 
   if (!response.ok) throw new Error(await parseError(response))
