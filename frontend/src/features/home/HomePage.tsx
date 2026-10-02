@@ -165,9 +165,6 @@ export function HomePage({
           <button className="public-client-access" type="button" onClick={onClientAccess}>
             Minha viagem
           </button>
-          <button className="public-admin-access" type="button" onClick={onAdminAccess}>
-            Administração
-          </button>
         </div>
       </header>
 
