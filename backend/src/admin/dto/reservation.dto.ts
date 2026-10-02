@@ -4,6 +4,7 @@ import {
   IsDate,
   IsEnum,
   IsInt,
+  IsBoolean,
   IsOptional,
   IsString,
   Max,
@@ -61,4 +62,28 @@ export class UpdateReservationPassengersDto {
   @ValidateNested({ each: true })
   @Type(() => ReservationPassengerInputDto)
   passengers!: ReservationPassengerInputDto[]
+}
+
+
+export class CancelReservationDto {
+  @IsOptional()
+  @IsBoolean()
+  creditAsBonus?: boolean
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  reason?: string
+}
+
+export class ApplyReservationBonusDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  amountCents!: number
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  note?: string
 }
