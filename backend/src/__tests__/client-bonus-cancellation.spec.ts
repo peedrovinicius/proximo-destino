@@ -139,6 +139,9 @@ describe('cancelamento com bônus do cliente', () => {
     await prisma.purchaseOrder.deleteMany({
       where: { reservationId },
     })
+    await prisma.quote.deleteMany({
+      where: { reservationId: nextReservationId },
+    })
     await prisma.reservation.deleteMany({
       where: { clientId },
     })
