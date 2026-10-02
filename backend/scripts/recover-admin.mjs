@@ -1,4 +1,5 @@
-// Recovery utility for controlled administrator access restoration.\nimport { PrismaClient, UserRole } from '@prisma/client'
+// Recovery utility for controlled administrator access restoration.
+import { PrismaClient, UserRole } from '@prisma/client'
 import argon2 from 'argon2'
 
 const prisma = new PrismaClient()
