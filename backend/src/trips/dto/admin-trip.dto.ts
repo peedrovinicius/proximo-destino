@@ -239,3 +239,12 @@ export class AssignSeatClientDto {
   @IsDate()
   birthDate?: Date
 }
+
+
+export class MoveSeatAssignmentDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(80)
+  toSeatNumber!: number
+}
