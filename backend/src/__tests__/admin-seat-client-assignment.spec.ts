@@ -6,6 +6,7 @@ import {
   PurchasePaymentMethod,
   ReservationStatus,
   TripStatus,
+  UserRole,
 } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { TripsService } from '../trips/trips.service'
@@ -18,6 +19,7 @@ describe('cadastro manual de cliente por poltrona', () => {
   const onlineClientId = `manual-seat-online-client-${suffix}`
   const existingClientId = `manual-seat-existing-client-${suffix}`
   const onlineReservationId = `manual-seat-online-reservation-${suffix}`
+  const actorUserId = `manual-seat-actor-${suffix}`
 
   before(async () => {
     await prisma.$connect()
@@ -35,6 +37,15 @@ describe('cadastro manual de cliente por poltrona', () => {
         deckCount: 1,
         blockedSeats: [2],
         priceCents: 15000,
+      },
+    })
+
+    await prisma.user.create({
+      data: {
+        id: actorUserId,
+        email: `manual-seat-admin-${suffix}@example.com`,
+        passwordHash: 'test-hash',
+        role: UserRole.ADMIN,
       },
     })
 
@@ -110,13 +121,18 @@ describe('cadastro manual de cliente por poltrona', () => {
         ],
       },
     })
+    await prisma.authAuditEvent.deleteMany({ where: { userId: actorUserId } })
+    await prisma.user.deleteMany({ where: { id: actorUserId } })
     await prisma.$disconnect()
   })
 
   it('permite colocar cliente existente em poltrona livre e libera bloqueio da agência', async () => {
-    const map = await trips.assignClientToSeat(tripId, 2, {
-      clientId: existingClientId,
-    })
+    const map = await trips.assignClientToSeat(
+      tripId,
+      2,
+      { clientId: existingClientId },
+      actorUserId,
+    )
 
     const assignment = map.assignments.find((item) => item.seatNumber === 2)
     assert.ok(assignment)
@@ -127,18 +143,41 @@ describe('cadastro manual de cliente por poltrona', () => {
   })
 
   it('permite cadastrar novo cliente diretamente em outra poltrona livre', async () => {
-    const map = await trips.assignClientToSeat(tripId, 3, {
-      fullName: 'Novo Cliente Balcão',
-      email: `novo-seat-${suffix}@example.com`,
-      phone: '85933333333',
-      document: '12345678900',
-    })
+    const map = await trips.assignClientToSeat(
+      tripId,
+      3,
+      {
+        fullName: 'Novo Cliente Balcão',
+        email: `novo-seat-${suffix}@example.com`,
+        phone: '85933333333',
+        document: '12345678900',
+      },
+      actorUserId,
+    )
 
     const assignment = map.assignments.find((item) => item.seatNumber === 3)
     assert.ok(assignment)
     assert.equal(assignment.source, 'ADMIN_RESERVATION')
     assert.equal(assignment.passenger?.fullName, 'Novo Cliente Balcão')
     assert.equal(assignment.passenger?.document, '12345678900')
+
+    await trips.setSeatBlocked(tripId, 4, true, actorUserId)
+    await trips.setSeatBlocked(tripId, 4, false, actorUserId)
+
+    const audit = await trips.operationalAudit(tripId)
+    assert.ok(
+      audit.events.some(
+        (event) =>
+          event.eventType === 'OPS_SEAT_CLIENT_ASSIGNED' &&
+          event.user?.id === actorUserId,
+      ),
+    )
+    assert.ok(
+      audit.events.some((event) => event.eventType === 'OPS_SEAT_BLOCKED'),
+    )
+    assert.ok(
+      audit.events.some((event) => event.eventType === 'OPS_SEAT_RELEASED'),
+    )
   })
 
   it('protege poltrona comprada diretamente pelo site', async () => {
