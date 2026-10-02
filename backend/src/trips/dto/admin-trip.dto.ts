@@ -248,3 +248,10 @@ export class MoveSeatAssignmentDto {
   @Max(80)
   toSeatNumber!: number
 }
+
+
+export class ScanBoardingQrDto {
+  @IsString()
+  @MaxLength(1200)
+  code!: string
+}
