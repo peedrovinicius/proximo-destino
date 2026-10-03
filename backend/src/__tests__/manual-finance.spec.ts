@@ -77,6 +77,7 @@ describe('financeiro manual auditável', () => {
         title: 'Plano manual',
         subtotalSaleCents: 60000,
         totalCents: 60000,
+        marginCents: 60000,
         approvedAt: new Date(),
       },
     })
