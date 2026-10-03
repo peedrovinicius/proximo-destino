@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common'
 import {
   InstallmentStatus,
+  Prisma,
   QuoteStatus,
   ReservationServiceStatus,
 } from '@prisma/client'
@@ -24,7 +25,7 @@ export class CommercialService {
   private async recordAudit(
     actorUserId: string | undefined,
     eventType: string,
-    metadata: Record<string, unknown>,
+    metadata: Prisma.InputJsonObject,
   ) {
     if (!actorUserId) return
     await this.prisma.authAuditEvent.create({
