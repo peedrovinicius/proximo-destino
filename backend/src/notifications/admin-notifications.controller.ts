@@ -8,15 +8,15 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common'
-import { UserRole } from '@prisma/client'
 import { JwtAuthGuard, type AuthenticatedRequest } from '../auth/jwt-auth.guard'
+import { STAFF_ROLES } from '../auth/role-capabilities'
 import { Roles } from '../auth/roles.decorator'
 import { RolesGuard } from '../auth/roles.guard'
 import { AdminNotificationsService } from './admin-notifications.service'
 
 @Controller('admin/notifications')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN, UserRole.AGENT, UserRole.FINANCE)
+@Roles(...STAFF_ROLES)
 export class AdminNotificationsController {
   constructor(private readonly notifications: AdminNotificationsService) {}
 
