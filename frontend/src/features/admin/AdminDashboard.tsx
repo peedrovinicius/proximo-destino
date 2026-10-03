@@ -2446,7 +2446,11 @@ function ReservationsView({
   clients,
   trips,
   reservations,
+  canCreateReservation,
+  canChangeStatus,
   canManagePassengers,
+  canCancelReservations,
+  canManageBonus,
   canViewFinance,
   onChanged,
 }: {
@@ -2454,7 +2458,11 @@ function ReservationsView({
   clients: AdminClient[]
   trips: AdminTrip[]
   reservations: AdminReservation[]
+  canCreateReservation: boolean
+  canChangeStatus: boolean
   canManagePassengers: boolean
+  canCancelReservations: boolean
+  canManageBonus: boolean
   canViewFinance: boolean
   onChanged: () => Promise<void>
 }) {
@@ -2486,18 +2494,25 @@ function ReservationsView({
 
   return (
     <section className="admin-workspace">
-      <form className="admin-form-panel" onSubmit={submit}>
-        <div><span className="eyebrow">Nova operação</span><h2>Reserva</h2></div>
-        <select value={clientId} onChange={(e) => setClientId(e.target.value)} required>
-          <option value="">Selecione o cliente</option>
-          {clients.map((client) => <option value={client.id} key={client.id}>{client.fullName}</option>)}
-        </select>
-        <select value={tripId} onChange={(e) => setTripId(e.target.value)} required>
-          <option value="">Selecione a viagem</option>
-          {trips.map((trip) => <option value={trip.id} key={trip.id}>{trip.title}</option>)}
-        </select>
-        <button type="submit" disabled={saving || !clients.length || !trips.length}>{saving ? 'Salvando...' : 'Criar reserva'}</button>
-      </form>
+      {canCreateReservation ? (
+        <form className="admin-form-panel" onSubmit={submit}>
+          <div><span className="eyebrow">Nova operação</span><h2>Reserva</h2></div>
+          <select value={clientId} onChange={(e) => setClientId(e.target.value)} required>
+            <option value="">Selecione o cliente</option>
+            {clients.map((client) => <option value={client.id} key={client.id}>{client.fullName}</option>)}
+          </select>
+          <select value={tripId} onChange={(e) => setTripId(e.target.value)} required>
+            <option value="">Selecione a viagem</option>
+            {trips.map((trip) => <option value={trip.id} key={trip.id}>{trip.title}</option>)}
+          </select>
+          <button type="submit" disabled={saving || !clients.length || !trips.length}>{saving ? 'Salvando...' : 'Criar reserva'}</button>
+        </form>
+      ) : (
+        <div className="admin-permission-note">
+          <ShieldCheck size={15} />
+          <span>Visualização financeira: criação e alteração operacional de reservas ficam bloqueadas.</span>
+        </div>
+      )}
 
       <article className="admin-data-panel">
         <div className="admin-panel-heading"><div><span className="eyebrow">Operação</span><h2>Reservas</h2></div><strong>{reservations.length}</strong></div>
@@ -2528,18 +2543,30 @@ function ReservationsView({
                 ) : null}
               </div>
               <div className="admin-reservation-actions">
-                <select
-                  value={reservation.status}
-                  disabled={reservation.status === 'CANCELLED'}
-                  onChange={(e) => void changeStatus(reservation.id, e.target.value as AdminReservation['status'])}
-                >
-                  <option value="PENDING">Pendente</option>
-                  <option value="CONFIRMED">Confirmada</option>
-                  <option value="COMPLETED">Concluída</option>
-                  {reservation.status === 'CANCELLED' ? (
-                    <option value="CANCELLED">Cancelada</option>
-                  ) : null}
-                </select>
+                {canChangeStatus ? (
+                  <select
+                    value={reservation.status}
+                    disabled={reservation.status === 'CANCELLED'}
+                    onChange={(e) => void changeStatus(reservation.id, e.target.value as AdminReservation['status'])}
+                  >
+                    <option value="PENDING">Pendente</option>
+                    <option value="CONFIRMED">Confirmada</option>
+                    <option value="COMPLETED">Concluída</option>
+                    {reservation.status === 'CANCELLED' ? (
+                      <option value="CANCELLED">Cancelada</option>
+                    ) : null}
+                  </select>
+                ) : (
+                  <span className="admin-reservation-status-readonly">
+                    {reservation.status === 'PENDING'
+                      ? 'Pendente'
+                      : reservation.status === 'CONFIRMED'
+                        ? 'Confirmada'
+                        : reservation.status === 'COMPLETED'
+                          ? 'Concluída'
+                          : 'Cancelada'}
+                  </span>
+                )}
                 {canManagePassengers && reservation.status !== 'CANCELLED' ? (
                   <button
                     type="button"
@@ -2571,7 +2598,7 @@ function ReservationsView({
                     WhatsApp
                   </button>
                 ) : null}
-                {canManagePassengers &&
+                {canManageBonus &&
                 reservation.status !== 'CANCELLED' &&
                 reservation.status !== 'COMPLETED' &&
                 reservation.client.bonusBalanceCents > 0 ? (
@@ -2583,7 +2610,7 @@ function ReservationsView({
                     Usar bônus
                   </button>
                 ) : null}
-                {canManagePassengers &&
+                {canCancelReservations &&
                 reservation.status !== 'CANCELLED' &&
                 reservation.status !== 'COMPLETED' ? (
                   <button
