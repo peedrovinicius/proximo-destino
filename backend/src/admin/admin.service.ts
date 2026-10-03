@@ -19,6 +19,7 @@ import {
   UserRole,
 } from '@prisma/client'
 import { MercadoPagoConfig, Order, Payment, PaymentRefund } from 'mercadopago'
+import { EmailAutomationService } from '../notifications/email-automation.service'
 import { WhatsAppAutomationService } from '../notifications/whatsapp-automation.service'
 import { PaymentConnectionService } from '../payments/payment-connection.service'
 import { PrismaService } from '../prisma/prisma.service'
@@ -78,10 +79,20 @@ export class AdminService {
     private readonly prisma: PrismaService,
     @Optional() private readonly paymentConnection?: PaymentConnectionService,
     @Optional() private readonly whatsapp?: WhatsAppAutomationService,
+    @Optional() private readonly email?: EmailAutomationService,
   ) {}
 
   private async safeWhatsApp(action: () => Promise<unknown> | undefined) {
     if (!this.whatsapp) return
+    try {
+      await action()
+    } catch {
+      // A comunicação nunca deve impedir a operação principal.
+    }
+  }
+
+  private async safeEmail(action: () => Promise<unknown> | undefined) {
+    if (!this.email) return
     try {
       await action()
     } catch {
@@ -904,6 +915,8 @@ export class AdminService {
       }
     }
 
+    let createdPaymentId: string | null = null
+
     await this.prisma.$transaction(async (tx) => {
       const payment = await tx.manualPayment.create({
         data: {
@@ -918,6 +931,8 @@ export class AdminService {
           recordedByUserId: actorUserId,
         },
       })
+
+      createdPaymentId = payment.id
 
       if (installment) {
         const received = await tx.manualPayment.aggregate({
@@ -957,6 +972,12 @@ export class AdminService {
         },
       })
     })
+
+    if (createdPaymentId) {
+      await this.safeEmail(() =>
+        this.email?.enqueueManualPaymentReceived(createdPaymentId!),
+      )
+    }
 
     return this.reservationFinance(id)
   }
@@ -1049,6 +1070,10 @@ export class AdminService {
         },
       })
     })
+
+    await this.safeEmail(() =>
+      this.email?.enqueueManualPaymentReversed(payment.id),
+    )
 
     return this.reservationFinance(id)
   }
@@ -1377,6 +1402,14 @@ export class AdminService {
       })
     })
 
+    await this.safeEmail(() =>
+      this.email?.enqueuePaymentRefunded(
+        id,
+        amountCents,
+        `${purchase.id}:${refundedCents}`,
+      ),
+    )
+
     return this.reservationFinance(id)
   }
 
@@ -1490,6 +1523,9 @@ export class AdminService {
     if (status === ReservationStatus.CONFIRMED) {
       await this.safeWhatsApp(() =>
         this.whatsapp?.enqueueReservationConfirmed(id),
+      )
+      await this.safeEmail(() =>
+        this.email?.enqueueReservationConfirmed(id),
       )
     }
 
@@ -1697,6 +1733,9 @@ export class AdminService {
     await this.safeWhatsApp(() =>
       this.whatsapp?.enqueueReservationCancelled(id),
     )
+    await this.safeEmail(() =>
+      this.email?.enqueueReservationCancelled(id),
+    )
 
     return {
       cancelled: true,
@@ -1754,6 +1793,10 @@ export class AdminService {
         },
       })
     })
+
+    await this.safeEmail(() =>
+      this.email?.enqueueCancellationRejected(id),
+    )
 
     return { rejected: true }
   }
@@ -1858,9 +1901,20 @@ export class AdminService {
       })
     })
 
+    const remainingBonusCents = balanceCents - amountCents
+
+    await this.safeEmail(() =>
+      this.email?.enqueueBonusUsed(
+        id,
+        amountCents,
+        remainingBonusCents,
+        `${quote.id}:${amountCents}`,
+      ),
+    )
+
     return {
       appliedCents: amountCents,
-      remainingBonusCents: balanceCents - amountCents,
+      remainingBonusCents,
       quoteTotalCents: quote.totalCents - amountCents,
     }
   }
