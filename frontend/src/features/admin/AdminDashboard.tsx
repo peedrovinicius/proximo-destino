@@ -15,6 +15,7 @@ import {
   Bus,
   Search,
   ShieldCheck,
+  Phone,
   Users,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
@@ -43,6 +44,7 @@ import {
   type SeatLayout,
   type PaymentConnectionStatus,
   type SearchResult,
+  type WhatsAppAutomationStatus,
   type VehicleFeature,
 } from '../../lib/adminApi'
 import { openWhatsApp, openWhatsAppTo } from '../../lib/whatsapp'
@@ -2036,16 +2038,45 @@ function ReservationsView({
 
 function PaymentSettings({ accessToken }: { accessToken: string }) {
   const [status, setStatus] = useState<PaymentConnectionStatus | null>(null)
+  const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppAutomationStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [working, setWorking] = useState(false)
+  const [whatsappWorking, setWhatsappWorking] = useState(false)
   const [message, setMessage] = useState('')
 
   async function load() {
     setLoading(true)
     try {
-      setStatus(await adminApi.paymentConnection(accessToken))
+      const [payment, whatsapp] = await Promise.all([
+        adminApi.paymentConnection(accessToken),
+        adminApi.whatsappAutomationStatus(accessToken),
+      ])
+      setStatus(payment)
+      setWhatsappStatus(whatsapp)
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function processWhatsapp() {
+    setWhatsappWorking(true)
+    setMessage('')
+    try {
+      const next = await adminApi.processWhatsAppOutbox(accessToken)
+      setWhatsappStatus(next)
+      setMessage(
+        next.providerConfigured
+          ? `Fila processada: ${next.processed} item(ns) verificado(s).`
+          : 'A fila foi atualizada, mas a API oficial do WhatsApp ainda não está conectada.',
+      )
+    } catch (cause) {
+      setMessage(
+        cause instanceof Error
+          ? cause.message
+          : 'Não foi possível processar a fila do WhatsApp.',
+      )
+    } finally {
+      setWhatsappWorking(false)
     }
   }
 
@@ -2211,6 +2242,82 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
         )}
 
         {message ? <p className="payment-connection-message">{message}</p> : null}
+      </article>
+
+      <article className="whatsapp-automation-card">
+        <div className="payment-connection-brand">
+          <span className="whatsapp-automation-icon"><Phone size={20} /></span>
+          <div>
+            <strong>WhatsApp automático</strong>
+            <span>Confirmação, pagamento, cancelamento, lembrete de viagem e aniversário</span>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="payment-connection-state">Verificando automação...</div>
+        ) : (
+          <>
+            <div
+              className={
+                whatsappStatus?.providerConfigured
+                  ? 'whatsapp-automation-state whatsapp-automation-state--ready'
+                  : 'whatsapp-automation-state whatsapp-automation-state--waiting'
+              }
+            >
+              {whatsappStatus?.providerConfigured ? (
+                <CheckCircle2 size={20} />
+              ) : (
+                <Phone size={20} />
+              )}
+              <div>
+                <strong>
+                  {whatsappStatus?.providerConfigured
+                    ? 'API oficial conectada'
+                    : 'Fila automática ativa · aguardando API oficial'}
+                </strong>
+                <span>
+                  {whatsappStatus?.providerConfigured
+                    ? 'Os eventos podem ser enviados automaticamente pela Cloud API.'
+                    : 'Os eventos já são gravados com segurança no banco. Nenhuma mensagem é marcada como enviada enquanto a conexão oficial não estiver configurada.'}
+                </span>
+              </div>
+            </div>
+
+            <div className="whatsapp-automation-metrics">
+              <div>
+                <small>Pendentes</small>
+                <strong>{whatsappStatus?.counts.pending ?? 0}</strong>
+              </div>
+              <div>
+                <small>Enviadas</small>
+                <strong>{whatsappStatus?.counts.sent ?? 0}</strong>
+              </div>
+              <div>
+                <small>Falhas</small>
+                <strong>{whatsappStatus?.counts.failed ?? 0}</strong>
+              </div>
+            </div>
+
+            <div className="whatsapp-automation-events">
+              <span>Reserva confirmada</span>
+              <span>Pagamento confirmado</span>
+              <span>Cancelamento</span>
+              <span>Lembrete 24h</span>
+              <span>Aniversário</span>
+            </div>
+
+            <div className="payment-connection-actions">
+              <button
+                type="button"
+                className="payment-secondary-action"
+                onClick={() => void processWhatsapp()}
+                disabled={whatsappWorking}
+              >
+                {whatsappWorking ? 'Processando...' : 'Processar fila agora'}
+              </button>
+            </div>
+          </>
+        )}
       </article>
     </section>
   )
