@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   Logger,
   OnModuleDestroy,
@@ -14,7 +15,12 @@ import {
   TripStatus,
   UserRole,
 } from '@prisma/client'
-import { randomUUID } from 'node:crypto'
+import {
+  createCipheriv,
+  createDecipheriv,
+  randomBytes,
+  randomUUID,
+} from 'node:crypto'
 import { PrismaService } from '../prisma/prisma.service'
 
 type EmailQueueInput = {
@@ -39,6 +45,10 @@ type ProviderConfig = {
   apiUrl: string
   from: string
   replyTo: string | null
+  adminCopyEmail: string | null
+  automationEnabled: boolean
+  connectionSource: 'DATABASE' | 'ENVIRONMENT' | 'NONE'
+  connectedAt: Date | null
 }
 
 @Injectable()
@@ -54,7 +64,8 @@ export class EmailAutomationService
     private readonly config: ConfigService,
   ) {}
 
-  onModuleInit() {
+  async onModuleInit() {
+    await this.bootstrapConnectionFromEnvironment()
     const verifyOnStart =
       this.config.get<string>('EMAIL_PROVIDER_VERIFY_ON_START')?.trim() ===
       'true'
@@ -86,7 +97,35 @@ export class EmailAutomationService
     if (this.timer) clearInterval(this.timer)
   }
 
-  private providerConfig(): ProviderConfig {
+  private async providerConfig(): Promise<ProviderConfig> {
+    const connection =
+      await this.prisma.emailProviderConnection.findUnique({
+        where: { provider: 'RESEND' },
+      })
+
+    if (connection) {
+      const from = connection.fromName?.trim()
+        ? `${connection.fromName.trim()} <${connection.fromEmail}>`
+        : connection.fromEmail
+      const testOnly = /@resend\.dev(?:>|\s|$)/i.test(from)
+
+      return {
+        configured: true,
+        productionReady: !testOnly,
+        testOnly,
+        apiKey: this.decrypt(connection.apiKeyEncrypted),
+        apiUrl:
+          this.config.get<string>('RESEND_API_URL')?.trim() ||
+          'https://api.resend.com/emails',
+        from,
+        replyTo: connection.replyToEmail,
+        adminCopyEmail: connection.adminCopyEmail,
+        automationEnabled: connection.automationEnabled,
+        connectionSource: 'DATABASE',
+        connectedAt: connection.connectedAt,
+      }
+    }
+
     const apiKey =
       this.config.get<string>('RESEND_API_KEY')?.trim() ?? ''
     const from =
@@ -95,7 +134,10 @@ export class EmailAutomationService
       this.config.get<string>('EMAIL_REPLY_TO')?.trim() ||
       this.config.get<string>('ADMIN_EMAIL')?.trim() ||
       null
-
+    const adminCopyEmail =
+      this.normalizeEmail(
+        this.config.get<string>('ADMIN_EMAIL')?.trim(),
+      )
     const testOnly = /@resend\.dev(?:>|\s|$)/i.test(from)
 
     return {
@@ -108,11 +150,182 @@ export class EmailAutomationService
         'https://api.resend.com/emails',
       from,
       replyTo,
+      adminCopyEmail,
+      automationEnabled:
+        this.config
+          .get<string>('EMAIL_AUTOMATION_ENABLED')
+          ?.trim() !== 'false',
+      connectionSource: apiKey && from ? 'ENVIRONMENT' : 'NONE',
+      connectedAt: null,
     }
   }
 
+  private async bootstrapConnectionFromEnvironment() {
+    const existing =
+      await this.prisma.emailProviderConnection.findUnique({
+        where: { provider: 'RESEND' },
+        select: { id: true },
+      })
+    if (existing) return
+
+    const apiKey =
+      this.config.get<string>('RESEND_API_KEY')?.trim() ?? ''
+    const rawFrom =
+      this.config.get<string>('EMAIL_FROM')?.trim() ?? ''
+    if (!apiKey || !rawFrom) return
+
+    const parsed = this.parseFrom(rawFrom)
+    if (!parsed.email) return
+
+    await this.prisma.emailProviderConnection.create({
+      data: {
+        provider: 'RESEND',
+        apiKeyEncrypted: this.encrypt(apiKey),
+        fromName: parsed.name,
+        fromEmail: parsed.email,
+        replyToEmail: this.normalizeEmail(
+          this.config.get<string>('EMAIL_REPLY_TO')?.trim(),
+        ),
+        adminCopyEmail: this.normalizeEmail(
+          this.config.get<string>('ADMIN_EMAIL')?.trim(),
+        ),
+        automationEnabled:
+          this.config
+            .get<string>('EMAIL_AUTOMATION_ENABLED')
+            ?.trim() !== 'false',
+      },
+    })
+  }
+
+  async connectProvider(
+    input: {
+      apiKey: string
+      fromName?: string
+      fromEmail: string
+      replyToEmail?: string
+      adminCopyEmail?: string
+    },
+    actorUserId: string,
+  ) {
+    const apiKey = input.apiKey.trim()
+    const fromEmail = this.normalizeEmail(input.fromEmail)
+    const replyToEmail = this.normalizeEmail(input.replyToEmail)
+    const adminCopyEmail = this.normalizeEmail(input.adminCopyEmail)
+
+    if (!apiKey.startsWith('re_') || apiKey.length < 16) {
+      throw new BadRequestException('Chave do Resend inválida')
+    }
+    if (!fromEmail) {
+      throw new BadRequestException('E-mail remetente inválido')
+    }
+    if (input.replyToEmail?.trim() && !replyToEmail) {
+      throw new BadRequestException('E-mail de resposta inválido')
+    }
+    if (input.adminCopyEmail?.trim() && !adminCopyEmail) {
+      throw new BadRequestException('E-mail administrativo inválido')
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.emailProviderConnection.upsert({
+        where: { provider: 'RESEND' },
+        create: {
+          provider: 'RESEND',
+          apiKeyEncrypted: this.encrypt(apiKey),
+          fromName: input.fromName?.trim() || null,
+          fromEmail,
+          replyToEmail,
+          adminCopyEmail,
+          automationEnabled: false,
+          connectedByUserId: actorUserId,
+        },
+        update: {
+          apiKeyEncrypted: this.encrypt(apiKey),
+          fromName: input.fromName?.trim() || null,
+          fromEmail,
+          replyToEmail,
+          adminCopyEmail,
+          connectedByUserId: actorUserId,
+          connectedAt: new Date(),
+        },
+      }),
+      this.prisma.authAuditEvent.create({
+        data: {
+          userId: actorUserId,
+          eventType: 'OPS_INTEGRATION_EMAIL_CONNECTED',
+          metadata: {
+            provider: 'RESEND',
+            fromEmail,
+            adminCopyConfigured: Boolean(adminCopyEmail),
+          },
+        },
+      }),
+    ])
+
+    return this.status()
+  }
+
+  async disconnectProvider(actorUserId: string) {
+    await this.prisma.$transaction([
+      this.prisma.emailProviderConnection.deleteMany({
+        where: { provider: 'RESEND' },
+      }),
+      this.prisma.authAuditEvent.create({
+        data: {
+          userId: actorUserId,
+          eventType: 'OPS_INTEGRATION_EMAIL_DISCONNECTED',
+          metadata: { provider: 'RESEND' },
+        },
+      }),
+    ])
+
+    return { disconnected: true }
+  }
+
+  async setAutomationEnabled(
+    enabled: boolean,
+    actorUserId: string,
+  ) {
+    const connection =
+      await this.prisma.emailProviderConnection.findUnique({
+        where: { provider: 'RESEND' },
+      })
+    if (!connection) {
+      throw new BadRequestException(
+        'Conecte o provedor de e-mail primeiro',
+      )
+    }
+
+    const from = connection.fromName?.trim()
+      ? `${connection.fromName.trim()} <${connection.fromEmail}>`
+      : connection.fromEmail
+    if (enabled && /@resend\.dev(?:>|\s|$)/i.test(from)) {
+      throw new BadRequestException(
+        'Verifique um domínio próprio no Resend antes de ativar envios para clientes',
+      )
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.emailProviderConnection.update({
+        where: { provider: 'RESEND' },
+        data: { automationEnabled: enabled },
+      }),
+      this.prisma.authAuditEvent.create({
+        data: {
+          userId: actorUserId,
+          eventType: 'OPS_INTEGRATION_EMAIL_AUTOMATION_UPDATED',
+          metadata: {
+            provider: 'RESEND',
+            enabled,
+          },
+        },
+      }),
+    ])
+
+    return this.status()
+  }
+
   async status() {
-    const provider = this.providerConfig()
+    const provider = await this.providerConfig()
     const grouped = await this.prisma.emailOutboundMessage.groupBy({
       by: ['status'],
       _count: { _all: true },
@@ -123,9 +336,13 @@ export class EmailAutomationService
     )
 
     return {
-      enabled:
-        this.config.get<string>('EMAIL_AUTOMATION_ENABLED')?.trim() !==
-        'false',
+      enabled: provider.automationEnabled,
+      connected: provider.connectionSource !== 'NONE',
+      connectionSource: provider.connectionSource,
+      connectedAt: provider.connectedAt,
+      from: provider.from || null,
+      replyTo: provider.replyTo,
+      adminCopyEmail: provider.adminCopyEmail,
       providerConfigured: provider.configured,
       productionReady: provider.productionReady,
       testOnly: provider.testOnly,
@@ -178,15 +395,18 @@ export class EmailAutomationService
   }
 
   async sendTestEmail() {
-    const recipient = this.normalizeEmail(
-      this.config.get<string>('ADMIN_EMAIL')?.trim(),
-    )
+    const provider = await this.providerConfig()
+    const recipient =
+      provider.adminCopyEmail ||
+      this.normalizeEmail(
+        this.config.get<string>('ADMIN_EMAIL')?.trim(),
+      )
 
     if (!recipient) {
       return {
         queued: false,
         processed: 0,
-        providerConfigured: this.providerConfig().configured,
+        providerConfigured: provider.configured,
         status: null,
         message: 'ADMIN_EMAIL não configurado',
       }
@@ -1008,7 +1228,9 @@ export class EmailAutomationService
   }
 
   private async adminCopyEmails() {
+    const provider = await this.providerConfig()
     const configured = [
+      provider.adminCopyEmail,
       this.config.get<string>('ADMIN_EMAIL')?.trim(),
       ...(this.config
         .get<string>('EMAIL_ADMIN_COPY')?.split(',')
@@ -1036,6 +1258,8 @@ export class EmailAutomationService
 
   private async tick() {
     if (this.running) return
+    const provider = await this.providerConfig()
+    if (!provider.automationEnabled) return
     this.running = true
 
     try {
@@ -1139,9 +1363,11 @@ export class EmailAutomationService
     const provider = this.providerConfig()
     if (!provider.configured) return 0
 
-    const adminEmail = this.normalizeEmail(
-      this.config.get<string>('ADMIN_EMAIL')?.trim(),
-    )
+    const adminEmail =
+      provider.adminCopyEmail ||
+      this.normalizeEmail(
+        this.config.get<string>('ADMIN_EMAIL')?.trim(),
+      )
 
     const messages = await this.prisma.emailOutboundMessage.findMany({
       where: {
@@ -1229,9 +1455,11 @@ export class EmailAutomationService
 
   private async verifyProviderOnStart() {
     const provider = this.providerConfig()
-    const recipient = this.normalizeEmail(
-      this.config.get<string>('ADMIN_EMAIL')?.trim(),
-    )
+    const recipient =
+      provider.adminCopyEmail ||
+      this.normalizeEmail(
+        this.config.get<string>('ADMIN_EMAIL')?.trim(),
+      )
 
     if (!provider.configured) {
       this.logger.warn('EMAIL_PROVIDER_VERIFY provider_not_configured')
@@ -1422,6 +1650,60 @@ export class EmailAutomationService
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#039;')
+  }
+
+  private parseFrom(value: string) {
+    const match = value.match(/^\s*(.*?)\s*<([^>]+)>\s*$/)
+    if (match) {
+      return {
+        name: match[1]?.trim() || null,
+        email: this.normalizeEmail(match[2]),
+      }
+    }
+    return {
+      name: null,
+      email: this.normalizeEmail(value),
+    }
+  }
+
+  private key() {
+    const raw =
+      this.config.get<string>('EMAIL_ENCRYPTION_KEY')?.trim() ||
+      this.config.get<string>('PAYMENTS_ENCRYPTION_KEY')?.trim() ||
+      this.config.getOrThrow<string>('MFA_ENCRYPTION_KEY')
+    const key = Buffer.from(raw, 'base64')
+    if (key.length !== 32) {
+      throw new Error(
+        'EMAIL_ENCRYPTION_KEY deve conter 32 bytes em base64',
+      )
+    }
+    return key
+  }
+
+  private encrypt(value: string) {
+    const iv = randomBytes(12)
+    const cipher = createCipheriv('aes-256-gcm', this.key(), iv)
+    const encrypted = Buffer.concat([
+      cipher.update(value, 'utf8'),
+      cipher.final(),
+    ])
+    return [iv, cipher.getAuthTag(), encrypted]
+      .map((part) => part.toString('base64url'))
+      .join('.')
+  }
+
+  private decrypt(value: string) {
+    const [iv, tag, encrypted] = value.split('.')
+    const decipher = createDecipheriv(
+      'aes-256-gcm',
+      this.key(),
+      Buffer.from(iv, 'base64url'),
+    )
+    decipher.setAuthTag(Buffer.from(tag, 'base64url'))
+    return Buffer.concat([
+      decipher.update(Buffer.from(encrypted, 'base64url')),
+      decipher.final(),
+    ]).toString('utf8')
   }
 
   private errorText(error: unknown) {
