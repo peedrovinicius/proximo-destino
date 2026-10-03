@@ -140,6 +140,7 @@ model User {
   authAuditEvents   AuthAuditEvent[]
   issuedDocuments   TravelDocument[]
   paymentConnections PaymentProviderConnection[] @relation("PaymentConnectionOwner")
+  emailConnections   EmailProviderConnection[]   @relation("EmailConnectionOwner")
   paymentOauthStates PaymentOAuthState[]
   creditTransactions ClientCreditTransaction[] @relation("CreditActor")
   notifications      AdminNotification[]
@@ -510,6 +511,24 @@ model PaymentProviderConnection {
   updatedAt             DateTime @updatedAt
 
   connectedBy User? @relation("PaymentConnectionOwner", fields: [connectedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([connectedByUserId])
+}
+
+model EmailProviderConnection {
+  id                 String   @id @default(cuid())
+  provider           String   @unique
+  apiKeyEncrypted    String
+  fromName           String?
+  fromEmail          String
+  replyToEmail       String?
+  adminCopyEmail     String?
+  automationEnabled  Boolean  @default(false)
+  connectedByUserId  String?
+  connectedAt        DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  connectedBy User? @relation("EmailConnectionOwner", fields: [connectedByUserId], references: [id], onDelete: SetNull)
 
   @@index([connectedByUserId])
 }
