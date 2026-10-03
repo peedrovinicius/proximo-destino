@@ -20,7 +20,7 @@ try {
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await argon2.hash(password),
+      passwordHash: await argon2.hash(password, { type: argon2.argon2id }),
       role: UserRole.ADMIN,
       isActive: true,
       mfaEnabled: false,
