@@ -29,7 +29,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     if (status >= 500) {
       const detail = exception instanceof Error ? exception.stack ?? exception.message : String(exception)
       this.logger.error(
-        `requestId=${request.requestId ?? 'unknown'} method=${request.method} path=${request.originalUrl} ${detail}`,
+        `requestId=${request.requestId ?? 'unknown'} method=${request.method} path=${request.path} ${detail}`,
       )
     }
 
@@ -39,7 +39,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       message,
       requestId: request.requestId ?? null,
       timestamp: new Date().toISOString(),
-      path: request.originalUrl,
+      path: request.path,
     })
   }
 
