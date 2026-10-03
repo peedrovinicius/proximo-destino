@@ -2701,7 +2701,6 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
   const [message, setMessage] = useState('')
   const [whatsappMessage, setWhatsappMessage] = useState('')
   const [emailMessage, setEmailMessage] = useState('')
-  const [emailApiKey, setEmailApiKey] = useState('')
   const [emailFromName, setEmailFromName] = useState('Próximo Destino')
   const [emailFromEmail, setEmailFromEmail] = useState('')
   const [emailReplyTo, setEmailReplyTo] = useState('')
@@ -2772,34 +2771,51 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
     }
   }
 
-  async function connectEmail() {
-    if (!emailApiKey.trim() || !emailFromEmail.trim()) {
-      setEmailMessage('Informe a chave do Resend e o e-mail remetente.')
+  async function connectEmailOAuth() {
+    setEmailWorking(true)
+    setEmailMessage('')
+    try {
+      const result = await adminApi.connectResendOAuth(accessToken)
+      window.location.assign(result.authorizationUrl)
+    } catch (cause) {
+      setEmailMessage(
+        cause instanceof Error
+          ? cause.message
+          : 'Não foi possível abrir a autorização do Resend.',
+      )
+      setEmailWorking(false)
+    }
+  }
+
+  async function saveEmailSettings() {
+    if (!emailFromEmail.trim()) {
+      setEmailMessage('Informe o e-mail remetente.')
       return
     }
 
     setEmailWorking(true)
     setEmailMessage('')
     try {
-      const next = await adminApi.connectEmailProvider(accessToken, {
-        apiKey: emailApiKey.trim(),
-        fromName: emailFromName.trim() || undefined,
-        fromEmail: emailFromEmail.trim(),
-        replyToEmail: emailReplyTo.trim() || undefined,
-        adminCopyEmail: emailAdminCopy.trim() || undefined,
-      })
+      const next = await adminApi.updateEmailProviderSettings(
+        accessToken,
+        {
+          fromName: emailFromName.trim() || undefined,
+          fromEmail: emailFromEmail.trim(),
+          replyToEmail: emailReplyTo.trim() || undefined,
+          adminCopyEmail: emailAdminCopy.trim() || undefined,
+        },
+      )
       setEmailStatus(next)
-      setEmailApiKey('')
       setEmailMessage(
-        next.testOnly
-          ? 'Resend conectado em modo de teste. Envie um teste e depois use um domínio próprio verificado para liberar clientes.'
-          : 'E-mail conectado. Faça um teste antes de ativar o envio automático.',
+        next.productionReady
+          ? 'Remetente atualizado. Faça um teste antes de ativar a automação.'
+          : 'Remetente salvo. Verifique esse domínio no Resend para liberar clientes.',
       )
     } catch (cause) {
       setEmailMessage(
         cause instanceof Error
           ? cause.message
-          : 'Não foi possível conectar o e-mail.',
+          : 'Não foi possível salvar o remetente.',
       )
     } finally {
       setEmailWorking(false)
@@ -2814,7 +2830,6 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
     setEmailMessage('')
     try {
       await adminApi.disconnectEmailProvider(accessToken)
-      setEmailApiKey('')
       setEmailMessage('Provedor de e-mail desconectado.')
       await load()
     } catch (cause) {
