@@ -28,6 +28,7 @@ import {
   WebhookSignatureValidator,
 } from 'mercadopago'
 import { randomBytes } from 'node:crypto'
+import { EmailAutomationService } from '../notifications/email-automation.service'
 import { WhatsAppAutomationService } from '../notifications/whatsapp-automation.service'
 import { PaymentConnectionService } from '../payments/payment-connection.service'
 import { PrismaService } from '../prisma/prisma.service'
@@ -46,10 +47,20 @@ export class PortalService {
     private readonly config: ConfigService,
     @Optional() private readonly paymentConnection?: PaymentConnectionService,
     @Optional() private readonly whatsapp?: WhatsAppAutomationService,
+    @Optional() private readonly email?: EmailAutomationService,
   ) {}
 
   private async safeWhatsApp(action: () => Promise<unknown> | undefined) {
     if (!this.whatsapp) return
+    try {
+      await action()
+    } catch {
+      // A comunicação não pode invalidar pagamento ou reserva.
+    }
+  }
+
+  private async safeEmail(action: () => Promise<unknown> | undefined) {
+    if (!this.email) return
     try {
       await action()
     } catch {
@@ -385,6 +396,13 @@ export class PortalService {
       }
     }
 
+    await this.safeEmail(() =>
+      this.email?.enqueueReservationCreated(
+        reservation.id,
+        accessCode,
+      ),
+    )
+
     return {
       reservation,
       accessCode,
@@ -549,6 +567,7 @@ export class PortalService {
       select: {
         reservationId: true,
         paidAt: true,
+        totalCents: true,
       },
     })
 
@@ -600,6 +619,12 @@ export class PortalService {
       await this.safeWhatsApp(() =>
         this.whatsapp?.enqueueReservationConfirmed(purchase.reservationId),
       )
+      await this.safeEmail(() =>
+        this.email?.enqueuePaymentConfirmed(purchaseOrderId),
+      )
+      await this.safeEmail(() =>
+        this.email?.enqueueReservationConfirmed(purchase.reservationId),
+      )
     } else if (
       status === PurchaseStatus.CANCELLED ||
       status === PurchaseStatus.EXPIRED ||
@@ -608,6 +633,18 @@ export class PortalService {
       await this.safeWhatsApp(() =>
         this.whatsapp?.enqueueReservationCancelled(purchase.reservationId),
       )
+      await this.safeEmail(() =>
+        this.email?.enqueueReservationCancelled(purchase.reservationId),
+      )
+      if (status === PurchaseStatus.REFUNDED) {
+        await this.safeEmail(() =>
+          this.email?.enqueuePaymentRefunded(
+            purchase.reservationId,
+            purchase.totalCents,
+            `webhook-full:${purchaseOrderId}`,
+          ),
+        )
+      }
     }
 
     return { updated: true, status }
@@ -1228,6 +1265,10 @@ export class PortalService {
         cancellationRequestResolvedByUserId: null,
       },
     })
+
+    await this.safeEmail(() =>
+      this.email?.enqueueCancellationRequested(reservationId),
+    )
 
     return this.getPortal(clientId, reservationId)
   }
