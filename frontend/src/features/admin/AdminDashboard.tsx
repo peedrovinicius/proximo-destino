@@ -130,6 +130,7 @@ export function AdminDashboard({
   const [reservations, setReservations] = useState<AdminReservation[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null)
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
@@ -403,14 +404,37 @@ export function AdminDashboard({
         </nav>
 
         <div className="admin-actions">
-          <form className="admin-search" onSubmit={handleSearch}>
-            <Search size={16} />
+          <button
+            className="admin-search-toggle round-action"
+            type="button"
+            aria-label="Abrir pesquisa"
+            aria-expanded={mobileSearchOpen}
+            onClick={() => setMobileSearchOpen((value) => !value)}
+          >
+            <Search size={17} />
+          </button>
+          <form
+            className={mobileSearchOpen ? 'admin-search admin-search--open' : 'admin-search'}
+            onSubmit={(event) => {
+              void handleSearch(event)
+              setMobileSearchOpen(false)
+            }}
+          >
+            <button
+              className="admin-search-submit"
+              type="submit"
+              aria-label="Pesquisar"
+              title="Pesquisar"
+            >
+              <Search size={16} />
+            </button>
             <input
               value={searchQuery}
               onChange={(event) => {
                 setSearchQuery(event.target.value)
                 if (!event.target.value) setSearchResult(null)
               }}
+              aria-label="Pesquisa global"
               placeholder={
                 userRole === 'FINANCE'
                   ? 'Buscar reserva por cliente, viagem ou código...'
