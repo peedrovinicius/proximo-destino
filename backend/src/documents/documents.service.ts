@@ -6,6 +6,8 @@ import {
 import { ConfigService } from '@nestjs/config'
 import {
   InstallmentStatus,
+  ManualPaymentStatus,
+  PurchaseStatus,
   QuoteStatus,
   ReservationStatus,
   TravelDocumentType,
@@ -344,6 +346,25 @@ export class DocumentsService {
             },
           },
         },
+        purchaseOrder: {
+          select: {
+            status: true,
+            totalCents: true,
+            refundedCents: true,
+            paymentMethod: true,
+            paidAt: true,
+          },
+        },
+        manualPayments: {
+          select: {
+            installmentId: true,
+            status: true,
+            amountCents: true,
+            method: true,
+            paidAt: true,
+          },
+          orderBy: [{ paidAt: 'asc' }, { createdAt: 'asc' }],
+        },
       },
     })
 
@@ -361,10 +382,55 @@ export class DocumentsService {
     })
 
     const finance = reservation.financePlan
-    const paidCents =
+    const manualInstallmentIds = new Set(
+      reservation.manualPayments
+        .map((payment) => payment.installmentId)
+        .filter((value): value is string => Boolean(value)),
+    )
+    const legacyInstallmentPaidCents =
       finance?.installments
-        .filter((item) => item.status === InstallmentStatus.PAID)
+        .filter(
+          (item) =>
+            item.status === InstallmentStatus.PAID &&
+            !manualInstallmentIds.has(
+              finance.installments.find(
+                (candidate) =>
+                  candidate.sequence === item.sequence &&
+                  candidate.dueDate.getTime() === item.dueDate.getTime(),
+              )?.sequence.toString() ?? '',
+            ),
+        )
         .reduce((sum, item) => sum + item.amountCents, 0) ?? 0
+
+    const manualPaidCents = reservation.manualPayments
+      .filter((payment) => payment.status === ManualPaymentStatus.RECEIVED)
+      .reduce((sum, payment) => sum + payment.amountCents, 0)
+
+    const onlineGrossCents =
+      reservation.purchaseOrder &&
+      [
+        PurchaseStatus.PAID,
+        PurchaseStatus.PARTIALLY_REFUNDED,
+        PurchaseStatus.REFUNDED,
+      ].includes(reservation.purchaseOrder.status)
+        ? reservation.purchaseOrder.totalCents
+        : 0
+    const onlineNetCents = Math.max(
+      onlineGrossCents -
+        (reservation.purchaseOrder?.refundedCents ?? 0),
+      0,
+    )
+
+    const paidCents =
+      onlineNetCents + manualPaidCents + legacyInstallmentPaidCents
+    const financialTotalCents =
+      reservation.purchaseOrder?.totalCents ??
+      finance?.totalCents ??
+      quote.totalCents
+    const hasFinance =
+      Boolean(reservation.purchaseOrder) ||
+      Boolean(finance) ||
+      reservation.manualPayments.length > 0
 
     const issuedAt = new Date()
     return this.createDocument(
@@ -411,19 +477,23 @@ export class DocumentsService {
             totalCents: quote.totalCents,
             approvedAt: quote.approvedAt?.toISOString() ?? null,
           },
-          finance: finance
+          finance: hasFinance
             ? {
-                totalCents: finance.totalCents,
+                totalCents: financialTotalCents,
                 paidCents,
-                outstandingCents: Math.max(finance.totalCents - paidCents, 0),
-                installments: finance.installments.map((item) => ({
-                  sequence: item.sequence,
-                  dueDate: item.dueDate.toISOString(),
-                  amountCents: item.amountCents,
-                  status: item.status,
-                  paidAt: item.paidAt?.toISOString() ?? null,
-                  paymentMethod: item.paymentMethod,
-                })),
+                outstandingCents: Math.max(
+                  financialTotalCents - paidCents,
+                  0,
+                ),
+                installments:
+                  finance?.installments.map((item) => ({
+                    sequence: item.sequence,
+                    dueDate: item.dueDate.toISOString(),
+                    amountCents: item.amountCents,
+                    status: item.status,
+                    paidAt: item.paidAt?.toISOString() ?? null,
+                    paymentMethod: item.paymentMethod,
+                  })) ?? [],
               }
             : null,
           notes: data.notes?.trim() || null,
