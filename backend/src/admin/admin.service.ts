@@ -24,6 +24,11 @@ import { WhatsAppAutomationService } from '../notifications/whatsapp-automation.
 import { PaymentConnectionService } from '../payments/payment-connection.service'
 import { PrismaService } from '../prisma/prisma.service'
 import {
+  encryptedDocumentFields,
+  hashSensitive,
+  revealDocument,
+} from '../security/sensitive-data'
+import {
   CreateReservationDto,
   RegisterManualPaymentDto,
   UpdateReservationPassengersDto,
@@ -336,6 +341,7 @@ export class AdminService {
             sequence: true,
             fullName: true,
             document: true,
+            documentEncrypted: true,
             birthDate: true,
             isPrimary: true,
             seatAssignment: { select: { seatNumber: true } },
@@ -350,7 +356,14 @@ export class AdminService {
     })
 
     if (!reservation) throw new NotFoundException('Reserva não encontrada')
-    return reservation
+    return {
+      ...reservation,
+      passengers: reservation.passengers.map((passenger) => ({
+        ...passenger,
+        document: revealDocument(passenger),
+        documentEncrypted: undefined,
+      })),
+    }
   }
 
   async updateReservationPassengers(
@@ -414,7 +427,9 @@ export class AdminService {
           where: { id: passenger.id },
           data: {
             fullName: passenger.fullName?.trim() || null,
-            document: passenger.document?.trim() || null,
+            ...encryptedDocumentFields(
+              passenger.document?.trim() || null,
+            ),
             birthDate: passenger.birthDate ?? null,
           },
         })
@@ -2101,8 +2116,14 @@ export class AdminService {
             { fullName: { contains: query, mode: 'insensitive' } },
             { email: { contains: query, mode: 'insensitive' } },
             { phone: { contains: query, mode: 'insensitive' } },
-            ...(documentQuery
-              ? [{ document: { contains: documentQuery } }]
+            ...(documentQuery.length === 11
+              ? [
+                  {
+                    documentHash:
+                      hashSensitive(documentQuery) ?? undefined,
+                  },
+                  { document: documentQuery },
+                ]
               : []),
           ],
         },
@@ -2112,6 +2133,7 @@ export class AdminService {
           email: true,
           phone: true,
           document: true,
+          documentEncrypted: true,
         },
         take: 8,
       })
@@ -2154,6 +2176,14 @@ export class AdminService {
       }),
     ])
 
-    return { clients, trips, reservations }
+    return {
+      clients: clients.map((client) => ({
+        ...client,
+        document: revealDocument(client),
+        documentEncrypted: undefined,
+      })),
+      trips,
+      reservations,
+    }
   }
 }
