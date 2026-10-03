@@ -19,8 +19,8 @@ import type {
 import { MfaService } from './mfa.service'
 import { SessionService } from './session.service'
 
-const MAX_FAILED_ATTEMPTS = 5
-const LOCK_MINUTES = 15
+export const MAX_FAILED_ATTEMPTS = 5
+export const LOCK_MINUTES = 15
 
 @Injectable()
 export class AuthService {
