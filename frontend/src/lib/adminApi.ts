@@ -648,6 +648,20 @@ export type AdminNotificationFeed = {
   items: AdminNotification[]
 }
 
+export type EmailAutomationStatus = {
+  enabled: boolean
+  providerConfigured: boolean
+  deliveryMode: 'RESEND_API' | 'OUTBOX_ONLY'
+  adminCopyConfigured: boolean
+  fromConfigured: boolean
+  counts: {
+    pending: number
+    processing: number
+    sent: number
+    failed: number
+  }
+}
+
 export type WhatsAppAutomationStatus = {
   enabled: boolean
   providerConfigured: boolean
@@ -1020,6 +1034,41 @@ export const adminApi = {
     adminFetch<{ updated: number }>(
       token,
       '/admin/notifications/read-all',
+      { method: 'POST' },
+    ),
+
+  emailAutomationStatus: (token: string) =>
+    adminFetch<EmailAutomationStatus>(
+      token,
+      '/admin/notifications/email/status',
+    ),
+
+  emailOutbox: (token: string, limit = 50) =>
+    adminFetch<Array<{
+      id: string
+      eventType: string
+      recipientEmail: string
+      recipientName: string | null
+      adminCopyEmails: string[] | null
+      subject: string
+      sourceType: string | null
+      sourceId: string | null
+      status: 'PENDING' | 'PROCESSING' | 'SENT' | 'FAILED'
+      attempts: number
+      scheduledAt: string
+      sentAt: string | null
+      providerMessageId: string | null
+      errorMessage: string | null
+      createdAt: string
+    }>>(
+      token,
+      `/admin/notifications/email/outbox?limit=${limit}`,
+    ),
+
+  processEmailOutbox: (token: string) =>
+    adminFetch<{ processed: number } & EmailAutomationStatus>(
+      token,
+      '/admin/notifications/email/process',
       { method: 'POST' },
     ),
 
