@@ -10,6 +10,7 @@ import {
   CancellationRequestStatus,
   ClientCreditTransactionType,
   InstallmentStatus,
+  ManualPaymentStatus,
   PurchaseStatus,
   QuoteStatus,
   ReservationServiceStatus,
@@ -20,7 +21,11 @@ import { MercadoPagoConfig, Order, Payment, PaymentRefund } from 'mercadopago'
 import { WhatsAppAutomationService } from '../notifications/whatsapp-automation.service'
 import { PaymentConnectionService } from '../payments/payment-connection.service'
 import { PrismaService } from '../prisma/prisma.service'
-import { CreateReservationDto, UpdateReservationPassengersDto } from './dto/reservation.dto'
+import {
+  CreateReservationDto,
+  RegisterManualPaymentDto,
+  UpdateReservationPassengersDto,
+} from './dto/reservation.dto'
 
 @Injectable()
 export class AdminService {
@@ -515,6 +520,29 @@ export class AdminService {
             },
           },
         },
+        manualPayments: {
+          select: {
+            id: true,
+            financePlanId: true,
+            installmentId: true,
+            method: true,
+            status: true,
+            amountCents: true,
+            paidAt: true,
+            reference: true,
+            note: true,
+            reversedAt: true,
+            reversedReason: true,
+            createdAt: true,
+            recordedBy: {
+              select: { id: true, email: true, role: true },
+            },
+            reversedBy: {
+              select: { id: true, email: true, role: true },
+            },
+          },
+          orderBy: [{ paidAt: 'desc' }, { createdAt: 'desc' }],
+        },
         quotes: {
           where: { status: QuoteStatus.APPROVED },
           select: {
@@ -544,10 +572,30 @@ export class AdminService {
 
     if (!reservation) throw new NotFoundException('Reserva não encontrada')
 
-    const manualPaidCents =
+    const manualPaymentInstallmentIds = new Set(
+      reservation.manualPayments
+        .map((item) => item.installmentId)
+        .filter((value): value is string => Boolean(value)),
+    )
+
+    const legacyManualPaidCents =
       reservation.financePlan?.installments
-        .filter((item) => item.status === InstallmentStatus.PAID)
+        .filter(
+          (item) =>
+            item.status === InstallmentStatus.PAID &&
+            !manualPaymentInstallmentIds.has(item.id),
+        )
         .reduce((sum, item) => sum + item.amountCents, 0) ?? 0
+
+    const manualGrossCents =
+      legacyManualPaidCents +
+      reservation.manualPayments.reduce(
+        (sum, item) => sum + item.amountCents,
+        0,
+      )
+    const manualReversedCents = reservation.manualPayments
+      .filter((item) => item.status === ManualPaymentStatus.REVERSED)
+      .reduce((sum, item) => sum + item.amountCents, 0)
 
     const providerWasPaid = Boolean(
       reservation.purchaseOrder?.paidAt ||
@@ -556,16 +604,16 @@ export class AdminService {
       reservation.purchaseOrder?.status === PurchaseStatus.REFUNDED,
     )
 
-    const grossPaidCents = reservation.purchaseOrder
-      ? providerWasPaid
+    const providerGrossCents =
+      reservation.purchaseOrder && providerWasPaid
         ? reservation.purchaseOrder.totalCents
         : 0
-      : manualPaidCents
+    const grossPaidCents = providerGrossCents + manualGrossCents
 
     const refundedCents =
-      reservation.purchaseOrder?.refundedCents ??
-      reservation.financePlan?.refundedCents ??
-      0
+      (reservation.purchaseOrder?.refundedCents ??
+        reservation.financePlan?.refundedCents ??
+        0) + manualReversedCents
 
     const totalCents =
       reservation.purchaseOrder?.totalCents ??
@@ -576,7 +624,12 @@ export class AdminService {
     const events = await this.prisma.authAuditEvent.findMany({
       where: {
         eventType: {
-          in: ['OPS_PAYMENT_REFUNDED', 'OPS_PAYMENT_RECONCILED'],
+          in: [
+            'OPS_PAYMENT_REFUNDED',
+            'OPS_PAYMENT_RECONCILED',
+            'OPS_MANUAL_PAYMENT_RECEIVED',
+            'OPS_MANUAL_PAYMENT_REVERSED',
+          ],
         },
         metadata: {
           path: ['reservationId'],
@@ -614,14 +667,229 @@ export class AdminService {
         grossPaidCents,
         refundedCents,
         netPaidCents: Math.max(grossPaidCents - refundedCents, 0),
-        outstandingCents: Math.max(totalCents - grossPaidCents, 0),
+        outstandingCents: Math.max(
+          totalCents - Math.max(grossPaidCents - refundedCents, 0),
+          0,
+        ),
         refundableCents:
           reservation.status === ReservationStatus.CANCELLED
             ? Math.max(grossPaidCents - refundedCents, 0)
             : 0,
       },
+      manualPayments: reservation.manualPayments,
       events,
     }
+  }
+
+  async registerManualPayment(
+    id: string,
+    data: RegisterManualPaymentDto,
+    actorUserId: string,
+  ) {
+    const current = await this.reservationFinance(id)
+
+    if (
+      current.reservation.status === ReservationStatus.CANCELLED ||
+      current.reservation.status === ReservationStatus.COMPLETED
+    ) {
+      throw new ConflictException(
+        'Não é possível registrar novo recebimento em uma reserva encerrada',
+      )
+    }
+
+    if (data.amountCents > current.summary.outstandingCents) {
+      throw new BadRequestException(
+        'O valor informado é maior que o saldo pendente da reserva',
+      )
+    }
+
+    const paidAt = data.paidAt ? new Date(data.paidAt) : new Date()
+    if (
+      Number.isNaN(paidAt.getTime()) ||
+      paidAt.getTime() > Date.now() + 5 * 60_000
+    ) {
+      throw new BadRequestException('Data do recebimento inválida')
+    }
+
+    const installment = data.installmentId
+      ? current.financePlan?.installments.find(
+          (item) => item.id === data.installmentId,
+        )
+      : null
+
+    if (data.installmentId && !installment) {
+      throw new BadRequestException(
+        'A parcela informada não pertence a esta reserva',
+      )
+    }
+
+    if (installment?.status === InstallmentStatus.CANCELLED) {
+      throw new ConflictException(
+        'Não é possível receber uma parcela cancelada',
+      )
+    }
+
+    if (installment) {
+      const alreadyReceived = current.manualPayments
+        .filter(
+          (item) =>
+            item.installmentId === installment.id &&
+            item.status === ManualPaymentStatus.RECEIVED,
+        )
+        .reduce((sum, item) => sum + item.amountCents, 0)
+      const installmentOutstanding = Math.max(
+        installment.amountCents - alreadyReceived,
+        0,
+      )
+
+      if (data.amountCents > installmentOutstanding) {
+        throw new BadRequestException(
+          'O valor informado é maior que o saldo restante desta parcela',
+        )
+      }
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      const payment = await tx.manualPayment.create({
+        data: {
+          reservationId: id,
+          financePlanId: current.financePlan?.id ?? null,
+          installmentId: installment?.id ?? null,
+          method: data.method,
+          amountCents: data.amountCents,
+          paidAt,
+          reference: data.reference?.trim() || null,
+          note: data.note?.trim() || null,
+          recordedByUserId: actorUserId,
+        },
+      })
+
+      if (installment) {
+        const received = await tx.manualPayment.aggregate({
+          where: {
+            installmentId: installment.id,
+            status: ManualPaymentStatus.RECEIVED,
+          },
+          _sum: { amountCents: true },
+        })
+        const paidCents = received._sum.amountCents ?? 0
+
+        if (paidCents >= installment.amountCents) {
+          await tx.installment.update({
+            where: { id: installment.id },
+            data: {
+              status: InstallmentStatus.PAID,
+              paidAt,
+              paymentMethod: data.method,
+            },
+          })
+        }
+      }
+
+      await tx.authAuditEvent.create({
+        data: {
+          userId: actorUserId,
+          eventType: 'OPS_MANUAL_PAYMENT_RECEIVED',
+          metadata: {
+            reservationId: id,
+            manualPaymentId: payment.id,
+            installmentId: installment?.id ?? null,
+            amountCents: data.amountCents,
+            method: data.method,
+            reference: data.reference?.trim() || null,
+            paidAt: paidAt.toISOString(),
+          },
+        },
+      })
+    })
+
+    return this.reservationFinance(id)
+  }
+
+  async reverseManualPayment(
+    id: string,
+    paymentId: string,
+    reason: string,
+    actorUserId: string,
+  ) {
+    const payment = await this.prisma.manualPayment.findFirst({
+      where: { id: paymentId, reservationId: id },
+      select: {
+        id: true,
+        installmentId: true,
+        status: true,
+        amountCents: true,
+        method: true,
+      },
+    })
+
+    if (!payment) {
+      throw new NotFoundException('Recebimento manual não encontrado')
+    }
+    if (payment.status === ManualPaymentStatus.REVERSED) {
+      throw new ConflictException('Este recebimento já foi estornado')
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.manualPayment.update({
+        where: { id: payment.id },
+        data: {
+          status: ManualPaymentStatus.REVERSED,
+          reversedAt: new Date(),
+          reversedReason: reason.trim(),
+          reversedByUserId: actorUserId,
+        },
+      })
+
+      if (payment.installmentId) {
+        const installment = await tx.installment.findUnique({
+          where: { id: payment.installmentId },
+          select: { id: true, amountCents: true, dueDate: true },
+        })
+
+        if (installment) {
+          const remaining = await tx.manualPayment.aggregate({
+            where: {
+              installmentId: installment.id,
+              status: ManualPaymentStatus.RECEIVED,
+            },
+            _sum: { amountCents: true },
+          })
+          const remainingPaid = remaining._sum.amountCents ?? 0
+
+          if (remainingPaid < installment.amountCents) {
+            await tx.installment.update({
+              where: { id: installment.id },
+              data: {
+                status:
+                  installment.dueDate.getTime() < Date.now()
+                    ? InstallmentStatus.OVERDUE
+                    : InstallmentStatus.OPEN,
+                paidAt: null,
+                paymentMethod: null,
+              },
+            })
+          }
+        }
+      }
+
+      await tx.authAuditEvent.create({
+        data: {
+          userId: actorUserId,
+          eventType: 'OPS_MANUAL_PAYMENT_REVERSED',
+          metadata: {
+            reservationId: id,
+            manualPaymentId: payment.id,
+            installmentId: payment.installmentId,
+            amountCents: payment.amountCents,
+            method: payment.method,
+            reason: reason.trim(),
+          },
+        },
+      })
+    })
+
+    return this.reservationFinance(id)
   }
 
   async reconcileReservationPayment(
