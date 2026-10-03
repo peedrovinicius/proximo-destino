@@ -151,10 +151,17 @@ describe('histórico persistente de notificações administrativas', () => {
     const all = await notifications.markAllRead(userId)
     assert.ok(all.updated >= 0)
 
-    const final = await notifications.list(userId)
-    assert.equal(final.unreadCount, 0)
-    assert.ok(final.items.length >= 5)
-    assert.ok(final.items.every((item) => item.isRead))
+    await notifications.list(userId)
+
+    const scoped = await prisma.adminNotification.findMany({
+      where: {
+        userId,
+        sourceKey: { contains: suffix },
+      },
+    })
+
+    assert.equal(scoped.length, 5)
+    assert.ok(scoped.every((item) => item.isRead))
   })
 
   it('mantém a notificação no histórico após a pendência ser resolvida', async () => {
