@@ -32,8 +32,23 @@ describe('automação de WhatsApp', () => {
     await prisma.$connect()
 
     const now = new Date()
+    const localParts = Object.fromEntries(
+      new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Fortaleza',
+        month: '2-digit',
+        day: '2-digit',
+      })
+        .formatToParts(now)
+        .filter((part) => part.type !== 'literal')
+        .map((part) => [part.type, part.value]),
+    )
     const birthday = new Date(
-      Date.UTC(1990, now.getUTCMonth(), now.getUTCDate(), 12),
+      Date.UTC(
+        1990,
+        Number(localParts.month) - 1,
+        Number(localParts.day),
+        12,
+      ),
     )
 
     await prisma.client.create({
