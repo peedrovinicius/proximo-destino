@@ -203,8 +203,10 @@ model Client {
   email       String?  @unique
   phone       String?
   birthDate   DateTime?
-  document    String?
-  notes       String?
+  document          String?
+  documentEncrypted String?
+  documentHash      String?
+  notes             String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -215,14 +217,17 @@ model Client {
 
   @@index([fullName])
   @@index([birthDate])
+  @@index([documentHash])
 }
 
 model Companion {
   id           String   @id @default(cuid())
   clientId     String
   fullName     String
-  document     String?
-  birthDate    DateTime?
+  document          String?
+  documentEncrypted String?
+  documentHash      String?
+  birthDate         DateTime?
   relationship String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -301,8 +306,10 @@ model ReservationPassenger {
   reservationId String
   sequence      Int
   fullName      String?
-  document      String?
-  birthDate     DateTime?
+  document          String?
+  documentEncrypted String?
+  documentHash      String?
+  birthDate         DateTime?
   isPrimary     Boolean        @default(false)
   boardingStatus BoardingStatus @default(PENDING)
   boardedAt     DateTime?
