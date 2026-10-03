@@ -1092,6 +1092,7 @@ export class EmailAutomationService
         text: message.textBody,
         ...(message.htmlBody ? { html: message.htmlBody } : {}),
       }),
+      signal: AbortSignal.timeout(12_000),
     })
 
     const raw = await response.text()
