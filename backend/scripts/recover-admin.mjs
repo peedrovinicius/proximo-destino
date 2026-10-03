@@ -47,7 +47,7 @@ try {
     prisma.user.update({
       where: { id: user.id },
       data: {
-        passwordHash: await argon2.hash(newPassword),
+        passwordHash: await argon2.hash(newPassword, { type: argon2.argon2id }),
         failedLoginAttempts: 0,
         lockedUntil: null,
         refreshTokenHash: null,
