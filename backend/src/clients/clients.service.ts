@@ -117,7 +117,18 @@ export class ClientsService {
         })
       }
 
-      return client
+      return {
+        ...client,
+        document: revealDocument(client),
+        documentEncrypted: undefined,
+        documentHash: undefined,
+        companions: client.companions.map((companion) => ({
+          ...companion,
+          document: revealDocument(companion),
+          documentEncrypted: undefined,
+          documentHash: undefined,
+        })),
+      }
     })
   }
 
@@ -174,6 +185,7 @@ export class ClientsService {
       ...client,
       document: revealDocument(client),
       documentEncrypted: undefined,
+      documentHash: undefined,
       bonusBalanceCents: Math.max(0, byClient.get(client.id) ?? 0),
     }))
   }
@@ -205,10 +217,12 @@ export class ClientsService {
       ...client,
       document: revealDocument(client),
       documentEncrypted: undefined,
+      documentHash: undefined,
       companions: client.companions.map((companion) => ({
         ...companion,
         document: revealDocument(companion),
         documentEncrypted: undefined,
+        documentHash: undefined,
       })),
     }
   }
@@ -333,7 +347,12 @@ export class ClientsService {
         })
       }
 
-      return client
+      return {
+        ...client,
+        document: revealDocument(client),
+        documentEncrypted: undefined,
+        documentHash: undefined,
+      }
     })
   }
 
