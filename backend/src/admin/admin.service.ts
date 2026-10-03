@@ -367,7 +367,8 @@ export class AdminService {
   }
 
   async paymentsDashboard() {
-    const orders = await this.prisma.purchaseOrder.findMany({
+    const [orders, manualPayments] = await Promise.all([
+      this.prisma.purchaseOrder.findMany({
       select: {
         id: true,
         status: true,
@@ -414,7 +415,65 @@ export class AdminService {
       },
       orderBy: { createdAt: 'desc' },
       take: 200,
-    })
+      }),
+      this.prisma.manualPayment.findMany({
+        select: {
+          id: true,
+          method: true,
+          status: true,
+          amountCents: true,
+          paidAt: true,
+          reference: true,
+          note: true,
+          reversedAt: true,
+          reversedReason: true,
+          createdAt: true,
+          installment: {
+            select: {
+              id: true,
+              sequence: true,
+              dueDate: true,
+              amountCents: true,
+            },
+          },
+          recordedBy: {
+            select: { id: true, email: true, role: true },
+          },
+          reversedBy: {
+            select: { id: true, email: true, role: true },
+          },
+          reservation: {
+            select: {
+              id: true,
+              status: true,
+              seatAssignments: {
+                select: { seatNumber: true },
+                orderBy: { seatNumber: 'asc' },
+              },
+              client: {
+                select: {
+                  id: true,
+                  fullName: true,
+                  email: true,
+                  phone: true,
+                },
+              },
+              trip: {
+                select: {
+                  id: true,
+                  title: true,
+                  origin: true,
+                  destination: true,
+                  departureDate: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: [{ paidAt: 'desc' }, { createdAt: 'desc' }],
+        take: 300,
+      }),
+    ])
 
     const summary = orders.reduce(
       (acc, order) => {
@@ -448,10 +507,26 @@ export class AdminService {
         paidCents: 0,
         pendingCents: 0,
         refundedCents: 0,
+        manualReceivedCount: 0,
+        manualReceivedCents: 0,
+        manualReversedCount: 0,
+        manualReversedCents: 0,
       },
     )
 
-    return { summary, orders }
+    for (const payment of manualPayments) {
+      if (payment.status === ManualPaymentStatus.RECEIVED) {
+        summary.manualReceivedCount += 1
+        summary.manualReceivedCents += payment.amountCents
+        summary.paidCents += payment.amountCents
+      } else {
+        summary.manualReversedCount += 1
+        summary.manualReversedCents += payment.amountCents
+        summary.refundedCents += payment.amountCents
+      }
+    }
+
+    return { summary, orders, manualPayments }
   }
 
   async reservationFinance(id: string) {
