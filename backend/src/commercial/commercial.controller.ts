@@ -7,10 +7,11 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common'
 import { UserRole } from '@prisma/client'
-import { JwtAuthGuard } from '../auth/jwt-auth.guard'
+import { JwtAuthGuard, type AuthenticatedRequest } from '../auth/jwt-auth.guard'
 import { Roles } from '../auth/roles.decorator'
 import { RolesGuard } from '../auth/roles.guard'
 import { CommercialService } from './commercial.service'
@@ -35,14 +36,21 @@ export class AdminCommercialController {
 
   @Post('quotes')
   @Roles(UserRole.ADMIN, UserRole.AGENT)
-  createQuote(@Body() body: CreateQuoteDto) {
-    return this.commercial.createQuote(body)
+  createQuote(
+    @Body() body: CreateQuoteDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.commercial.createQuote(body, request.user.id)
   }
 
   @Post('quotes/:id/items')
   @Roles(UserRole.ADMIN, UserRole.AGENT)
-  addItem(@Param('id') id: string, @Body() body: AddQuoteItemDto) {
-    return this.commercial.addQuoteItem(id, body)
+  addItem(
+    @Param('id') id: string,
+    @Body() body: AddQuoteItemDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.commercial.addQuoteItem(id, body, request.user.id)
   }
 
   @Delete('quotes/:quoteId/items/:itemId')
@@ -50,20 +58,31 @@ export class AdminCommercialController {
   removeItem(
     @Param('quoteId') quoteId: string,
     @Param('itemId') itemId: string,
+    @Req() request: AuthenticatedRequest,
   ) {
-    return this.commercial.removeQuoteItem(quoteId, itemId)
+    return this.commercial.removeQuoteItem(
+      quoteId,
+      itemId,
+      request.user.id,
+    )
   }
 
   @Post('quotes/:id/send')
   @Roles(UserRole.ADMIN, UserRole.AGENT)
-  sendQuote(@Param('id') id: string) {
-    return this.commercial.sendQuote(id)
+  sendQuote(
+    @Param('id') id: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.commercial.sendQuote(id, request.user.id)
   }
 
   @Post('quotes/:id/revise')
   @Roles(UserRole.ADMIN, UserRole.AGENT)
-  reviseQuote(@Param('id') id: string) {
-    return this.commercial.reviseQuote(id)
+  reviseQuote(
+    @Param('id') id: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.commercial.reviseQuote(id, request.user.id)
   }
 
   @Get('services')
@@ -76,8 +95,13 @@ export class AdminCommercialController {
   updateServiceStatus(
     @Param('id') id: string,
     @Body() body: UpdateReservationServiceDto,
+    @Req() request: AuthenticatedRequest,
   ) {
-    return this.commercial.updateServiceStatus(id, body.status)
+    return this.commercial.updateServiceStatus(
+      id,
+      body.status,
+      request.user.id,
+    )
   }
 
   @Get('finance/plans')
@@ -88,8 +112,11 @@ export class AdminCommercialController {
 
   @Post('finance/plans')
   @Roles(UserRole.ADMIN, UserRole.FINANCE)
-  createFinancePlan(@Body() body: CreateFinancePlanDto) {
-    return this.commercial.createFinancePlan(body)
+  createFinancePlan(
+    @Body() body: CreateFinancePlanDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.commercial.createFinancePlan(body, request.user.id)
   }
 
   @Patch('finance/installments/:id')
@@ -97,11 +124,13 @@ export class AdminCommercialController {
   updateInstallment(
     @Param('id') id: string,
     @Body() body: UpdateInstallmentDto,
+    @Req() request: AuthenticatedRequest,
   ) {
     return this.commercial.updateInstallment(
       id,
       body.status,
       body.paymentMethod,
+      request.user.id,
     )
   }
 }
