@@ -11,6 +11,12 @@ import {
 } from '@nestjs/common'
 import { UserRole } from '@prisma/client'
 import { JwtAuthGuard, type AuthenticatedRequest } from '../auth/jwt-auth.guard'
+import {
+  ADMIN_ONLY_ROLES,
+  FINANCE_ROLES,
+  OPERATIONS_ROLES,
+  STAFF_ROLES,
+} from '../auth/role-capabilities'
 import { Roles } from '../auth/roles.decorator'
 import { RolesGuard } from '../auth/roles.guard'
 import { AdminService } from './admin.service'
@@ -28,22 +34,25 @@ import {
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN, UserRole.AGENT, UserRole.FINANCE)
+@Roles(...STAFF_ROLES)
 export class AdminController {
   constructor(private readonly admin: AdminService) {}
 
   @Get('dashboard')
-  dashboard() {
-    return this.admin.dashboard()
+  dashboard(@Req() request: AuthenticatedRequest) {
+    return this.admin.dashboard(request.user.role)
   }
 
   @Get('search')
-  search(@Query('q') query = '') {
-    return this.admin.search(query)
+  search(
+    @Query('q') query = '',
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.admin.search(query, request.user.role)
   }
 
   @Get('audit')
-  @Roles(UserRole.ADMIN)
+  @Roles(...ADMIN_ONLY_ROLES)
   audit(
     @Query('category') category = 'ALL',
     @Query('role') role = 'ALL',
@@ -60,14 +69,14 @@ export class AdminController {
   }
 
   @Get('payments/orders')
-  @Roles(UserRole.ADMIN, UserRole.FINANCE)
+  @Roles(...FINANCE_ROLES)
   payments() {
     return this.admin.paymentsDashboard()
   }
 
 
   @Post('reservations')
-  @Roles(UserRole.ADMIN, UserRole.AGENT)
+  @Roles(...OPERATIONS_ROLES)
   createReservation(
     @Body() body: CreateReservationDto,
     @Req() request: AuthenticatedRequest,
@@ -76,13 +85,13 @@ export class AdminController {
   }
 
   @Get('reservations/:id/passengers')
-  @Roles(UserRole.ADMIN)
+  @Roles(...ADMIN_ONLY_ROLES)
   reservationPassengers(@Param('id') id: string) {
     return this.admin.reservationPassengers(id)
   }
 
   @Patch('reservations/:id/passengers')
-  @Roles(UserRole.ADMIN)
+  @Roles(...ADMIN_ONLY_ROLES)
   updateReservationPassengers(
     @Param('id') id: string,
     @Body() body: UpdateReservationPassengersDto,
@@ -110,7 +119,7 @@ export class AdminController {
   }
 
   @Post('reservations/:id/cancel')
-  @Roles(UserRole.ADMIN)
+  @Roles(...ADMIN_ONLY_ROLES)
   cancelReservation(
     @Param('id') id: string,
     @Body() body: CancelReservationDto,
@@ -125,7 +134,7 @@ export class AdminController {
   }
 
   @Post('reservations/:id/cancel-request/reject')
-  @Roles(UserRole.ADMIN)
+  @Roles(...ADMIN_ONLY_ROLES)
   rejectCancellationRequest(
     @Param('id') id: string,
     @Body() body: ResolveCancellationRequestDto,
@@ -139,7 +148,7 @@ export class AdminController {
   }
 
   @Post('reservations/:id/bonus/apply')
-  @Roles(UserRole.ADMIN)
+  @Roles(...ADMIN_ONLY_ROLES)
   applyBonus(
     @Param('id') id: string,
     @Body() body: ApplyReservationBonusDto,
@@ -154,13 +163,13 @@ export class AdminController {
   }
 
   @Get('reservations/:id/finance')
-  @Roles(UserRole.ADMIN, UserRole.FINANCE)
+  @Roles(...FINANCE_ROLES)
   reservationFinance(@Param('id') id: string) {
     return this.admin.reservationFinance(id)
   }
 
   @Post('reservations/:id/finance/reconcile')
-  @Roles(UserRole.ADMIN, UserRole.FINANCE)
+  @Roles(...FINANCE_ROLES)
   reconcileReservationPayment(
     @Param('id') id: string,
     @Req() request: AuthenticatedRequest,
@@ -172,7 +181,7 @@ export class AdminController {
   }
 
   @Post('reservations/:id/finance/manual-payments')
-  @Roles(UserRole.ADMIN, UserRole.FINANCE)
+  @Roles(...FINANCE_ROLES)
   registerManualPayment(
     @Param('id') id: string,
     @Body() body: RegisterManualPaymentDto,
@@ -186,7 +195,7 @@ export class AdminController {
   }
 
   @Post('reservations/:id/finance/manual-payments/:paymentId/reverse')
-  @Roles(UserRole.ADMIN, UserRole.FINANCE)
+  @Roles(...FINANCE_ROLES)
   reverseManualPayment(
     @Param('id') id: string,
     @Param('paymentId') paymentId: string,
@@ -202,7 +211,7 @@ export class AdminController {
   }
 
   @Post('reservations/:id/finance/refund')
-  @Roles(UserRole.ADMIN, UserRole.FINANCE)
+  @Roles(...FINANCE_ROLES)
   refundReservationPayment(
     @Param('id') id: string,
     @Body() body: RefundReservationPaymentDto,
