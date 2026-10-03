@@ -13583,3 +13583,109 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Persistent admin notification history */
+
+.admin-notification-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-notification-head-actions button {
+  border: 0;
+  padding: 0;
+  color: #718596;
+  background: transparent;
+  font-size: 7px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.admin-notification-list {
+  display: grid;
+  max-height: min(520px, 68vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.admin-notification-item {
+  position: relative;
+  display: grid;
+  min-height: 66px;
+  grid-template-columns: 30px minmax(0, 1fr) 8px;
+  align-items: center;
+  gap: 9px;
+  border: 0;
+  border-top: 1px solid #eef2f5;
+  padding: 10px 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.admin-notification-item--unread {
+  background: #f7fbfe;
+}
+
+.admin-notification-item--read {
+  background: #fff;
+}
+
+.admin-notification-item:hover {
+  background: #f3f8fb;
+}
+
+.admin-notification-item-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 10px;
+  color: #326b92;
+  background: #eaf4fa;
+}
+
+.admin-notification-item > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.admin-notification-item strong {
+  color: #314e63;
+  font-size: 8px;
+}
+
+.admin-notification-item span:not(.admin-notification-item-icon) {
+  color: #798c9a;
+  font-size: 7px;
+  line-height: 1.45;
+}
+
+.admin-notification-item small {
+  color: #9aa6ae;
+  font-size: 6px;
+}
+
+.admin-notification-item--read strong,
+.admin-notification-item--read span:not(.admin-notification-item-icon) {
+  opacity: .72;
+}
+
+.admin-notification-unread-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #2677d9;
+}
+
+@media (max-width: 760px) {
+  .admin-notification-list {
+    max-height: calc(100vh - 145px);
+  }
+
+  .admin-notification-head-actions {
+    gap: 10px;
+  }
+}
