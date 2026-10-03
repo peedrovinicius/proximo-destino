@@ -2043,6 +2043,7 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
   const [working, setWorking] = useState(false)
   const [whatsappWorking, setWhatsappWorking] = useState(false)
   const [message, setMessage] = useState('')
+  const [whatsappMessage, setWhatsappMessage] = useState('')
 
   async function load() {
     setLoading(true)
@@ -2060,17 +2061,17 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
 
   async function processWhatsapp() {
     setWhatsappWorking(true)
-    setMessage('')
+    setWhatsappMessage('')
     try {
       const next = await adminApi.processWhatsAppOutbox(accessToken)
       setWhatsappStatus(next)
-      setMessage(
+      setWhatsappMessage(
         next.providerConfigured
           ? `Fila processada: ${next.processed} item(ns) verificado(s).`
           : 'A fila foi atualizada, mas a API oficial do WhatsApp ainda não está conectada.',
       )
     } catch (cause) {
-      setMessage(
+      setWhatsappMessage(
         cause instanceof Error
           ? cause.message
           : 'Não foi possível processar a fila do WhatsApp.',
@@ -2148,8 +2149,8 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
       <div className="admin-settings-heading">
         <div>
           <span className="eyebrow">Configurações da plataforma</span>
-          <h2>Pagamentos</h2>
-          <p>Conecte a conta que receberá PIX e pagamentos com cartão.</p>
+          <h2>Integrações</h2>
+          <p>Gerencie pagamentos e comunicações automáticas da operação.</p>
         </div>
         <Settings size={22} />
       </div>
@@ -2316,6 +2317,9 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
                 {whatsappWorking ? 'Processando...' : 'Processar fila agora'}
               </button>
             </div>
+            {whatsappMessage ? (
+              <p className="payment-connection-message">{whatsappMessage}</p>
+            ) : null}
           </>
         )}
       </article>
