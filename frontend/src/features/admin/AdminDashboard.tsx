@@ -35,6 +35,8 @@ import {
   adminApi,
   adminTripImageUrl,
   type AdminClient,
+  type AdminNotification,
+  type AdminNotificationFeed,
   type AdminPaymentsDashboard,
   type AdminPurchaseOrder,
   type AdminReservation,
@@ -110,7 +112,8 @@ export function AdminDashboard({
   const [error, setError] = useState('')
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
-  const [pendingPaymentCount, setPendingPaymentCount] = useState(0)
+  const [notificationFeed, setNotificationFeed] =
+    useState<AdminNotificationFeed | null>(null)
   const [notificationsLoading, setNotificationsLoading] = useState(false)
   const scrollPositions = useRef<Partial<Record<Tab, number>>>({})
   const userRole = useMemo(() => roleFromToken(accessToken), [accessToken])
@@ -151,20 +154,24 @@ export function AdminDashboard({
     setLoading(true)
     setError('')
     try {
-      const [dashboardData, clientData, tripData, reservationData, paymentsData] = await Promise.all([
+      const [
+        dashboardData,
+        clientData,
+        tripData,
+        reservationData,
+        notificationData,
+      ] = await Promise.all([
         adminApi.dashboard(accessToken),
         adminApi.clients(accessToken),
         adminApi.trips(accessToken),
         adminApi.reservations(accessToken),
-        canViewPayments
-          ? adminApi.purchaseOrders(accessToken).catch(() => null)
-          : Promise.resolve(null),
+        adminApi.notifications(accessToken).catch(() => null),
       ])
       setDashboard(dashboardData)
       setClients(clientData)
       setTrips(tripData)
       setReservations(reservationData)
-      setPendingPaymentCount(paymentsData?.summary.pendingOrders ?? 0)
+      if (notificationData) setNotificationFeed(notificationData)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Falha ao carregar o painel.')
     } finally {
@@ -250,51 +257,72 @@ export function AdminDashboard({
     { label: 'Reservas confirmadas', value: dashboard?.metrics.confirmedReservations ?? 0, icon: CircleDollarSign },
   ], [dashboard])
 
-  const upcomingTripsCount = useMemo(() => {
-    const now = Date.now()
-    const limit = now + 7 * 86_400_000
-    return trips.filter((trip) => {
-      const departure = new Date(trip.departureDate).getTime()
-      return (
-        departure >= now &&
-        departure <= limit &&
-        trip.status !== 'CANCELLED' &&
-        trip.status !== 'COMPLETED'
-      )
-    }).length
-  }, [trips])
+  const notificationCount = notificationFeed?.unreadCount ?? 0
 
-  const upcomingBirthdaysCount = useMemo(
-    () => dashboard?.birthdays.filter((item) => item.daysUntil <= 7).length ?? 0,
-    [dashboard],
-  )
-
-  const notificationCount =
-    (dashboard?.metrics.pendingReservations ?? 0) +
-    pendingPaymentCount +
-    upcomingTripsCount +
-    upcomingBirthdaysCount
-
-  async function toggleNotifications() {
-    const next = !notificationsOpen
-    setNotificationsOpen(next)
-    setAccountMenuOpen(false)
-    if (!next || !canViewPayments) return
-
+  async function refreshNotifications() {
     setNotificationsLoading(true)
     try {
-      const payments = await adminApi.purchaseOrders(accessToken)
-      setPendingPaymentCount(payments.summary.pendingOrders)
+      setNotificationFeed(await adminApi.notifications(accessToken))
     } catch {
-      // mantém as demais notificações disponíveis
+      // O restante do painel continua disponível se o histórico falhar.
     } finally {
       setNotificationsLoading(false)
     }
   }
 
-  function openNotificationTab(next: Tab) {
+  async function toggleNotifications() {
+    const next = !notificationsOpen
+    setNotificationsOpen(next)
+    setAccountMenuOpen(false)
+    if (!next) return
+    await refreshNotifications()
+  }
+
+  async function openNotification(notification: AdminNotification) {
+    if (!notification.isRead) {
+      try {
+        const read = await adminApi.markNotificationRead(
+          accessToken,
+          notification.id,
+        )
+        setNotificationFeed((current) =>
+          current
+            ? {
+                unreadCount: Math.max(0, current.unreadCount - 1),
+                items: current.items.map((item) =>
+                  item.id === read.id ? read : item,
+                ),
+              }
+            : current,
+        )
+      } catch {
+        // A navegação continua mesmo se a marcação de leitura falhar.
+      }
+    }
+
     setNotificationsOpen(false)
-    navigateTab(next)
+    const target = notification.actionTab as Tab | null
+    if (target && adminTabs.has(target)) navigateTab(target)
+  }
+
+  async function markAllNotificationsRead() {
+    try {
+      await adminApi.markAllNotificationsRead(accessToken)
+      setNotificationFeed((current) =>
+        current
+          ? {
+              unreadCount: 0,
+              items: current.items.map((item) => ({
+                ...item,
+                isRead: true,
+                readAt: item.readAt ?? new Date().toISOString(),
+              })),
+            }
+          : current,
+      )
+    } catch {
+      // Mantém o histórico visível e permite tentar novamente.
+    }
   }
 
   return (
@@ -350,62 +378,75 @@ export function AdminDashboard({
                 <div className="admin-notification-menu-head">
                   <div>
                     <strong>Notificações</strong>
-                    <span>Pendências e próximos eventos da operação.</span>
+                    <span>
+                      {notificationCount
+                        ? `${notificationCount} não lida(s) · histórico salvo`
+                        : 'Histórico salvo · tudo em dia'}
+                    </span>
                   </div>
-                  <button type="button" onClick={() => setNotificationsOpen(false)}>
-                    Fechar
-                  </button>
+                  <div className="admin-notification-head-actions">
+                    {notificationCount > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => void markAllNotificationsRead()}
+                      >
+                        Marcar todas
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => setNotificationsOpen(false)}
+                    >
+                      Fechar
+                    </button>
+                  </div>
                 </div>
-
-                {dashboard?.metrics.pendingReservations ? (
-                  <button type="button" onClick={() => openNotificationTab('reservations')}>
-                    <FileText size={16} />
-                    <div>
-                      <strong>{dashboard.metrics.pendingReservations} reserva(s) aguardando</strong>
-                      <span>Revisar solicitações e confirmar atendimento.</span>
-                    </div>
-                  </button>
-                ) : null}
-
-                {canViewPayments && pendingPaymentCount > 0 ? (
-                  <button type="button" onClick={() => openNotificationTab('payments')}>
-                    <CreditCard size={16} />
-                    <div>
-                      <strong>{pendingPaymentCount} pagamento(s) pendente(s)</strong>
-                      <span>Pedidos aguardando confirmação financeira.</span>
-                    </div>
-                  </button>
-                ) : null}
-
-                {upcomingTripsCount > 0 ? (
-                  <button type="button" onClick={() => openNotificationTab('trips')}>
-                    <Bus size={16} />
-                    <div>
-                      <strong>{upcomingTripsCount} viagem(ns) nos próximos 7 dias</strong>
-                      <span>Conferir assentos, passageiros e embarque.</span>
-                    </div>
-                  </button>
-                ) : null}
-
-                {upcomingBirthdaysCount > 0 ? (
-                  <button type="button" onClick={() => openNotificationTab('clients')}>
-                    <CalendarHeart size={16} />
-                    <div>
-                      <strong>{upcomingBirthdaysCount} aniversário(s) nesta semana</strong>
-                      <span>Oportunidade de relacionamento com clientes.</span>
-                    </div>
-                  </button>
-                ) : null}
 
                 {notificationsLoading ? (
                   <span className="admin-notification-loading">
-                    Atualizando pagamentos...
+                    Atualizando histórico...
                   </span>
-                ) : notificationCount === 0 ? (
+                ) : notificationFeed?.items.length ? (
+                  <div className="admin-notification-list">
+                    {notificationFeed.items.map((notification) => (
+                      <button
+                        type="button"
+                        className={
+                          notification.isRead
+                            ? 'admin-notification-item admin-notification-item--read'
+                            : 'admin-notification-item admin-notification-item--unread'
+                        }
+                        key={notification.id}
+                        onClick={() => void openNotification(notification)}
+                      >
+                        <span className="admin-notification-item-icon">
+                          {notificationIcon(notification.type)}
+                        </span>
+                        <div>
+                          <strong>{notification.title}</strong>
+                          <span>{notification.message}</span>
+                          <small>
+                            {new Intl.DateTimeFormat('pt-BR', {
+                              dateStyle: 'short',
+                              timeStyle: 'short',
+                            }).format(new Date(notification.createdAt))}
+                            {notification.isRead ? ' · Lida' : ' · Não lida'}
+                          </small>
+                        </div>
+                        {!notification.isRead ? (
+                          <i
+                            className="admin-notification-unread-dot"
+                            aria-label="Não lida"
+                          />
+                        ) : null}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
                   <span className="admin-notification-empty">
-                    Nenhuma pendência importante agora.
+                    Nenhuma notificação no histórico.
                   </span>
-                ) : null}
+                )}
               </div>
             ) : null}
           </div>
@@ -614,6 +655,14 @@ export function AdminDashboard({
       </main>
     </div>
   )
+}
+
+function notificationIcon(type: string) {
+  if (type === 'PAYMENT_PENDING') return <CreditCard size={16} />
+  if (type === 'TRIP_UPCOMING') return <Bus size={16} />
+  if (type === 'BIRTHDAY') return <CalendarHeart size={16} />
+  if (type === 'CANCELLATION_REQUEST') return <FileText size={16} />
+  return <Bell size={16} />
 }
 
 function paymentStatusLabel(status: AdminPurchaseOrder['status']) {
