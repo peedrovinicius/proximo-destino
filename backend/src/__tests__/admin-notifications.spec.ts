@@ -120,15 +120,22 @@ describe('histórico persistente de notificações administrativas', () => {
     assert.ok(first.unreadCount >= 5)
 
     const initialCount = await prisma.adminNotification.count({
-      where: { userId },
+      where: {
+        userId,
+        sourceKey: { contains: suffix },
+      },
     })
 
     await notifications.list(userId)
 
     const afterSecondSync = await prisma.adminNotification.count({
-      where: { userId },
+      where: {
+        userId,
+        sourceKey: { contains: suffix },
+      },
     })
 
+    assert.equal(initialCount, 5)
     assert.equal(afterSecondSync, initialCount)
   })
 
