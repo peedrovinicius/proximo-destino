@@ -8,6 +8,7 @@ import { ClientsModule } from './clients/clients.module'
 import { CommercialModule } from './commercial/commercial.module'
 import { DocumentsModule } from './documents/documents.module'
 import { IntegrityModule } from './integrity/integrity.module'
+import { NotificationsModule } from './notifications/notifications.module'
 import { PaymentsModule } from './payments/payments.module'
 import { PortalModule } from './portal/portal.module'
 import { PrivacyModule } from './privacy/privacy.module'
@@ -34,6 +35,7 @@ import { UsersModule } from './users/users.module'
     AdminModule,
     AssistantModule,
     PaymentsModule,
+    NotificationsModule,
     PortalModule,
     PrivacyModule,
   ],
