@@ -3055,26 +3055,30 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
           <>
             <div
               className={
-                emailStatus?.providerConfigured
+                emailStatus?.productionReady
                   ? 'whatsapp-automation-state whatsapp-automation-state--ready'
                   : 'whatsapp-automation-state whatsapp-automation-state--waiting'
               }
             >
-              {emailStatus?.providerConfigured ? (
+              {emailStatus?.productionReady ? (
                 <CheckCircle2 size={20} />
               ) : (
                 <Mail size={20} />
               )}
               <div>
                 <strong>
-                  {emailStatus?.providerConfigured
+                  {emailStatus?.productionReady
                     ? 'Envio automático conectado'
-                    : 'Fila ativa · provedor ainda não conectado'}
+                    : emailStatus?.testOnly
+                      ? 'Resend conectado · modo de teste'
+                      : 'Fila ativa · provedor ainda não conectado'}
                 </strong>
                 <span>
-                  {emailStatus?.providerConfigured
+                  {emailStatus?.productionReady
                     ? 'Os e-mails transacionais são enviados automaticamente e a administração recebe cópia oculta.'
-                    : 'Nenhum e-mail é marcado como enviado sem confirmação do provedor. A fila permanece salva para reprocessamento.'}
+                    : emailStatus?.testOnly
+                      ? 'O teste administrativo pode ser enviado, mas mensagens de clientes permanecem na fila até um domínio próprio ser verificado no Resend.'
+                      : 'Nenhum e-mail é marcado como enviado sem confirmação do provedor. A fila permanece salva para reprocessamento.'}
                 </span>
               </div>
             </div>
