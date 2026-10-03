@@ -2763,6 +2763,41 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
     }
   }
 
+  async function sendEmailTest() {
+    setEmailWorking(true)
+    setEmailMessage('')
+    try {
+      const result = await adminApi.sendEmailTest(accessToken)
+      const next = await adminApi.emailAutomationStatus(accessToken)
+      setEmailStatus(next)
+
+      if (!result.providerConfigured) {
+        setEmailMessage(
+          'Teste criado na fila, mas o Resend ainda não está conectado.',
+        )
+      } else if (result.status === 'SENT') {
+        setEmailMessage(
+          'E-mail de teste enviado com sucesso para o endereço administrativo.',
+        )
+      } else if (result.status === 'FAILED') {
+        setEmailMessage(
+          result.errorMessage ||
+            'O provedor recusou o e-mail de teste. Verifique a configuração.',
+        )
+      } else {
+        setEmailMessage('E-mail de teste adicionado à fila.')
+      }
+    } catch (cause) {
+      setEmailMessage(
+        cause instanceof Error
+          ? cause.message
+          : 'Não foi possível enviar o e-mail de teste.',
+      )
+    } finally {
+      setEmailWorking(false)
+    }
+  }
+
   useEffect(() => {
     void load()
 
@@ -3086,10 +3121,18 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
               <button
                 type="button"
                 className="payment-secondary-action"
+                onClick={() => void sendEmailTest()}
+                disabled={emailWorking || !emailStatus?.adminCopyConfigured}
+              >
+                {emailWorking ? 'Processando...' : 'Enviar e-mail de teste'}
+              </button>
+              <button
+                type="button"
+                className="payment-secondary-action"
                 onClick={() => void processEmail()}
                 disabled={emailWorking}
               >
-                {emailWorking ? 'Processando...' : 'Processar fila de e-mail'}
+                Processar fila de e-mail
               </button>
             </div>
 
