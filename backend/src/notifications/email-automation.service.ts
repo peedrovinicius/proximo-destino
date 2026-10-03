@@ -14,6 +14,7 @@ import {
   TripStatus,
   UserRole,
 } from '@prisma/client'
+import { randomUUID } from 'node:crypto'
 import { PrismaService } from '../prisma/prisma.service'
 
 type EmailQueueInput = {
@@ -152,6 +153,64 @@ export class EmailAutomationService
     await this.scheduleRecurringEmails()
     const processed = await this.processPending()
     return { processed, ...(await this.status()) }
+  }
+
+  async sendTestEmail() {
+    const recipient = this.normalizeEmail(
+      this.config.get<string>('ADMIN_EMAIL')?.trim(),
+    )
+
+    if (!recipient) {
+      return {
+        queued: false,
+        processed: 0,
+        providerConfigured: this.providerConfig().configured,
+        status: null,
+        message: 'ADMIN_EMAIL não configurado',
+      }
+    }
+
+    const queued = await this.enqueue({
+      eventType: 'EMAIL_TEST',
+      idempotencyKey: `email:test:${randomUUID()}`,
+      recipientEmail: recipient,
+      recipientName: 'Administração',
+      subject: 'Teste de e-mail — Próximo Destino',
+      textBody:
+        'Este é um teste do sistema de e-mails da Próximo Destino. Se esta mensagem chegou, o envio transacional está funcionando.',
+      htmlBody: this.emailHtml(
+        'E-mail funcionando',
+        'Este é um teste do sistema de e-mails transacionais da Próximo Destino.',
+        [
+          ['Status', 'Configuração validada'],
+          ['Ambiente', 'Produção'],
+        ],
+      ),
+      sourceType: 'SYSTEM',
+      sourceId: 'EMAIL_TEST',
+      includeAdminCopy: false,
+    })
+
+    const processed = await this.processPending()
+    const current = queued
+      ? await this.prisma.emailOutboundMessage.findUnique({
+          where: { id: queued.id },
+          select: {
+            status: true,
+            providerMessageId: true,
+            errorMessage: true,
+          },
+        })
+      : null
+
+    return {
+      queued: Boolean(queued),
+      processed,
+      providerConfigured: this.providerConfig().configured,
+      status: current?.status ?? null,
+      providerMessageId: current?.providerMessageId ?? null,
+      errorMessage: current?.errorMessage ?? null,
+    }
   }
 
   async enqueueReservationCreated(
