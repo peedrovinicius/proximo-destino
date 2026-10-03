@@ -361,20 +361,26 @@ export class CommercialService {
   ) {
     const installment = await this.prisma.installment.findUnique({
       where: { id },
-      select: { id: true },
+      select: { id: true, status: true },
     })
 
     if (!installment) throw new NotFoundException('Parcela não encontrada')
+
+    if (
+      status === InstallmentStatus.PAID ||
+      installment.status === InstallmentStatus.PAID
+    ) {
+      throw new BadRequestException(
+        'Pagamentos e estornos devem ser registrados no centro financeiro da reserva',
+      )
+    }
 
     return this.prisma.installment.update({
       where: { id },
       data: {
         status,
-        paidAt: status === InstallmentStatus.PAID ? new Date() : null,
-        paymentMethod:
-          status === InstallmentStatus.PAID
-            ? paymentMethod?.trim() || 'manual'
-            : null,
+        paidAt: null,
+        paymentMethod: null,
       },
     })
   }
