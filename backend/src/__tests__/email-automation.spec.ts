@@ -251,6 +251,7 @@ describe('automação transacional de e-mail', () => {
         where: { provider: 'RESEND' },
       })
     assert.ok(stored.apiKeyEncrypted)
+    assert.ok(stored.apiKeyEncrypted)
     assert.notEqual(stored.apiKeyEncrypted, testApiKey)
     assert.equal(stored.apiKeyEncrypted.includes(testApiKey), false)
 
