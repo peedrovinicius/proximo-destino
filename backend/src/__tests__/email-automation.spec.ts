@@ -284,6 +284,87 @@ describe('automação transacional de e-mail', () => {
     assert.equal(row, null)
   })
 
+  it('permite ao dono conectar o Resend por OAuth com PKCE', async () => {
+    await prisma.emailProviderConnection.deleteMany({
+      where: { provider: 'RESEND' },
+    })
+    await prisma.emailOAuthState.deleteMany({
+      where: { userId: adminId },
+    })
+
+    const metadata = service.oauthClientMetadata()
+    assert.equal(metadata.scope, 'emails:send')
+    assert.equal(metadata.token_endpoint_auth_method, 'none')
+    assert.ok(metadata.client_id.includes('/notifications/email/oauth/client-metadata'))
+    assert.deepEqual(metadata.redirect_uris, [
+      'https://api.example.com/api/v1/notifications/email/oauth/callback',
+    ])
+
+    const begin = await service.beginOAuth(adminId)
+    const authorizationUrl = new URL(begin.authorizationUrl)
+    assert.equal(
+      authorizationUrl.origin + authorizationUrl.pathname,
+      'https://api.resend.com/oauth/authorize',
+    )
+    assert.equal(
+      authorizationUrl.searchParams.get('client_id'),
+      metadata.client_id,
+    )
+    assert.equal(
+      authorizationUrl.searchParams.get('code_challenge_method'),
+      'S256',
+    )
+    const state = authorizationUrl.searchParams.get('state')
+    assert.ok(state)
+    assert.ok(authorizationUrl.searchParams.get('code_challenge'))
+
+    globalThis.fetch = async (input, init) => {
+      assert.equal(String(input), 'https://api.resend.com/oauth/token')
+      const body = String(init?.body ?? '')
+      assert.match(body, /grant_type=authorization_code/)
+      assert.match(body, /code=oauth-test-code/)
+      assert.match(body, /code_verifier=/)
+
+      return new Response(
+        JSON.stringify({
+          access_token: 'oauth-access-token',
+          refresh_token: 'oauth-refresh-token',
+          expires_in: 900,
+          scope: 'emails:send',
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      )
+    }
+
+    const connected = await service.completeOAuth(
+      'oauth-test-code',
+      state!,
+    )
+
+    assert.equal(connected.connected, true)
+    assert.equal(connected.connectionMode, 'OAUTH')
+    assert.equal(connected.scope, 'emails:send')
+
+    const stored =
+      await prisma.emailProviderConnection.findUniqueOrThrow({
+        where: { provider: 'RESEND' },
+      })
+    assert.equal(stored.apiKeyEncrypted, null)
+    assert.ok(stored.accessTokenEncrypted)
+    assert.ok(stored.refreshTokenEncrypted)
+    assert.notEqual(stored.accessTokenEncrypted, 'oauth-access-token')
+    assert.notEqual(stored.refreshTokenEncrypted, 'oauth-refresh-token')
+
+    const stateRows = await prisma.emailOAuthState.findMany({
+      where: { userId: adminId },
+    })
+    assert.equal(stateRows.length, 1)
+    assert.ok(stateRows[0].usedAt)
+  })
+
   it('expõe status do provedor e da cópia administrativa', async () => {
     const status = await service.status()
     assert.equal(status.providerConfigured, true)
