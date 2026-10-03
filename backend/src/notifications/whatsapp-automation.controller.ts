@@ -1,13 +1,13 @@
 import { Controller, Get, Post, Query, UseGuards } from '@nestjs/common'
-import { UserRole } from '@prisma/client'
 import { JwtAuthGuard } from '../auth/jwt-auth.guard'
+import { ADMIN_ONLY_ROLES } from '../auth/role-capabilities'
 import { Roles } from '../auth/roles.decorator'
 import { RolesGuard } from '../auth/roles.guard'
 import { WhatsAppAutomationService } from './whatsapp-automation.service'
 
 @Controller('admin/notifications/whatsapp')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN)
+@Roles(...ADMIN_ONLY_ROLES)
 export class WhatsAppAutomationController {
   constructor(private readonly whatsapp: WhatsAppAutomationService) {}
 
