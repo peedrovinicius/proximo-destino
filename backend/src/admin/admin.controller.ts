@@ -9,7 +9,6 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common'
-import { UserRole } from '@prisma/client'
 import { JwtAuthGuard, type AuthenticatedRequest } from '../auth/jwt-auth.guard'
 import {
   ADMIN_ONLY_ROLES,
@@ -105,7 +104,7 @@ export class AdminController {
   }
 
   @Patch('reservations/:id/status')
-  @Roles(UserRole.ADMIN, UserRole.AGENT, UserRole.FINANCE)
+  @Roles(...OPERATIONS_ROLES)
   updateReservation(
     @Param('id') id: string,
     @Body() body: UpdateReservationStatusDto,
