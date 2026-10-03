@@ -35,6 +35,13 @@ enum CancellationRequestStatus {
   REJECTED
 }
 
+enum OutboundMessageStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+}
+
 enum QuoteStatus {
   DRAFT
   SENT
@@ -502,4 +509,33 @@ model PaymentOAuthState {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, expiresAt])
+}
+
+
+model OutboundMessage {
+  id                String                @id @default(cuid())
+  channel           String                @default("WHATSAPP")
+  eventType         String
+  idempotencyKey    String                @unique
+  recipientPhone    String
+  recipientName     String?
+  body              String
+  templateName      String?
+  templateLanguage  String?
+  templateParams    Json?
+  sourceType        String?
+  sourceId          String?
+  status            OutboundMessageStatus @default(PENDING)
+  attempts          Int                   @default(0)
+  scheduledAt       DateTime              @default(now())
+  lastAttemptAt     DateTime?
+  sentAt            DateTime?
+  providerMessageId String?
+  errorMessage      String?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  @@index([status, scheduledAt])
+  @@index([eventType, createdAt])
+  @@index([sourceType, sourceId])
 }
