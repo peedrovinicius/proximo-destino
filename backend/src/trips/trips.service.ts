@@ -1499,7 +1499,11 @@ export class TripsService {
     }
   }
 
-  async uploadTripImage(id: string, file?: StoredTripImageFile) {
+  async uploadTripImage(
+    id: string,
+    file?: StoredTripImageFile,
+    actorUserId?: string,
+  ) {
     if (!file) throw new BadRequestException('Selecione uma imagem para enviar')
 
     const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp']
@@ -1516,34 +1520,63 @@ export class TripsService {
     })
     if (!exists) throw new NotFoundException('Viagem não encontrada')
 
-    await this.prisma.trip.update({
-      where: { id },
-      data: {
-        imageData: Uint8Array.from(file.buffer),
-        imageMimeType: file.mimetype,
-        imageUpdatedAt: new Date(),
-        imageUrl: null,
-      },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.trip.update({
+        where: { id },
+        data: {
+          imageData: Uint8Array.from(file.buffer),
+          imageMimeType: file.mimetype,
+          imageUpdatedAt: new Date(),
+          imageUrl: null,
+        },
+      })
+
+      if (actorUserId) {
+        await tx.authAuditEvent.create({
+          data: {
+            userId: actorUserId,
+            eventType: 'OPS_TRIP_IMAGE_UPDATED',
+            metadata: {
+              tripId: id,
+              imageSource: 'UPLOAD',
+              mimeType: file.mimetype,
+              sizeBytes: file.size,
+            },
+          },
+        })
+      }
     })
 
     return this.findAdminTrip(id)
   }
 
-  async clearTripImage(id: string) {
+  async clearTripImage(id: string, actorUserId?: string) {
     const exists = await this.prisma.trip.findUnique({
       where: { id },
       select: { id: true },
     })
     if (!exists) throw new NotFoundException('Viagem não encontrada')
 
-    await this.prisma.trip.update({
-      where: { id },
-      data: {
-        imageData: null,
-        imageMimeType: null,
-        imageUpdatedAt: null,
-        imageUrl: null,
-      },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.trip.update({
+        where: { id },
+        data: {
+          imageData: null,
+          imageMimeType: null,
+          imageUpdatedAt: null,
+          imageUrl: null,
+        },
+      })
+
+      if (actorUserId) {
+        await tx.authAuditEvent.create({
+          data: {
+            userId: actorUserId,
+            eventType: 'OPS_TRIP_IMAGE_CLEARED',
+            metadata: { tripId: id },
+          },
+        })
+      }
     })
 
     return this.findAdminTrip(id)
@@ -1686,7 +1719,7 @@ export class TripsService {
     }))
   }
 
-  async create(data: CreateTripDto) {
+  async create(data: CreateTripDto, actorUserId?: string) {
     const busConfig = data.busTemplate
       ? resolveBusTemplate(
           data.busTemplate,
@@ -1739,12 +1772,31 @@ export class TripsService {
       select: { id: true },
     })
 
+    if (actorUserId) {
+      await this.prisma.authAuditEvent.create({
+        data: {
+          userId: actorUserId,
+          eventType: 'OPS_TRIP_CREATED',
+          metadata: {
+            tripId: created.id,
+            afterStatus: data.status ?? TripStatus.DRAFT,
+            capacity,
+            busTemplate: busConfig?.busTemplate ?? null,
+          },
+        },
+      })
+    }
+
     return this.findAdminTrip(created.id)
   }
 
-  async update(id: string, data: UpdateTripDto) {
+  async update(
+    id: string,
+    data: UpdateTripDto,
+    actorUserId?: string,
+  ) {
     if (data.status === TripStatus.COMPLETED) {
-      return this.completeTrip(id)
+      return this.completeTrip(id, actorUserId)
     }
 
     const existing = await this.prisma.trip.findUnique({
@@ -1867,36 +1919,59 @@ export class TripsService {
       }
     }
 
-    await this.prisma.trip.update({
-      where: { id },
-      data: {
-        title: data.title?.trim(),
-        origin: data.origin?.trim(),
-        destination: data.destination?.trim(),
-        departureDate: data.departureDate,
-        returnDate: data.returnDate,
-        status: data.status,
-        capacity: target.capacity,
-        busTemplate: target.busTemplate,
-        seatLayout: target.seatLayout,
-        deckCount: target.deckCount,
-        lowerDeckCapacity: target.lowerDeckCapacity,
-        vehicleFeatures: features as Prisma.InputJsonValue,
-        blockedSeats,
-        priceCents: data.priceCents,
-        summary: data.summary?.trim(),
-        imageUrl:
-          data.imageUrl === null
-            ? null
-            : data.imageUrl?.trim(),
-        ...(data.imageUrl !== undefined
-          ? {
-              imageData: null,
-              imageMimeType: null,
-              imageUpdatedAt: null,
-            }
-          : {}),
-      },
+    const changedFields = Object.entries(data)
+      .filter(([, value]) => value !== undefined)
+      .map(([key]) => key)
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.trip.update({
+        where: { id },
+        data: {
+          title: data.title?.trim(),
+          origin: data.origin?.trim(),
+          destination: data.destination?.trim(),
+          departureDate: data.departureDate,
+          returnDate: data.returnDate,
+          status: data.status,
+          capacity: target.capacity,
+          busTemplate: target.busTemplate,
+          seatLayout: target.seatLayout,
+          deckCount: target.deckCount,
+          lowerDeckCapacity: target.lowerDeckCapacity,
+          vehicleFeatures: features as Prisma.InputJsonValue,
+          blockedSeats,
+          priceCents: data.priceCents,
+          summary: data.summary?.trim(),
+          imageUrl:
+            data.imageUrl === null
+              ? null
+              : data.imageUrl?.trim(),
+          ...(data.imageUrl !== undefined
+            ? {
+                imageData: null,
+                imageMimeType: null,
+                imageUpdatedAt: null,
+              }
+            : {}),
+        },
+      })
+
+      if (actorUserId && changedFields.length) {
+        await tx.authAuditEvent.create({
+          data: {
+            userId: actorUserId,
+            eventType: 'OPS_TRIP_UPDATED',
+            metadata: {
+              tripId: id,
+              changedFields,
+              beforeCapacity: existing.capacity,
+              afterCapacity: target.capacity,
+              beforeBusTemplate: existing.busTemplate,
+              afterBusTemplate: target.busTemplate,
+            },
+          },
+        })
+      }
     })
 
     return this.findAdminTrip(id)
