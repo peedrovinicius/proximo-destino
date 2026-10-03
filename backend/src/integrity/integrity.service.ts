@@ -81,112 +81,23 @@ export class IntegrityService {
 
     const plaintextDocuments =
       plainClients + plainCompanions + plainPassengers
+
     const rlsByTable = new Map(
       rlsRows.map((row) => [row.tableName, row]),
     )
+
     const rlsHealthy = protectedTables.every((table) => {
       const item = rlsByTable.get(table)
       return Boolean(item?.enabled && item.policyCount >= 1)
     })
+
     const passwordsHealthy = users.every((user) =>
-      user.passwordHash.startsWith('$argon2id
-    const [quotes, plans] = await Promise.all([
-      this.prisma.quote.findMany({
-        select: {
-          id: true,
-          reservationId: true,
-          subtotalCostCents: true,
-          subtotalSaleCents: true,
-          discountCents: true,
-          totalCents: true,
-          marginCents: true,
-          items: {
-            select: {
-              totalCostCents: true,
-              totalSaleCents: true,
-            },
-          },
-        },
-        take: 5_000,
-      }),
-      this.prisma.financePlan.findMany({
-        select: {
-          id: true,
-          reservationId: true,
-          totalCents: true,
-          quote: { select: { totalCents: true } },
-          installments: {
-            select: { amountCents: true, status: true },
-          },
-        },
-        take: 5_000,
-      }),
-    ])
-
-    const quoteMismatches = quotes
-      .filter((quote) => {
-        const cost = quote.items.reduce(
-          (sum, item) => sum + item.totalCostCents,
-          0,
-        )
-        const sale = quote.items.reduce(
-          (sum, item) => sum + item.totalSaleCents,
-          0,
-        )
-        const total = sale - quote.discountCents
-        const margin = total - cost
-
-        return (
-          cost !== quote.subtotalCostCents ||
-          sale !== quote.subtotalSaleCents ||
-          total !== quote.totalCents ||
-          margin !== quote.marginCents
-        )
-      })
-      .map((quote) => ({
-        quoteId: quote.id,
-        reservationId: quote.reservationId,
-      }))
-
-    const financeMismatches = plans
-      .filter((plan) => {
-        const installmentsTotal = plan.installments.reduce(
-          (sum, installment) => sum + installment.amountCents,
-          0,
-        )
-
-        return (
-          plan.totalCents !== plan.quote.totalCents ||
-          installmentsTotal !== plan.totalCents
-        )
-      })
-      .map((plan) => ({
-        financePlanId: plan.id,
-        reservationId: plan.reservationId,
-      }))
-
-    return {
-      healthy:
-        quoteMismatches.length === 0 &&
-        financeMismatches.length === 0,
-      checkedAt: new Date().toISOString(),
-      scanned: {
-        quotes: quotes.length,
-        financePlans: plans.length,
-      },
-      mismatches: {
-        quotes: quoteMismatches,
-        financePlans: financeMismatches,
-      },
-    }
-  }
-}
-),
+      user.passwordHash.startsWith('$' + 'argon2id' + '$'),
     )
 
     const checks = [
       {
-        id: 'sensitive-data-encryption',
+        id: 'sensitive-data-encryption' as const,
         title: 'Dados pessoais sensíveis criptografados',
         healthy:
           sensitiveDataConfigured() && plaintextDocuments === 0,
@@ -196,26 +107,26 @@ export class IntegrityService {
             : `${plaintextDocuments} documento(s) legado(s) ainda aguardam migração criptográfica.`,
       },
       {
-        id: 'row-level-security',
+        id: 'row-level-security' as const,
         title: 'RLS nas tabelas sensíveis',
         healthy: rlsHealthy,
         detail: `${rlsRows.filter((row) => row.enabled).length}/${protectedTables.length} tabelas com RLS e política deny-by-default.`,
       },
       {
-        id: 'login-attempts',
+        id: 'login-attempts' as const,
         title: 'Limite de tentativas de login',
         healthy: true,
         detail: `${MAX_FAILED_ATTEMPTS} tentativas antes de bloqueio por ${LOCK_MINUTES} minutos, além de rate limit.`,
       },
       {
-        id: 'api-authentication',
+        id: 'api-authentication' as const,
         title: 'Rotas privadas com autenticação',
         healthy: true,
         detail:
           'JWT de curta duração, sessão revogável, MFA do Admin, guards por papel e portal do cliente isolado por reserva.',
       },
       {
-        id: 'password-hashing',
+        id: 'password-hashing' as const,
         title: 'Senhas protegidas no banco',
         healthy: passwordsHealthy,
         detail:
