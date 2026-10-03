@@ -55,6 +55,12 @@ jobs:
       - name: Install
         run: npm install --no-audit --no-fund
 
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Audit critical development dependencies
+        run: npm audit --audit-level=critical
+
       - name: Generate Prisma client
         run: npm run prisma:generate
 
@@ -108,6 +114,12 @@ jobs:
 
       - name: Install
         run: npm install --no-audit --no-fund
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Audit critical development dependencies
+        run: npm audit --audit-level=critical
 
       - name: Build
         env:
