@@ -610,7 +610,6 @@ export function FinanceWorkspace({
         accessToken,
         id,
         status,
-        status === 'PAID' ? 'manual' : undefined,
       )
       await load()
     } catch (cause) {
@@ -668,7 +667,7 @@ export function FinanceWorkspace({
             <strong>{plans.length}</strong>
           </div>
           <p className="panel-description">
-            Somente cotações aprovadas pelo cliente podem gerar parcelas.
+            Somente cotações aprovadas pelo cliente podem gerar parcelas. A baixa como paga é feita em Reservas → Financeiro, com valor, método, data e comprovante.
           </p>
         </article>
       </div>
@@ -703,13 +702,21 @@ export function FinanceWorkspace({
                   <strong>{money.format(installment.amountCents / 100)}</strong>
                   <select
                     value={installment.status}
+                    disabled={installment.status === 'PAID'}
                     onChange={(e) => void updateInstallment(
                       installment.id,
                       e.target.value as FinancePlan['installments'][number]['status'],
                     )}
+                    title={
+                      installment.status === 'PAID'
+                        ? 'Pagamentos devem ser estornados pelo centro financeiro da reserva.'
+                        : 'Para dar baixa como pago, use Reservas > Financeiro.'
+                    }
                   >
                     <option value="OPEN">Em aberto</option>
-                    <option value="PAID">Pago</option>
+                    {installment.status === 'PAID' ? (
+                      <option value="PAID">Pago · lançamento financeiro</option>
+                    ) : null}
                     <option value="OVERDUE">Vencido</option>
                     <option value="CANCELLED">Cancelado</option>
                   </select>
