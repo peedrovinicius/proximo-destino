@@ -8,12 +8,16 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common'
-import { UserRole } from '@prisma/client'
 import type { Response } from 'express'
 import {
   JwtAuthGuard,
   type AuthenticatedRequest,
 } from '../auth/jwt-auth.guard'
+import {
+  FINANCE_ROLES,
+  OPERATIONS_ROLES,
+  STAFF_ROLES,
+} from '../auth/role-capabilities'
 import { Roles } from '../auth/roles.decorator'
 import { RolesGuard } from '../auth/roles.guard'
 import {
@@ -24,7 +28,7 @@ import { DocumentsService } from './documents.service'
 
 @Controller('admin/documents')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN, UserRole.AGENT, UserRole.FINANCE)
+@Roles(...STAFF_ROLES)
 export class AdminDocumentsController {
   constructor(private readonly documents: DocumentsService) {}
 
@@ -34,7 +38,7 @@ export class AdminDocumentsController {
   }
 
   @Post('reservation/:reservationId/travel-voucher')
-  @Roles(UserRole.ADMIN, UserRole.AGENT)
+  @Roles(...OPERATIONS_ROLES)
   issueVoucher(
     @Param('reservationId') reservationId: string,
     @Body() body: IssueTravelVoucherDto,
@@ -48,7 +52,7 @@ export class AdminDocumentsController {
   }
 
   @Post('reservation/:reservationId/purchase-receipt')
-  @Roles(UserRole.ADMIN, UserRole.FINANCE)
+  @Roles(...FINANCE_ROLES)
   issueReceipt(
     @Param('reservationId') reservationId: string,
     @Body() body: IssuePurchaseReceiptDto,
