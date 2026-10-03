@@ -15,4 +15,9 @@ export class IntegrityController {
   check() {
     return this.integrity.check()
   }
+
+  @Get('security')
+  security() {
+    return this.integrity.securityPosture()
+  }
 }
