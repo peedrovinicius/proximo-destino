@@ -648,6 +648,30 @@ export type AdminNotificationFeed = {
   items: AdminNotification[]
 }
 
+export type SecurityPosture = {
+  healthy: boolean
+  checkedAt: string
+  checks: Array<{
+    id:
+      | 'sensitive-data-encryption'
+      | 'row-level-security'
+      | 'login-attempts'
+      | 'api-authentication'
+      | 'password-hashing'
+    title: string
+    healthy: boolean
+    detail: string
+  }>
+  database: {
+    protectedTables: Array<{
+      tableName: string
+      enabled: boolean
+      policyCount: number
+    }>
+    plaintextDocuments: number
+  }
+}
+
 export type EmailAutomationStatus = {
   enabled: boolean
   connected: boolean
@@ -774,6 +798,12 @@ export function adminTripImageUrl(trip: Pick<AdminTrip, 'id' | 'imageUrl' | 'has
 }
 
 export const adminApi = {
+  securityPosture: (token: string) =>
+    adminFetch<SecurityPosture>(
+      token,
+      '/admin/system/security',
+    ),
+
   auditTrail: (
     token: string,
     filters: {
