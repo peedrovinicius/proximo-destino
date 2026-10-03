@@ -1,8 +1,25 @@
-import { Controller, Get, Post, Query, UseGuards } from '@nestjs/common'
-import { JwtAuthGuard } from '../auth/jwt-auth.guard'
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common'
+import {
+  JwtAuthGuard,
+  type AuthenticatedRequest,
+} from '../auth/jwt-auth.guard'
 import { ADMIN_ONLY_ROLES } from '../auth/role-capabilities'
 import { Roles } from '../auth/roles.decorator'
 import { RolesGuard } from '../auth/roles.guard'
+import {
+  ConnectEmailProviderDto,
+  UpdateEmailAutomationDto,
+} from './dto/email-provider.dto'
 import { EmailAutomationService } from './email-automation.service'
 
 @Controller('admin/notifications/email')
@@ -14,6 +31,30 @@ export class EmailAutomationController {
   @Get('status')
   status() {
     return this.email.status()
+  }
+
+  @Post('connection')
+  connect(
+    @Body() body: ConnectEmailProviderDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.email.connectProvider(body, request.user.id)
+  }
+
+  @Delete('connection')
+  disconnect(@Req() request: AuthenticatedRequest) {
+    return this.email.disconnectProvider(request.user.id)
+  }
+
+  @Patch('automation')
+  automation(
+    @Body() body: UpdateEmailAutomationDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.email.setAutomationEnabled(
+      body.enabled,
+      request.user.id,
+    )
   }
 
   @Get('outbox')
