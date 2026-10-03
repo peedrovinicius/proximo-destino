@@ -68,8 +68,11 @@ export class AdminController {
 
   @Post('reservations')
   @Roles(UserRole.ADMIN, UserRole.AGENT)
-  createReservation(@Body() body: CreateReservationDto) {
-    return this.admin.createReservation(body)
+  createReservation(
+    @Body() body: CreateReservationDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.admin.createReservation(body, request.user.id)
   }
 
   @Get('reservations/:id/passengers')
@@ -83,8 +86,13 @@ export class AdminController {
   updateReservationPassengers(
     @Param('id') id: string,
     @Body() body: UpdateReservationPassengersDto,
+    @Req() request: AuthenticatedRequest,
   ) {
-    return this.admin.updateReservationPassengers(id, body)
+    return this.admin.updateReservationPassengers(
+      id,
+      body,
+      request.user.id,
+    )
   }
 
   @Patch('reservations/:id/status')
@@ -92,8 +100,13 @@ export class AdminController {
   updateReservation(
     @Param('id') id: string,
     @Body() body: UpdateReservationStatusDto,
+    @Req() request: AuthenticatedRequest,
   ) {
-    return this.admin.updateReservationStatus(id, body.status)
+    return this.admin.updateReservationStatus(
+      id,
+      body.status,
+      request.user.id,
+    )
   }
 
   @Post('reservations/:id/cancel')
