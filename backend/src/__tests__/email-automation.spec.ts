@@ -134,9 +134,20 @@ describe('automação transacional de e-mail', () => {
   it('envia pelo provedor com cliente em TO e administração em BCC', async () => {
     await service.enqueuePaymentConfirmed(purchaseId)
 
-    let providerBody: Record<string, unknown> | null = null
+    const providerBodies: Array<{
+      to?: unknown
+      bcc?: unknown
+      from?: unknown
+    }> = []
+
     globalThis.fetch = async (_input, init) => {
-      providerBody = JSON.parse(String(init?.body ?? '{}'))
+      providerBodies.push(
+        JSON.parse(String(init?.body ?? '{}')) as {
+          to?: unknown
+          bcc?: unknown
+          from?: unknown
+        },
+      )
       return new Response(JSON.stringify({ id: 'resend-e2e-id' }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -146,11 +157,12 @@ describe('automação transacional de e-mail', () => {
     const result = await service.processNow()
     assert.ok(result.processed >= 1)
 
+    const providerBody = providerBodies[0]
     assert.ok(providerBody)
-    assert.deepEqual(providerBody!.to, [clientEmail])
-    assert.deepEqual(providerBody!.bcc, [adminEmail])
+    assert.deepEqual(providerBody.to, [clientEmail])
+    assert.deepEqual(providerBody.bcc, [adminEmail])
     assert.equal(
-      providerBody!.from,
+      providerBody.from,
       'Próximo Destino <noreply@example.com>',
     )
 
