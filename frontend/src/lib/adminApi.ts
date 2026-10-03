@@ -498,6 +498,22 @@ export type AdminReservationFinance = {
     totalCents: number
     approvedAt: string | null
   } | null
+  manualPayments: Array<{
+    id: string
+    financePlanId: string | null
+    installmentId: string | null
+    method: 'CASH' | 'TRANSFER' | 'BOLETO'
+    status: 'RECEIVED' | 'REVERSED'
+    amountCents: number
+    paidAt: string
+    reference: string | null
+    note: string | null
+    reversedAt: string | null
+    reversedReason: string | null
+    createdAt: string
+    recordedBy: { id: string; email: string; role: string } | null
+    reversedBy: { id: string; email: string; role: string } | null
+  }>
   credits: Array<{
     id: string
     type: 'CANCELLATION_CREDIT' | 'BONUS_USED' | 'BONUS_REMOVED'
@@ -515,7 +531,11 @@ export type AdminReservationFinance = {
   }
   events: Array<{
     id: string
-    eventType: 'OPS_PAYMENT_REFUNDED' | 'OPS_PAYMENT_RECONCILED'
+    eventType:
+      | 'OPS_PAYMENT_REFUNDED'
+      | 'OPS_PAYMENT_RECONCILED'
+      | 'OPS_MANUAL_PAYMENT_RECEIVED'
+      | 'OPS_MANUAL_PAYMENT_REVERSED'
     metadata: Record<string, unknown> | null
     createdAt: string
     user: { id: string; email: string; role: string } | null
@@ -734,6 +754,42 @@ export const adminApi = {
     adminFetch<AdminReservationFinance>(
       token,
       `/admin/reservations/${encodeURIComponent(reservationId)}/finance`,
+    ),
+
+  registerManualPayment: (
+    token: string,
+    reservationId: string,
+    input: {
+      amountCents: number
+      method: 'CASH' | 'TRANSFER' | 'BOLETO'
+      paidAt?: string
+      installmentId?: string
+      reference?: string
+      note?: string
+    },
+  ) =>
+    adminFetch<AdminReservationFinance>(
+      token,
+      `/admin/reservations/${encodeURIComponent(reservationId)}/finance/manual-payments`,
+      {
+        method: 'POST',
+        body: JSON.stringify(input),
+      },
+    ),
+
+  reverseManualPayment: (
+    token: string,
+    reservationId: string,
+    paymentId: string,
+    reason: string,
+  ) =>
+    adminFetch<AdminReservationFinance>(
+      token,
+      `/admin/reservations/${encodeURIComponent(reservationId)}/finance/manual-payments/${encodeURIComponent(paymentId)}/reverse`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ reason }),
+      },
     ),
 
   reconcileReservationPayment: (
