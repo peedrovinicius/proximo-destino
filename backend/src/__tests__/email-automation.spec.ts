@@ -28,6 +28,7 @@ describe('automação transacional de e-mail', () => {
     EMAIL_FROM: 'Próximo Destino <noreply@example.com>',
     ADMIN_EMAIL: adminEmail,
     PUBLIC_API_URL: 'https://api.example.com/api/v1',
+    MFA_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
   })
   const service = new EmailAutomationService(prisma, config)
   const originalFetch = globalThis.fetch
@@ -92,6 +93,9 @@ describe('automação transacional de e-mail', () => {
 
   after(async () => {
     globalThis.fetch = originalFetch
+    await prisma.emailProviderConnection.deleteMany({
+      where: { provider: 'RESEND' },
+    })
     await prisma.emailOutboundMessage.deleteMany({
       where: {
         OR: [
@@ -216,6 +220,66 @@ describe('automação transacional de e-mail', () => {
     assert.ok(testBody)
     assert.deepEqual(testBody.to, [adminEmail])
     assert.ok(!testBody.bcc || (Array.isArray(testBody.bcc) && testBody.bcc.length === 0))
+  })
+
+  it('permite ao dono conectar o Resend com chave criptografada e controlar a automação', async () => {
+    await prisma.emailProviderConnection.deleteMany({
+      where: { provider: 'RESEND' },
+    })
+
+    const testApiKey = ['re', 'connection', 'test', suffix].join('_')
+
+    const connected = await service.connectProvider(
+      {
+        apiKey: testApiKey,
+        fromName: 'Próximo Destino',
+        fromEmail: 'onboarding@resend.dev',
+        replyToEmail: adminEmail,
+        adminCopyEmail: adminEmail,
+      },
+      adminId,
+    )
+
+    assert.equal(connected.connected, true)
+    assert.equal(connected.connectionSource, 'DATABASE')
+    assert.equal(connected.enabled, false)
+    assert.equal(connected.testOnly, true)
+    assert.equal(connected.adminCopyEmail, adminEmail)
+
+    const stored =
+      await prisma.emailProviderConnection.findUniqueOrThrow({
+        where: { provider: 'RESEND' },
+      })
+    assert.notEqual(stored.apiKeyEncrypted, testApiKey)
+    assert.equal(stored.apiKeyEncrypted.includes(testApiKey), false)
+
+    await assert.rejects(
+      () => service.setAutomationEnabled(true, adminId),
+      /domínio próprio/i,
+    )
+
+    const production = await service.connectProvider(
+      {
+        apiKey: testApiKey,
+        fromName: 'Próximo Destino',
+        fromEmail: 'notificacoes@proximodestino.example',
+        replyToEmail: adminEmail,
+        adminCopyEmail: adminEmail,
+      },
+      adminId,
+    )
+    assert.equal(production.productionReady, true)
+
+    const enabled = await service.setAutomationEnabled(true, adminId)
+    assert.equal(enabled.enabled, true)
+
+    const disconnected = await service.disconnectProvider(adminId)
+    assert.equal(disconnected.disconnected, true)
+
+    const row = await prisma.emailProviderConnection.findUnique({
+      where: { provider: 'RESEND' },
+    })
+    assert.equal(row, null)
   })
 
   it('expõe status do provedor e da cópia administrativa', async () => {
