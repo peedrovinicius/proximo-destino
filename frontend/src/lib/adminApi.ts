@@ -650,6 +650,14 @@ export type AdminNotificationFeed = {
 
 export type EmailAutomationStatus = {
   enabled: boolean
+  connected: boolean
+  connectionSource: 'DATABASE' | 'ENVIRONMENT' | 'NONE'
+  connectedAt: string | null
+  from: string | null
+  fromName: string | null
+  fromEmail: string | null
+  replyTo: string | null
+  adminCopyEmail: string | null
   providerConfigured: boolean
   productionReady: boolean
   testOnly: boolean
@@ -1043,6 +1051,42 @@ export const adminApi = {
     adminFetch<EmailAutomationStatus>(
       token,
       '/admin/notifications/email/status',
+    ),
+
+  connectEmailProvider: (
+    token: string,
+    input: {
+      apiKey: string
+      fromName?: string
+      fromEmail: string
+      replyToEmail?: string
+      adminCopyEmail?: string
+    },
+  ) =>
+    adminFetch<EmailAutomationStatus>(
+      token,
+      '/admin/notifications/email/connection',
+      {
+        method: 'POST',
+        body: JSON.stringify(input),
+      },
+    ),
+
+  disconnectEmailProvider: (token: string) =>
+    adminFetch<{ disconnected: boolean }>(
+      token,
+      '/admin/notifications/email/connection',
+      { method: 'DELETE' },
+    ),
+
+  setEmailAutomation: (token: string, enabled: boolean) =>
+    adminFetch<EmailAutomationStatus>(
+      token,
+      '/admin/notifications/email/automation',
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ enabled }),
+      },
     ),
 
   emailOutbox: (token: string, limit = 50) =>
