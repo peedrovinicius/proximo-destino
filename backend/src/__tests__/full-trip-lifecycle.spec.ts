@@ -511,12 +511,12 @@ describe('E2E do ciclo completo da viagem', () => {
 
     const cancelled = await admin.cancelReservation(
       reservation.id,
-      true,
-      'Cancelamento com pagamento parcial',
+      false,
+      'Cancelamento com estorno do pagamento parcial',
       actorId,
     )
     assert.equal(cancelled.paidCents, 10_000)
-    assert.equal(cancelled.bonusGrantedCents, 10_000)
+    assert.equal(cancelled.bonusGrantedCents, 0)
 
     const payment = await prisma.manualPayment.findFirstOrThrow({
       where: {
