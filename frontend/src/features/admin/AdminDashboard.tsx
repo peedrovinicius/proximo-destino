@@ -684,6 +684,131 @@ function notificationIcon(type: string) {
   return <Bell size={16} />
 }
 
+function auditCategoryLabel(category: string) {
+  if (category === 'RESERVATIONS') return 'Reservas'
+  if (category === 'CLIENTS') return 'Clientes'
+  if (category === 'TRIPS') return 'Viagens'
+  if (category === 'SEATS') return 'Assentos e embarque'
+  if (category === 'FINANCE') return 'Financeiro'
+  if (category === 'COMMERCIAL') return 'Comercial'
+  if (category === 'SETTINGS') return 'Configurações'
+  return 'Outros'
+}
+
+function auditEventLabel(eventType: string) {
+  const labels: Record<string, string> = {
+    OPS_RESERVATION_CREATED: 'Reserva criada',
+    OPS_RESERVATION_STATUS_CHANGED: 'Status da reserva alterado',
+    OPS_RESERVATION_PASSENGERS_UPDATED: 'Passageiros da reserva atualizados',
+    OPS_RESERVATION_CANCELLED: 'Reserva cancelada',
+    OPS_CANCELLATION_REQUEST_REJECTED: 'Cancelamento recusado',
+    OPS_CLIENT_CREATED: 'Cliente criado',
+    OPS_CLIENT_UPDATED: 'Cliente atualizado',
+    OPS_CLIENT_BONUS_REMOVED: 'Bônus removido',
+    OPS_CLIENT_BONUS_USED: 'Bônus utilizado',
+    OPS_TRIP_CREATED: 'Viagem criada',
+    OPS_TRIP_UPDATED: 'Viagem atualizada',
+    OPS_TRIP_IMAGE_UPDATED: 'Imagem da viagem atualizada',
+    OPS_TRIP_IMAGE_CLEARED: 'Imagem da viagem removida',
+    OPS_TRIP_COMPLETED: 'Viagem concluída',
+    OPS_SEAT_BLOCKED: 'Assento bloqueado',
+    OPS_SEAT_RELEASED: 'Assento liberado',
+    OPS_SEAT_CLIENT_ASSIGNED: 'Passageiro alocado em assento',
+    OPS_SEAT_ASSIGNMENT_MOVED: 'Passageiro movido de assento',
+    OPS_BOARDING_STATUS_CHANGED: 'Status de embarque alterado',
+    OPS_BOARDING_BULK_UPDATED: 'Embarque atualizado em lote',
+    OPS_BOARDING_QR_SCANNED: 'QR Code de embarque validado',
+    OPS_PAYMENT_RECONCILED: 'Pagamento online reconciliado',
+    OPS_PAYMENT_REFUNDED: 'Pagamento online estornado',
+    OPS_MANUAL_PAYMENT_RECEIVED: 'Recebimento manual registrado',
+    OPS_MANUAL_PAYMENT_REVERSED: 'Recebimento manual estornado',
+    OPS_FINANCE_PLAN_CREATED: 'Plano financeiro criado',
+    OPS_INSTALLMENT_STATUS_CHANGED: 'Status de parcela alterado',
+    OPS_QUOTE_CREATED: 'Cotação criada',
+    OPS_QUOTE_ITEM_ADDED: 'Item adicionado à cotação',
+    OPS_QUOTE_ITEM_REMOVED: 'Item removido da cotação',
+    OPS_QUOTE_SENT: 'Cotação enviada',
+    OPS_QUOTE_REVISED: 'Cotação revisada',
+    OPS_SERVICE_STATUS_CHANGED: 'Status de serviço alterado',
+    OPS_MERCADO_PAGO_CONNECTED: 'Mercado Pago conectado',
+    OPS_MERCADO_PAGO_DISCONNECTED: 'Mercado Pago desconectado',
+  }
+
+  return (
+    labels[eventType] ??
+    eventType
+      .replace(/^OPS_/, '')
+      .toLowerCase()
+      .split('_')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ')
+  )
+}
+
+function auditMetadataSummary(metadata: Record<string, unknown> | null) {
+  if (!metadata) return []
+  const parts: string[] = []
+
+  const shortId = (value: unknown) =>
+    typeof value === 'string'
+      ? '#' + value.slice(-8).toUpperCase()
+      : null
+
+  const reservationId = shortId(metadata.reservationId)
+  if (reservationId) parts.push('Reserva ' + reservationId)
+
+  const tripId = shortId(metadata.tripId)
+  if (tripId) parts.push('Viagem ' + tripId)
+
+  const clientId = shortId(metadata.clientId)
+  if (clientId) parts.push('Cliente ' + clientId)
+
+  const quoteId = shortId(metadata.quoteId)
+  if (quoteId) parts.push('Cotação ' + quoteId)
+
+  if (typeof metadata.seatNumber === 'number') {
+    parts.push('Assento ' + metadata.seatNumber)
+  }
+
+  if (
+    typeof metadata.fromSeatNumber === 'number' &&
+    typeof metadata.toSeatNumber === 'number'
+  ) {
+    parts.push(
+      'Assento ' +
+        metadata.fromSeatNumber +
+        ' → ' +
+        metadata.toSeatNumber,
+    )
+  }
+
+  if (
+    typeof metadata.beforeStatus === 'string' &&
+    typeof metadata.afterStatus === 'string'
+  ) {
+    parts.push(metadata.beforeStatus + ' → ' + metadata.afterStatus)
+  }
+
+  if (typeof metadata.amountCents === 'number') {
+    parts.push(money.format(metadata.amountCents / 100))
+  } else if (typeof metadata.totalCents === 'number') {
+    parts.push(money.format(metadata.totalCents / 100))
+  }
+
+  if (typeof metadata.method === 'string') {
+    parts.push('Método ' + metadata.method)
+  }
+
+  if (Array.isArray(metadata.changedFields)) {
+    const fields = metadata.changedFields
+      .filter((value): value is string => typeof value === 'string')
+      .slice(0, 6)
+    if (fields.length) parts.push('Campos: ' + fields.join(', '))
+  }
+
+  return parts.slice(0, 5)
+}
+
 function paymentStatusLabel(status: AdminPurchaseOrder['status']) {
   if (status === 'PAID') return 'Pago'
   if (status === 'PENDING_PAYMENT') return 'Aguardando'
@@ -1058,6 +1183,214 @@ function PaymentsWorkspace({ accessToken }: { accessToken: string }) {
         ) : (
           <p className="admin-empty">
             Nenhum recebimento manual encontrado para estes filtros.
+          </p>
+        )}
+      </article>
+    </section>
+  )
+}
+
+function AuditWorkspace({ accessToken }: { accessToken: string }) {
+  const [data, setData] = useState<AdminAuditTrail | null>(null)
+  const [category, setCategory] = useState('ALL')
+  const [role, setRole] = useState('ALL')
+  const [query, setQuery] = useState('')
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  async function load() {
+    setLoading(true)
+    setError('')
+    try {
+      setData(
+        await adminApi.auditTrail(accessToken, {
+          category,
+          role,
+          q: query.trim() || undefined,
+          from: from ? new Date(from + 'T00:00:00').toISOString() : undefined,
+          to: to
+            ? new Date(to + 'T23:59:59.999').toISOString()
+            : undefined,
+        }),
+      )
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'Não foi possível carregar a auditoria.',
+      )
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void load()
+  }, [accessToken])
+
+  const categories = [
+    ['ALL', 'Todas'],
+    ['RESERVATIONS', 'Reservas'],
+    ['CLIENTS', 'Clientes'],
+    ['TRIPS', 'Viagens'],
+    ['SEATS', 'Assentos e embarque'],
+    ['FINANCE', 'Financeiro'],
+    ['COMMERCIAL', 'Comercial'],
+    ['SETTINGS', 'Configurações'],
+  ]
+
+  return (
+    <section className="admin-audit-workspace">
+      <div className="admin-audit-heading">
+        <div>
+          <span className="eyebrow">Rastreabilidade operacional</span>
+          <h2>Auditoria</h2>
+          <p>
+            Histórico central das ações críticas realizadas por Admin,
+            Financeiro e Agente.
+          </p>
+        </div>
+        <button type="button" onClick={() => void load()} disabled={loading}>
+          <History size={15} />
+          {loading ? 'Atualizando...' : 'Atualizar'}
+        </button>
+      </div>
+
+      {error ? <div className="admin-error" role="alert">{error}</div> : null}
+
+      <div className="admin-audit-metrics">
+        <article>
+          <small>Eventos no filtro</small>
+          <strong>{data?.summary.total ?? 0}</strong>
+          <span>até 250 exibidos</span>
+        </article>
+        <article>
+          <small>Admin</small>
+          <strong>{data?.summary.byRole.ADMIN ?? 0}</strong>
+          <span>ações administrativas</span>
+        </article>
+        <article>
+          <small>Financeiro</small>
+          <strong>{data?.summary.byRole.FINANCE ?? 0}</strong>
+          <span>ações financeiras</span>
+        </article>
+        <article>
+          <small>Agente</small>
+          <strong>{data?.summary.byRole.AGENT ?? 0}</strong>
+          <span>ações operacionais</span>
+        </article>
+      </div>
+
+      <form
+        className="admin-audit-filters"
+        onSubmit={(event) => {
+          event.preventDefault()
+          void load()
+        }}
+      >
+        <label className="search">
+          <span>Buscar</span>
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Evento, usuário, reserva, viagem ou ID"
+          />
+        </label>
+
+        <label>
+          <span>Categoria</span>
+          <select
+            value={category}
+            onChange={(event) => setCategory(event.target.value)}
+          >
+            {categories.map(([value, label]) => (
+              <option value={value} key={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          <span>Responsável</span>
+          <select value={role} onChange={(event) => setRole(event.target.value)}>
+            <option value="ALL">Todos</option>
+            <option value="ADMIN">Admin</option>
+            <option value="FINANCE">Financeiro</option>
+            <option value="AGENT">Agente</option>
+          </select>
+        </label>
+
+        <label>
+          <span>De</span>
+          <input
+            type="date"
+            value={from}
+            onChange={(event) => setFrom(event.target.value)}
+          />
+        </label>
+
+        <label>
+          <span>Até</span>
+          <input
+            type="date"
+            value={to}
+            onChange={(event) => setTo(event.target.value)}
+          />
+        </label>
+
+        <button type="submit" disabled={loading}>
+          <Search size={14} />
+          Aplicar filtros
+        </button>
+      </form>
+
+      <article className="admin-audit-list">
+        {loading ? (
+          <p className="admin-empty">Carregando trilha de auditoria...</p>
+        ) : data?.events.length ? (
+          data.events.map((event) => {
+            const details = auditMetadataSummary(event.metadata)
+            return (
+              <div className="admin-audit-row" key={event.id}>
+                <span
+                  className={
+                    'admin-audit-category admin-audit-category--' +
+                    event.category.toLowerCase()
+                  }
+                >
+                  {auditCategoryLabel(event.category)}
+                </span>
+
+                <div className="admin-audit-event">
+                  <strong>{auditEventLabel(event.eventType)}</strong>
+                  <span>
+                    {details.length
+                      ? details.join(' · ')
+                      : 'Evento operacional registrado'}
+                  </span>
+                  <small>{event.eventType}</small>
+                </div>
+
+                <div className="admin-audit-actor">
+                  <strong>{event.user?.email || 'Sistema'}</strong>
+                  <span>{event.user?.role || 'SYSTEM'}</span>
+                </div>
+
+                <time dateTime={event.createdAt}>
+                  {new Intl.DateTimeFormat('pt-BR', {
+                    dateStyle: 'short',
+                    timeStyle: 'medium',
+                  }).format(new Date(event.createdAt))}
+                </time>
+              </div>
+            )
+          })
+        ) : (
+          <p className="admin-empty">
+            Nenhum evento encontrado para estes filtros.
           </p>
         )}
       </article>
