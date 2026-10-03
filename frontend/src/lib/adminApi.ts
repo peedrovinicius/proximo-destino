@@ -534,6 +534,43 @@ export type PaymentConnectionStatus = {
   expiresAt: string | null
 }
 
+export type WhatsAppAutomationStatus = {
+  enabled: boolean
+  providerConfigured: boolean
+  deliveryMode: 'WHATSAPP_CLOUD_API' | 'OUTBOX_ONLY'
+  freeformEnabled: boolean
+  templateLanguage: string
+  templates: {
+    reservationConfirmed: boolean
+    paymentConfirmed: boolean
+    reservationCancelled: boolean
+    tripReminder: boolean
+    birthday: boolean
+  }
+  counts: {
+    pending: number
+    processing: number
+    sent: number
+    failed: number
+  }
+}
+
+export type WhatsAppOutboxItem = {
+  id: string
+  eventType: string
+  recipientPhone: string
+  recipientName: string | null
+  sourceType: string | null
+  sourceId: string | null
+  status: 'PENDING' | 'PROCESSING' | 'SENT' | 'FAILED'
+  attempts: number
+  scheduledAt: string
+  sentAt: string | null
+  providerMessageId: string | null
+  errorMessage: string | null
+  createdAt: string
+}
+
 export type SearchResult = {
   clients: Array<{ id: string; fullName: string; email: string | null; phone: string | null }>
   trips: Array<{
@@ -791,6 +828,25 @@ export const adminApi = {
 
   paymentConnection: (token: string) =>
     adminFetch<PaymentConnectionStatus>(token, '/admin/payments/mercado-pago'),
+
+  whatsappAutomationStatus: (token: string) =>
+    adminFetch<WhatsAppAutomationStatus>(
+      token,
+      '/admin/notifications/whatsapp/status',
+    ),
+
+  whatsappOutbox: (token: string, limit = 50) =>
+    adminFetch<WhatsAppOutboxItem[]>(
+      token,
+      `/admin/notifications/whatsapp/outbox?limit=${limit}`,
+    ),
+
+  processWhatsAppOutbox: (token: string) =>
+    adminFetch<{ processed: number } & WhatsAppAutomationStatus>(
+      token,
+      '/admin/notifications/whatsapp/process',
+      { method: 'POST' },
+    ),
 
   connectMercadoPago: (token: string) =>
     adminFetch<{ authorizationUrl: string }>(
