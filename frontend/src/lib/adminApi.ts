@@ -1072,6 +1072,21 @@ export const adminApi = {
       { method: 'POST' },
     ),
 
+  sendEmailTest: (token: string) =>
+    adminFetch<{
+      queued: boolean
+      processed: number
+      providerConfigured: boolean
+      status: 'PENDING' | 'PROCESSING' | 'SENT' | 'FAILED' | null
+      providerMessageId?: string | null
+      errorMessage?: string | null
+      message?: string
+    }>(
+      token,
+      '/admin/notifications/email/test',
+      { method: 'POST' },
+    ),
+
   whatsappAutomationStatus: (token: string) =>
     adminFetch<WhatsAppAutomationStatus>(
       token,
