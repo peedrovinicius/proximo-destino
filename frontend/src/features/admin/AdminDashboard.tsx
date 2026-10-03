@@ -109,6 +109,13 @@ function roleFromToken(token: string) {
   }
 }
 
+function adminRoleLabel(role: string | null) {
+  if (role === 'ADMIN') return 'Administrador'
+  if (role === 'AGENT') return 'Agente'
+  if (role === 'FINANCE') return 'Financeiro'
+  return 'Acesso restrito'
+}
+
 export function AdminDashboard({
   accessToken,
   onExitToSite,
@@ -402,7 +409,11 @@ export function AdminDashboard({
                 setSearchQuery(event.target.value)
                 if (!event.target.value) setSearchResult(null)
               }}
-              placeholder="Buscar cliente, viagem ou reserva..."
+              placeholder={
+                userRole === 'FINANCE'
+                  ? 'Buscar reserva por cliente, viagem ou código...'
+                  : 'Buscar cliente, viagem ou reserva...'
+              }
             />
           </form>
           <div className="admin-notifications">
@@ -525,8 +536,8 @@ export function AdminDashboard({
             {accountMenuOpen ? (
               <div className="admin-account-menu" role="menu">
                 <div className="admin-account-menu-head">
-                  <strong>Área administrativa</strong>
-                  <span>Sessão protegida e renovada automaticamente</span>
+                  <strong>{adminRoleLabel(userRole)}</strong>
+                  <span>Sessão protegida · permissões por função</span>
                 </div>
                 <button
                   type="button"
@@ -569,7 +580,10 @@ export function AdminDashboard({
             <h1>Próximo Destino</h1>
             <p>Dados carregados diretamente do PostgreSQL de produção.</p>
           </div>
-          <div className="security-pill"><ShieldCheck size={16} /> Ambiente administrativo protegido</div>
+          <div className="security-pill">
+            <ShieldCheck size={16} />
+            {adminRoleLabel(userRole)} · acesso protegido
+          </div>
         </section>
 
         {error ? <div className="admin-error" role="alert">{error}</div> : null}
