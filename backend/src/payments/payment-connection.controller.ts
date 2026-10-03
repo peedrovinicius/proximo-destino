@@ -32,8 +32,8 @@ export class PaymentConnectionAdminController {
   }
 
   @Post('mercado-pago/disconnect')
-  disconnect() {
-    return this.payments.disconnect()
+  disconnect(@Req() request: AuthenticatedRequest) {
+    return this.payments.disconnect(request.user.id)
   }
 }
 
