@@ -60,29 +60,54 @@ export class ClientsService {
     return cpf
   }
 
-  async create(data: CreateClientDto) {
+  async create(data: CreateClientDto, actorUserId?: string) {
     const cpf = await this.validateCpf(data.document)
 
-    return this.prisma.client.create({
-      data: {
-        fullName: data.fullName.trim(),
-        email: data.email?.trim().toLowerCase(),
-        phone: data.phone?.trim(),
-        birthDate: data.birthDate,
-        document: cpf,
-        notes: data.notes?.trim(),
-        companions: data.companions?.length
-          ? {
-              create: data.companions.map((companion) => ({
-                fullName: companion.fullName.trim(),
-                document: companion.document?.trim(),
-                birthDate: companion.birthDate,
-                relationship: companion.relationship?.trim(),
-              })),
-            }
-          : undefined,
-      },
-      include: { companions: true },
+    return this.prisma.$transaction(async (tx) => {
+      const client = await tx.client.create({
+        data: {
+          fullName: data.fullName.trim(),
+          email: data.email?.trim().toLowerCase(),
+          phone: data.phone?.trim(),
+          birthDate: data.birthDate,
+          document: cpf,
+          notes: data.notes?.trim(),
+          companions: data.companions?.length
+            ? {
+                create: data.companions.map((companion) => ({
+                  fullName: companion.fullName.trim(),
+                  document: companion.document?.trim(),
+                  birthDate: companion.birthDate,
+                  relationship: companion.relationship?.trim(),
+                })),
+              }
+            : undefined,
+        },
+        include: { companions: true },
+      })
+
+      if (actorUserId) {
+        await tx.authAuditEvent.create({
+          data: {
+            userId: actorUserId,
+            eventType: 'OPS_CLIENT_CREATED',
+            metadata: {
+              clientId: client.id,
+              fields: [
+                'fullName',
+                ...(data.email ? ['email'] : []),
+                ...(data.phone ? ['phone'] : []),
+                ...(data.birthDate ? ['birthDate'] : []),
+                ...(data.document ? ['document'] : []),
+                ...(data.notes ? ['notes'] : []),
+              ],
+              companionCount: client.companions.length,
+            },
+          },
+        })
+      }
+
+      return client
     })
   }
 
@@ -236,7 +261,11 @@ export class ClientsService {
     return this.credits(id)
   }
 
-  async update(id: string, data: UpdateClientDto) {
+  async update(
+    id: string,
+    data: UpdateClientDto,
+    actorUserId?: string,
+  ) {
     await this.findById(id)
 
     const cpf =
@@ -244,18 +273,39 @@ export class ClientsService {
         ? undefined
         : await this.validateCpf(data.document, id)
 
-    return this.prisma.client.update({
-      where: { id },
-      data: {
-        fullName: data.fullName?.trim(),
-        email: data.email?.trim().toLowerCase(),
-        phone: data.phone?.trim(),
-        birthDate: data.birthDate,
-        ...(data.document !== undefined
-          ? { document: cpf ?? null }
-          : {}),
-        notes: data.notes?.trim(),
-      },
+    const changedFields = Object.entries(data)
+      .filter(([, value]) => value !== undefined)
+      .map(([key]) => key)
+
+    return this.prisma.$transaction(async (tx) => {
+      const client = await tx.client.update({
+        where: { id },
+        data: {
+          fullName: data.fullName?.trim(),
+          email: data.email?.trim().toLowerCase(),
+          phone: data.phone?.trim(),
+          birthDate: data.birthDate,
+          ...(data.document !== undefined
+            ? { document: cpf ?? null }
+            : {}),
+          notes: data.notes?.trim(),
+        },
+      })
+
+      if (actorUserId && changedFields.length) {
+        await tx.authAuditEvent.create({
+          data: {
+            userId: actorUserId,
+            eventType: 'OPS_CLIENT_UPDATED',
+            metadata: {
+              clientId: id,
+              changedFields,
+            },
+          },
+        })
+      }
+
+      return client
     })
   }
 
