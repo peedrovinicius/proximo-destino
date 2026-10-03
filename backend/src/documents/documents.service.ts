@@ -678,12 +678,12 @@ export class DocumentsService {
 
   private identity(type: TravelDocumentType, issuedAt: Date) {
     const datePart = issuedAt.toISOString().slice(0, 10).replace(/-/g, '')
-    const suffix = randomBytes(3).toString('hex').toUpperCase()
+    const suffix = randomBytes(6).toString('hex').toUpperCase()
     const prefix =
       type === TravelDocumentType.TRAVEL_VOUCHER ? 'VCH' : 'CMP'
     return {
       documentNumber: `PD-${prefix}-${datePart}-${suffix}`,
-      verificationCode: randomBytes(8).toString('hex').toUpperCase(),
+      verificationCode: randomBytes(16).toString('hex').toUpperCase(),
     }
   }
 
