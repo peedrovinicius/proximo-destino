@@ -16,6 +16,7 @@ import {
   ReservationServiceStatus,
   ReservationStatus,
   TripStatus,
+  UserRole,
 } from '@prisma/client'
 import { MercadoPagoConfig, Order, Payment, PaymentRefund } from 'mercadopago'
 import { WhatsAppAutomationService } from '../notifications/whatsapp-automation.service'
@@ -26,6 +27,50 @@ import {
   RegisterManualPaymentDto,
   UpdateReservationPassengersDto,
 } from './dto/reservation.dto'
+
+type AuditCategory =
+  | 'RESERVATIONS'
+  | 'CLIENTS'
+  | 'TRIPS'
+  | 'SEATS'
+  | 'FINANCE'
+  | 'COMMERCIAL'
+  | 'SETTINGS'
+  | 'OTHER'
+
+function auditCategory(eventType: string): AuditCategory {
+  if (eventType.includes('SEAT_') || eventType.includes('BOARDING_')) {
+    return 'SEATS'
+  }
+  if (
+    eventType.includes('PAYMENT_') ||
+    eventType.includes('BONUS_') ||
+    eventType.includes('FINANCE_') ||
+    eventType.includes('INSTALLMENT_')
+  ) {
+    return 'FINANCE'
+  }
+  if (eventType.includes('CLIENT_')) return 'CLIENTS'
+  if (eventType.includes('TRIP_')) return 'TRIPS'
+  if (eventType.includes('RESERVATION_') || eventType.includes('PASSENGER_')) {
+    return 'RESERVATIONS'
+  }
+  if (
+    eventType.includes('QUOTE_') ||
+    eventType.includes('SERVICE_') ||
+    eventType.includes('COMMERCIAL_')
+  ) {
+    return 'COMMERCIAL'
+  }
+  if (
+    eventType.includes('SETTING_') ||
+    eventType.includes('MERCADO_PAGO_') ||
+    eventType.includes('INTEGRATION_')
+  ) {
+    return 'SETTINGS'
+  }
+  return 'OTHER'
+}
 
 @Injectable()
 export class AdminService {
@@ -1689,6 +1734,98 @@ export class AdminService {
       appliedCents: amountCents,
       remainingBonusCents: balanceCents - amountCents,
       quoteTotalCents: quote.totalCents - amountCents,
+    }
+  }
+
+  async auditTrail(
+    rawCategory = 'ALL',
+    rawRole = 'ALL',
+    rawQuery = '',
+    rawFrom?: string,
+    rawTo?: string,
+  ) {
+    const category = rawCategory.trim().toUpperCase()
+    const role = rawRole.trim().toUpperCase()
+    const query = rawQuery.trim().toLowerCase()
+
+    const roleFilter = Object.values(UserRole).includes(role as UserRole)
+      ? (role as UserRole)
+      : null
+
+    const from = rawFrom ? new Date(rawFrom) : null
+    const to = rawTo ? new Date(rawTo) : null
+    const validFrom = from && !Number.isNaN(from.getTime()) ? from : null
+    const validTo = to && !Number.isNaN(to.getTime()) ? to : null
+
+    const events = await this.prisma.authAuditEvent.findMany({
+      where: {
+        eventType: { startsWith: 'OPS_' },
+        ...(roleFilter ? { user: { role: roleFilter } } : {}),
+        ...(validFrom || validTo
+          ? {
+              createdAt: {
+                ...(validFrom ? { gte: validFrom } : {}),
+                ...(validTo ? { lte: validTo } : {}),
+              },
+            }
+          : {}),
+      },
+      select: {
+        id: true,
+        eventType: true,
+        metadata: true,
+        createdAt: true,
+        user: {
+          select: {
+            id: true,
+            email: true,
+            role: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+    })
+
+    const normalized = events.map((event) => ({
+      ...event,
+      category: auditCategory(event.eventType),
+    }))
+
+    const filtered = normalized.filter((event) => {
+      if (category !== 'ALL' && event.category !== category) return false
+      if (!query) return true
+
+      return [
+        event.eventType,
+        event.category,
+        event.user?.email ?? '',
+        event.user?.role ?? '',
+        JSON.stringify(event.metadata ?? {}),
+      ].some((value) => value.toLowerCase().includes(query))
+    })
+
+    const summary = filtered.reduce(
+      (acc, event) => {
+        acc.total += 1
+        acc.byCategory[event.category] =
+          (acc.byCategory[event.category] ?? 0) + 1
+        if (event.user?.role) {
+          acc.byRole[event.user.role] =
+            (acc.byRole[event.user.role] ?? 0) + 1
+        }
+        return acc
+      },
+      {
+        total: 0,
+        byCategory: {} as Record<string, number>,
+        byRole: {} as Record<string, number>,
+      },
+    )
+
+    return {
+      summary,
+      events: filtered.slice(0, 250),
     }
   }
 
