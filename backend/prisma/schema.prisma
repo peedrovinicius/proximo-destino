@@ -131,6 +131,7 @@ model User {
   paymentConnections PaymentProviderConnection[] @relation("PaymentConnectionOwner")
   paymentOauthStates PaymentOAuthState[]
   creditTransactions ClientCreditTransaction[] @relation("CreditActor")
+  notifications      AdminNotification[]
 
   @@index([role, isActive])
 }
@@ -538,4 +539,25 @@ model OutboundMessage {
   @@index([status, scheduledAt])
   @@index([eventType, createdAt])
   @@index([sourceType, sourceId])
+}
+
+
+model AdminNotification {
+  id         String   @id @default(cuid())
+  userId     String
+  type       String
+  title      String
+  message    String
+  sourceKey  String
+  actionTab  String?
+  isRead     Boolean  @default(false)
+  readAt     DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sourceKey])
+  @@index([userId, isRead, createdAt])
+  @@index([type, createdAt])
 }
