@@ -14305,3 +14305,40 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
     width: 100%;
   }
 }
+
+
+/* Role permission states */
+
+.admin-permission-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #dfe7ec;
+  border-radius: 13px;
+  padding: 11px 13px;
+  color: #637a8b;
+  background: #f8fafb;
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.admin-permission-note svg {
+  flex: 0 0 auto;
+  color: #537894;
+}
+
+.admin-reservation-status-readonly {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #dfe7ec;
+  border-radius: 9px;
+  padding: 0 10px;
+  color: #607789;
+  background: #f8fafb;
+  font-size: 8px;
+  font-weight: 800;
+  white-space: nowrap;
+}
