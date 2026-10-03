@@ -9,8 +9,11 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common'
-import { UserRole } from '@prisma/client'
 import { JwtAuthGuard, type AuthenticatedRequest } from '../auth/jwt-auth.guard'
+import {
+  ADMIN_ONLY_ROLES,
+  OPERATIONS_ROLES,
+} from '../auth/role-capabilities'
 import { Roles } from '../auth/roles.decorator'
 import { RolesGuard } from '../auth/roles.guard'
 import { ClientsService } from './clients.service'
@@ -20,7 +23,7 @@ import { RemoveClientBonusDto } from './dto/bonus.dto'
 
 @Controller('admin/clients')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN, UserRole.AGENT)
+@Roles(...OPERATIONS_ROLES)
 export class ClientsController {
   constructor(private readonly clients: ClientsService) {}
 
@@ -40,7 +43,7 @@ export class ClientsController {
   }
 
   @Post(':id/credits/remove')
-  @Roles(UserRole.ADMIN)
+  @Roles(...ADMIN_ONLY_ROLES)
   removeBonus(
     @Param('id') id: string,
     @Body() body: RemoveClientBonusDto,
