@@ -14610,3 +14610,54 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
     display: none;
   }
 }
+
+
+/* Public header right-side actions refinement */
+
+.public-header {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.public-brand-button {
+  justify-self: start;
+}
+
+.public-header-actions {
+  justify-self: end;
+  margin-left: auto;
+  flex-wrap: nowrap;
+}
+
+.public-search-access,
+.public-client-access {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 700px) {
+  .public-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+
+  .public-brand-button {
+    grid-column: 1;
+  }
+
+  .public-header-actions {
+    grid-column: 2;
+    justify-self: end;
+    margin-left: 0;
+  }
+
+  .public-search-access {
+    width: 36px;
+    height: 36px;
+    flex-basis: 36px;
+  }
+
+  .public-client-access {
+    min-width: max-content;
+    height: 36px;
+    padding-inline: 12px;
+  }
+}
