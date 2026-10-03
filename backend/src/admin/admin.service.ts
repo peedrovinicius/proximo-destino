@@ -337,6 +337,7 @@ export class AdminService {
   async updateReservationPassengers(
     id: string,
     data: UpdateReservationPassengersDto,
+    actorUserId?: string,
   ) {
     const current = await this.reservationPassengers(id)
 
@@ -378,6 +379,11 @@ export class AdminService {
       throw new BadRequestException('O passageiro titular deve ter nome')
     }
 
+    const beforeSeats = current.passengers.map((passenger) => ({
+      passengerId: passenger.id,
+      seatNumber: passenger.seatAssignment?.seatNumber ?? null,
+    }))
+
     await this.prisma.$transaction(async (tx) => {
       await tx.seatAssignment.updateMany({
         where: { reservationId: id },
@@ -405,6 +411,27 @@ export class AdminService {
             data: { passengerId: passenger.id },
           })
         }
+      }
+
+      if (actorUserId) {
+        await tx.authAuditEvent.create({
+          data: {
+            userId: actorUserId,
+            eventType: 'OPS_RESERVATION_PASSENGERS_UPDATED',
+            metadata: {
+              reservationId: id,
+              passengerCount: current.passengerCount,
+              beforeSeats,
+              afterSeats: data.passengers.map((passenger) => ({
+                passengerId: passenger.id,
+                seatNumber: passenger.seatNumber ?? null,
+              })),
+              changedPassengerIds: data.passengers.map(
+                (passenger) => passenger.id,
+              ),
+            },
+          },
+        })
       }
     })
 
@@ -1339,7 +1366,10 @@ export class AdminService {
     return this.reservationFinance(id)
   }
 
-  async createReservation(data: CreateReservationDto) {
+  async createReservation(
+    data: CreateReservationDto,
+    actorUserId?: string,
+  ) {
     const [client, trip] = await Promise.all([
       this.prisma.client.findUnique({ where: { id: data.clientId }, select: { id: true } }),
       this.prisma.trip.findUnique({ where: { id: data.tripId }, select: { id: true } }),
@@ -1347,37 +1377,72 @@ export class AdminService {
     if (!client) throw new NotFoundException('Cliente não encontrado')
     if (!trip) throw new NotFoundException('Viagem não encontrada')
 
-    return this.prisma.reservation.create({
-      data: {
-        clientId: data.clientId,
-        tripId: data.tripId,
-      },
-      select: {
-        id: true,
-        status: true,
-        passengerCount: true,
-        seatAssignments: {
-          select: { seatNumber: true },
-          orderBy: { seatNumber: 'asc' },
+    const created = await this.prisma.$transaction(async (tx) => {
+      const reservation = await tx.reservation.create({
+        data: {
+          clientId: data.clientId,
+          tripId: data.tripId,
         },
-        createdAt: true,
-        client: { select: { id: true, fullName: true, email: true, phone: true } },
-        trip: {
-          select: {
-            id: true,
-            title: true,
-            origin: true,
-            destination: true,
-            departureDate: true,
+        select: {
+          id: true,
+          status: true,
+          passengerCount: true,
+          seatAssignments: {
+            select: { seatNumber: true },
+            orderBy: { seatNumber: 'asc' },
+          },
+          createdAt: true,
+          client: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              phone: true,
+            },
+          },
+          trip: {
+            select: {
+              id: true,
+              title: true,
+              origin: true,
+              destination: true,
+              departureDate: true,
+            },
           },
         },
-      },
+      })
+
+      if (actorUserId) {
+        await tx.authAuditEvent.create({
+          data: {
+            userId: actorUserId,
+            eventType: 'OPS_RESERVATION_CREATED',
+            metadata: {
+              reservationId: reservation.id,
+              clientId: data.clientId,
+              tripId: data.tripId,
+              afterStatus: reservation.status,
+            },
+          },
+        })
+      }
+
+      return reservation
     })
+
+    return created
   }
 
-  async updateReservationStatus(id: string, status: ReservationStatus) {
-    const exists = await this.prisma.reservation.count({ where: { id } })
-    if (!exists) throw new NotFoundException('Reserva não encontrada')
+  async updateReservationStatus(
+    id: string,
+    status: ReservationStatus,
+    actorUserId?: string,
+  ) {
+    const current = await this.prisma.reservation.findUnique({
+      where: { id },
+      select: { id: true, status: true },
+    })
+    if (!current) throw new NotFoundException('Reserva não encontrada')
 
     if (status === ReservationStatus.CANCELLED) {
       throw new BadRequestException(
@@ -1385,9 +1450,27 @@ export class AdminService {
       )
     }
 
-    const updated = await this.prisma.reservation.update({
-      where: { id },
-      data: { status },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const reservation = await tx.reservation.update({
+        where: { id },
+        data: { status },
+      })
+
+      if (actorUserId && current.status !== status) {
+        await tx.authAuditEvent.create({
+          data: {
+            userId: actorUserId,
+            eventType: 'OPS_RESERVATION_STATUS_CHANGED',
+            metadata: {
+              reservationId: id,
+              beforeStatus: current.status,
+              afterStatus: status,
+            },
+          },
+        })
+      }
+
+      return reservation
     })
 
     if (status === ReservationStatus.CONFIRMED) {
