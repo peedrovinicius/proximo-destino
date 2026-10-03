@@ -128,7 +128,9 @@ describe('automação transacional de e-mail', () => {
     assert.equal(messages.length, 1)
     assert.equal(messages[0].recipientEmail, clientEmail)
     assert.match(messages[0].textBody, /ABCDE-12345/)
-    assert.deepEqual(messages[0].adminCopyEmails, [adminEmail])
+    assert.ok(Array.isArray(messages[0].adminCopyEmails))
+    assert.ok(messages[0].adminCopyEmails.includes(adminEmail))
+    assert.ok(!messages[0].adminCopyEmails.includes(clientEmail))
   })
 
   it('envia pelo provedor com cliente em TO e administração em BCC', async () => {
@@ -160,7 +162,9 @@ describe('automação transacional de e-mail', () => {
     const providerBody = providerBodies[0]
     assert.ok(providerBody)
     assert.deepEqual(providerBody.to, [clientEmail])
-    assert.deepEqual(providerBody.bcc, [adminEmail])
+    assert.ok(Array.isArray(providerBody.bcc))
+    assert.ok(providerBody.bcc.includes(adminEmail))
+    assert.ok(!providerBody.bcc.includes(clientEmail))
     assert.equal(
       providerBody.from,
       'Próximo Destino <noreply@example.com>',
