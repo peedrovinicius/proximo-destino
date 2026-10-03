@@ -7,6 +7,7 @@ import {
   Gift,
   Globe2,
   CreditCard,
+  History,
   ChevronDown,
   ExternalLink,
   Settings,
@@ -34,6 +35,7 @@ import { TripPhotoPicker } from './TripPhotoPicker'
 import {
   adminApi,
   adminTripImageUrl,
+  type AdminAuditTrail,
   type AdminClient,
   type AdminNotification,
   type AdminNotificationFeed,
@@ -58,7 +60,16 @@ type AdminDashboardProps = {
   onLogout: () => void
 }
 
-type Tab = 'overview' | 'clients' | 'trips' | 'reservations' | 'quotes' | 'payments' | 'finance' | 'settings'
+type Tab =
+  | 'overview'
+  | 'clients'
+  | 'trips'
+  | 'reservations'
+  | 'quotes'
+  | 'payments'
+  | 'finance'
+  | 'audit'
+  | 'settings'
 
 const adminTabs = new Set<Tab>([
   'overview',
@@ -68,6 +79,7 @@ const adminTabs = new Set<Tab>([
   'quotes',
   'payments',
   'finance',
+  'audit',
   'settings',
 ])
 
@@ -215,7 +227,7 @@ export function AdminDashboard({
 
   useEffect(() => {
     if (
-      (!isAdmin && tab === 'settings') ||
+      (!isAdmin && (tab === 'settings' || tab === 'audit')) ||
       (!canViewPayments && tab === 'payments')
     ) {
       navigateTab('overview', true)
@@ -341,7 +353,10 @@ export function AdminDashboard({
           ) : null}
           <button className={tab === 'finance' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('finance')} type="button">Financeiro</button>
           {isAdmin ? (
-            <button className={tab === 'settings' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('settings')} type="button">Configurações</button>
+            <>
+              <button className={tab === 'audit' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('audit')} type="button">Auditoria</button>
+              <button className={tab === 'settings' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('settings')} type="button">Configurações</button>
+            </>
           ) : null}
         </nav>
 
@@ -647,6 +662,10 @@ export function AdminDashboard({
 
         {tab === 'finance' ? (
           <FinanceWorkspace accessToken={accessToken} />
+        ) : null}
+
+        {tab === 'audit' && isAdmin ? (
+          <AuditWorkspace accessToken={accessToken} />
         ) : null}
 
         {tab === 'settings' && isAdmin ? (
