@@ -13,6 +13,7 @@ import {
   Settings,
   CheckCircle2,
   LogOut,
+  Mail,
   Bus,
   Search,
   ShieldCheck,
@@ -45,6 +46,7 @@ import {
   type AdminTrip,
   type BusTemplateOption,
   type DashboardData,
+  type EmailAutomationStatus,
   type SeatLayout,
   type PaymentConnectionStatus,
   type SearchResult,
@@ -1241,6 +1243,101 @@ function PaymentsWorkspace({ accessToken }: { accessToken: string }) {
           <p className="admin-empty">
             Nenhum recebimento manual encontrado para estes filtros.
           </p>
+        )}
+      </article>
+
+      <article className="whatsapp-automation-card">
+        <div className="payment-connection-brand">
+          <span className="whatsapp-automation-icon"><Mail size={20} /></span>
+          <div>
+            <strong>E-mail transacional</strong>
+            <span>Cliente + cópia administrativa em reservas, pagamentos, cancelamentos e documentos</span>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="payment-connection-state">Verificando e-mail...</div>
+        ) : (
+          <>
+            <div
+              className={
+                emailStatus?.providerConfigured
+                  ? 'whatsapp-automation-state whatsapp-automation-state--ready'
+                  : 'whatsapp-automation-state whatsapp-automation-state--waiting'
+              }
+            >
+              {emailStatus?.providerConfigured ? (
+                <CheckCircle2 size={20} />
+              ) : (
+                <Mail size={20} />
+              )}
+              <div>
+                <strong>
+                  {emailStatus?.providerConfigured
+                    ? 'Envio automático conectado'
+                    : 'Fila ativa · provedor ainda não conectado'}
+                </strong>
+                <span>
+                  {emailStatus?.providerConfigured
+                    ? 'Os e-mails transacionais são enviados automaticamente e a administração recebe cópia oculta.'
+                    : 'Nenhum e-mail é marcado como enviado sem confirmação do provedor. A fila permanece salva para reprocessamento.'}
+                </span>
+              </div>
+            </div>
+
+            <div className="whatsapp-automation-metrics">
+              <div>
+                <small>Pendentes</small>
+                <strong>{emailStatus?.counts.pending ?? 0}</strong>
+              </div>
+              <div>
+                <small>Enviados</small>
+                <strong>{emailStatus?.counts.sent ?? 0}</strong>
+              </div>
+              <div>
+                <small>Falhas</small>
+                <strong>{emailStatus?.counts.failed ?? 0}</strong>
+              </div>
+            </div>
+
+            <div className="whatsapp-automation-events">
+              <span>Nova reserva</span>
+              <span>Pagamento</span>
+              <span>Cotação</span>
+              <span>Cancelamento</span>
+              <span>Estorno</span>
+              <span>Voucher / comprovante</span>
+              <span>Lembrete 24h</span>
+            </div>
+
+            <div className="payment-connection-copy">
+              <strong>
+                {emailStatus?.adminCopyConfigured
+                  ? 'Cópia administrativa configurada'
+                  : 'Cópia administrativa sem endereço'}
+              </strong>
+              <span>
+                {emailStatus?.adminCopyConfigured
+                  ? 'Os e-mails do cliente também geram cópia administrativa por BCC, sem expor o endereço ao passageiro.'
+                  : 'Configure ADMIN_EMAIL para receber as cópias administrativas.'}
+              </span>
+            </div>
+
+            <div className="payment-connection-actions">
+              <button
+                type="button"
+                className="payment-secondary-action"
+                onClick={() => void processEmail()}
+                disabled={emailWorking}
+              >
+                {emailWorking ? 'Processando...' : 'Processar fila de e-mail'}
+              </button>
+            </div>
+
+            {emailMessage ? (
+              <p className="payment-connection-message">{emailMessage}</p>
+            ) : null}
+          </>
         )}
       </article>
     </section>
@@ -2690,21 +2787,26 @@ function ReservationsView({
 function PaymentSettings({ accessToken }: { accessToken: string }) {
   const [status, setStatus] = useState<PaymentConnectionStatus | null>(null)
   const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppAutomationStatus | null>(null)
+  const [emailStatus, setEmailStatus] = useState<EmailAutomationStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [working, setWorking] = useState(false)
   const [whatsappWorking, setWhatsappWorking] = useState(false)
+  const [emailWorking, setEmailWorking] = useState(false)
   const [message, setMessage] = useState('')
   const [whatsappMessage, setWhatsappMessage] = useState('')
+  const [emailMessage, setEmailMessage] = useState('')
 
   async function load() {
     setLoading(true)
     try {
-      const [payment, whatsapp] = await Promise.all([
+      const [payment, whatsapp, email] = await Promise.all([
         adminApi.paymentConnection(accessToken),
         adminApi.whatsappAutomationStatus(accessToken),
+        adminApi.emailAutomationStatus(accessToken),
       ])
       setStatus(payment)
       setWhatsappStatus(whatsapp)
+      setEmailStatus(email)
     } finally {
       setLoading(false)
     }
@@ -2729,6 +2831,29 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
       )
     } finally {
       setWhatsappWorking(false)
+    }
+  }
+
+
+  async function processEmail() {
+    setEmailWorking(true)
+    setEmailMessage('')
+    try {
+      const next = await adminApi.processEmailOutbox(accessToken)
+      setEmailStatus(next)
+      setEmailMessage(
+        next.providerConfigured
+          ? `Fila processada: ${next.processed} e-mail(s) verificado(s).`
+          : 'Os e-mails estão sendo registrados, mas o provedor de envio ainda não está conectado.',
+      )
+    } catch (cause) {
+      setEmailMessage(
+        cause instanceof Error
+          ? cause.message
+          : 'Não foi possível processar a fila de e-mail.',
+      )
+    } finally {
+      setEmailWorking(false)
     }
   }
 
