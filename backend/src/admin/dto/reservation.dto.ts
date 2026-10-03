@@ -5,14 +5,16 @@ import {
   IsEnum,
   IsInt,
   IsBoolean,
+  IsISO8601,
   IsOptional,
   IsString,
   Max,
   MaxLength,
   Min,
+  MinLength,
   ValidateNested,
 } from 'class-validator'
-import { ReservationStatus } from '@prisma/client'
+import { ManualPaymentMethod, ReservationStatus } from '@prisma/client'
 
 export class CreateReservationDto {
   @IsString()
@@ -106,4 +108,41 @@ export class ResolveCancellationRequestDto {
   @IsString()
   @MaxLength(300)
   note?: string
+}
+
+
+export class RegisterManualPaymentDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  amountCents!: number
+
+  @IsEnum(ManualPaymentMethod)
+  method!: ManualPaymentMethod
+
+  @IsOptional()
+  @IsISO8601()
+  paidAt?: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  installmentId?: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  reference?: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  note?: string
+}
+
+export class ReverseManualPaymentDto {
+  @IsString()
+  @MinLength(3)
+  @MaxLength(300)
+  reason!: string
 }
