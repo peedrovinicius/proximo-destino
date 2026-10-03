@@ -332,12 +332,16 @@ export class EmailAutomationService
       grouped.map((item) => [item.status, item._count._all]),
     )
 
+    const parsedFrom = this.parseFrom(provider.from)
+
     return {
       enabled: provider.automationEnabled,
       connected: provider.connectionSource !== 'NONE',
       connectionSource: provider.connectionSource,
       connectedAt: provider.connectedAt,
       from: provider.from || null,
+      fromName: parsedFrom.name,
+      fromEmail: parsedFrom.email,
       replyTo: provider.replyTo,
       adminCopyEmail: provider.adminCopyEmail,
       providerConfigured: provider.configured,
