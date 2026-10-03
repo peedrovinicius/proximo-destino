@@ -1208,6 +1208,25 @@ export class AdminService {
         },
       })
 
+      if (status === PurchaseStatus.PAID) {
+        await tx.reservation.update({
+          where: { id },
+          data: { status: ReservationStatus.CONFIRMED },
+        })
+      } else if (
+        status === PurchaseStatus.CANCELLED ||
+        status === PurchaseStatus.EXPIRED ||
+        status === PurchaseStatus.REFUNDED
+      ) {
+        await tx.seatAssignment.deleteMany({
+          where: { reservationId: id },
+        })
+        await tx.reservation.update({
+          where: { id },
+          data: { status: ReservationStatus.CANCELLED },
+        })
+      }
+
       await tx.authAuditEvent.create({
         data: {
           userId: actorUserId,
@@ -1215,13 +1234,63 @@ export class AdminService {
           metadata: {
             reservationId: id,
             purchaseOrderId: purchase.id,
+            beforeStatus: purchase.status,
             status,
             providerStatus,
+            beforeRefundedCents: purchase.refundedCents,
             refundedCents,
           },
         },
       })
     })
+
+    if (
+      purchase.status !== status &&
+      status === PurchaseStatus.PAID
+    ) {
+      await this.safeWhatsApp(() =>
+        this.whatsapp?.enqueuePaymentConfirmed(purchase.id),
+      )
+      await this.safeWhatsApp(() =>
+        this.whatsapp?.enqueueReservationConfirmed(id),
+      )
+      await this.safeEmail(() =>
+        this.email?.enqueuePaymentConfirmed(purchase.id),
+      )
+      await this.safeEmail(() =>
+        this.email?.enqueueReservationConfirmed(id),
+      )
+    }
+
+    const newlyRefundedCents = Math.max(
+      refundedCents - purchase.refundedCents,
+      0,
+    )
+    if (newlyRefundedCents > 0) {
+      await this.safeEmail(() =>
+        this.email?.enqueuePaymentRefunded(
+          id,
+          newlyRefundedCents,
+          `reconcile:${purchase.id}:${refundedCents}`,
+        ),
+      )
+    }
+
+    if (
+      purchase.status !== status &&
+      (
+        status === PurchaseStatus.CANCELLED ||
+        status === PurchaseStatus.EXPIRED ||
+        status === PurchaseStatus.REFUNDED
+      )
+    ) {
+      await this.safeWhatsApp(() =>
+        this.whatsapp?.enqueueReservationCancelled(id),
+      )
+      await this.safeEmail(() =>
+        this.email?.enqueueReservationCancelled(id),
+      )
+    }
 
     return this.reservationFinance(id)
   }
