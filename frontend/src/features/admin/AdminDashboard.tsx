@@ -2907,6 +2907,25 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
   useEffect(() => {
     void load()
 
+    const url = new URL(window.location.href)
+    const emailConnectionResult =
+      url.searchParams.get('emailConnection')
+
+    if (emailConnectionResult) {
+      setEmailMessage(
+        emailConnectionResult === 'success'
+          ? 'Conta Resend conectada. Revise o remetente, envie um teste e ative a automação.'
+          : 'Não foi possível concluir a autorização do Resend.',
+      )
+      url.searchParams.delete('emailConnection')
+      window.history.replaceState(
+        window.history.state,
+        '',
+        url.pathname + url.search + url.hash,
+      )
+      void load()
+    }
+
     function applyOAuthResult(status: string | undefined) {
       setMessage(
         status === 'success'
@@ -2923,10 +2942,20 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
     }
 
     function onStorage(event: StorageEvent) {
-      if (event.key !== 'mercado-pago-oauth-result' || !event.newValue) return
+      if (
+        event.key !== 'mercado-pago-oauth-result' ||
+        !event.newValue
+      ) {
+        return
+      }
       try {
-        const payload = JSON.parse(event.newValue) as { type?: string; status?: string }
-        if (payload.type === 'MERCADO_PAGO_OAUTH') applyOAuthResult(payload.status)
+        const payload = JSON.parse(event.newValue) as {
+          type?: string
+          status?: string
+        }
+        if (payload.type === 'MERCADO_PAGO_OAUTH') {
+          applyOAuthResult(payload.status)
+        }
       } catch {
         // sinal inválido
       }
@@ -3151,7 +3180,7 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
           <span className="whatsapp-automation-icon"><Mail size={20} /></span>
           <div>
             <strong>E-mail transacional</strong>
-            <span>Conexão gerenciada pelo dono da plataforma · cliente + cópia administrativa</span>
+            <span>Conta Resend conectada pelo dono · cliente + cópia administrativa</span>
           </div>
         </div>
 
@@ -3173,33 +3202,84 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
               )}
               <div>
                 <strong>
-                  {emailStatus.productionReady
-                    ? emailStatus.enabled
-                      ? 'Conectado e enviando automaticamente'
-                      : 'Conectado · envio automático pausado'
-                    : 'Resend conectado · modo de teste'}
+                  {emailStatus.connectionMode === 'OAUTH'
+                    ? emailStatus.productionReady
+                      ? emailStatus.enabled
+                        ? 'Conta Resend conectada · envio automático ativo'
+                        : 'Conta Resend conectada · automação pausada'
+                      : 'Conta Resend conectada · remetente em modo de teste'
+                    : 'Conectado por chave · migração para login disponível'}
                 </strong>
                 <span>
-                  {emailStatus.productionReady
-                    ? 'A credencial fica criptografada no banco e pode ser gerenciada nesta própria tela.'
-                    : 'O remetente @resend.dev serve para testes. Para enviar aos clientes, use um e-mail de domínio próprio verificado no Resend.'}
+                  {emailStatus.connectionMode === 'OAUTH'
+                    ? emailStatus.productionReady
+                      ? 'A autorização usa OAuth com renovação automática. Nenhuma senha ou chave precisa ser copiada pelo dono.'
+                      : 'A conta já está autorizada. Defina abaixo um remetente de domínio próprio verificado no Resend para liberar os clientes.'
+                    : 'A integração atual continua funcionando, mas você pode migrar para login Resend sem interromper a fila.'}
                 </span>
               </div>
             </div>
 
             <div className="email-connection-details">
               <div>
-                <small>Remetente</small>
-                <strong>{emailStatus.from || 'Não informado'}</strong>
+                <small>Conexão</small>
+                <strong>
+                  {emailStatus.connectionMode === 'OAUTH'
+                    ? 'Login Resend (OAuth)'
+                    : 'Chave de API (legado)'}
+                </strong>
               </div>
               <div>
-                <small>Responder para</small>
-                <strong>{emailStatus.replyTo || 'Não informado'}</strong>
+                <small>Remetente</small>
+                <strong>{emailStatus.from || 'Não informado'}</strong>
               </div>
               <div>
                 <small>Cópia administrativa</small>
                 <strong>{emailStatus.adminCopyEmail || 'Administradores ativos'}</strong>
               </div>
+            </div>
+
+            <div className="email-connection-form">
+              <label>
+                <span>Nome do remetente</span>
+                <input
+                  value={emailFromName}
+                  onChange={(event) => setEmailFromName(event.target.value)}
+                  placeholder="Próximo Destino"
+                />
+              </label>
+
+              <label>
+                <span>E-mail remetente</span>
+                <input
+                  type="email"
+                  value={emailFromEmail}
+                  onChange={(event) => setEmailFromEmail(event.target.value)}
+                  placeholder="atendimento@seudominio.com.br"
+                />
+                <small>O domínio precisa estar verificado no Resend.</small>
+              </label>
+
+              <label>
+                <span>Responder para</span>
+                <input
+                  type="email"
+                  value={emailReplyTo}
+                  onChange={(event) => setEmailReplyTo(event.target.value)}
+                  placeholder="atendimento@seudominio.com.br"
+                />
+              </label>
+
+              <label>
+                <span>Cópia administrativa</span>
+                <input
+                  type="email"
+                  value={emailAdminCopy}
+                  onChange={(event) => setEmailAdminCopy(event.target.value)}
+                  placeholder="administracao@seudominio.com.br"
+                />
+                <small>Recebe BCC sem aparecer para o cliente.</small>
+              </label>
             </div>
 
             <div className="whatsapp-automation-metrics">
@@ -3229,13 +3309,32 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
             </div>
 
             <div className="payment-connection-actions">
+              {emailStatus.connectionMode !== 'OAUTH' ? (
+                <button
+                  type="button"
+                  className="payment-primary-action"
+                  onClick={() => void connectEmailOAuth()}
+                  disabled={emailWorking}
+                >
+                  {emailWorking ? 'Abrindo Resend...' : 'Conectar conta Resend'}
+                  <ExternalLink size={15} />
+                </button>
+              ) : null}
               <button
                 type="button"
-                className="payment-primary-action"
+                className="payment-secondary-action"
+                onClick={() => void saveEmailSettings()}
+                disabled={emailWorking || !emailFromEmail.trim()}
+              >
+                Salvar remetente
+              </button>
+              <button
+                type="button"
+                className="payment-secondary-action"
                 onClick={() => void sendEmailTest()}
                 disabled={emailWorking || !emailStatus.adminCopyConfigured}
               >
-                {emailWorking ? 'Processando...' : 'Enviar e-mail de teste'}
+                Enviar e-mail de teste
               </button>
               <button
                 type="button"
@@ -3271,76 +3370,22 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
             <div className="payment-onboarding-steps" aria-label="Etapas para conectar e-mail">
               <div>
                 <span>1</span>
-                <p><strong>Conectar Resend</strong><small>Cole a chave criada na sua conta.</small></p>
+                <p><strong>Entrar no Resend</strong><small>O dono autoriza a conta na página oficial.</small></p>
               </div>
               <div>
                 <span>2</span>
-                <p><strong>Definir remetente</strong><small>Nome, e-mail e cópia administrativa.</small></p>
+                <p><strong>Definir remetente</strong><small>Escolha o e-mail verificado da empresa.</small></p>
               </div>
               <div>
                 <span>3</span>
-                <p><strong>Testar e ativar</strong><small>Confirme a entrega antes de liberar clientes.</small></p>
+                <p><strong>Testar e ativar</strong><small>Valide a entrega antes de liberar clientes.</small></p>
               </div>
             </div>
 
-            <div className="email-connection-form">
-              <label>
-                <span>Chave do Resend</span>
-                <input
-                  type="password"
-                  autoComplete="new-password"
-                  value={emailApiKey}
-                  onChange={(event) => setEmailApiKey(event.target.value)}
-                  placeholder="re_••••••••••••"
-                />
-                <small>A chave é criptografada e nunca volta a aparecer nesta tela.</small>
-              </label>
-
-              <label>
-                <span>Nome do remetente</span>
-                <input
-                  value={emailFromName}
-                  onChange={(event) => setEmailFromName(event.target.value)}
-                  placeholder="Próximo Destino"
-                />
-              </label>
-
-              <label>
-                <span>E-mail remetente</span>
-                <input
-                  type="email"
-                  value={emailFromEmail}
-                  onChange={(event) => setEmailFromEmail(event.target.value)}
-                  placeholder="contato@seudominio.com.br"
-                />
-              </label>
-
-              <label>
-                <span>Responder para</span>
-                <input
-                  type="email"
-                  value={emailReplyTo}
-                  onChange={(event) => setEmailReplyTo(event.target.value)}
-                  placeholder="atendimento@seudominio.com.br"
-                />
-              </label>
-
-              <label>
-                <span>Cópia administrativa</span>
-                <input
-                  type="email"
-                  value={emailAdminCopy}
-                  onChange={(event) => setEmailAdminCopy(event.target.value)}
-                  placeholder="seuemail@exemplo.com"
-                />
-                <small>Recebe BCC dos e-mails enviados ao cliente.</small>
-              </label>
-            </div>
-
             <div className="payment-connection-copy">
-              <strong>Sem senha da sua caixa de e-mail</strong>
+              <strong>Sem senha e sem copiar chave</strong>
               <span>
-                A plataforma usa uma chave de API do Resend. Sua senha pessoal do Gmail, Outlook ou outro provedor não é armazenada.
+                A autorização acontece diretamente no Resend via OAuth. A Próximo Destino recebe apenas a permissão necessária para enviar e-mails.
               </span>
             </div>
 
@@ -3348,14 +3393,11 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
               <button
                 type="button"
                 className="payment-primary-action"
-                onClick={() => void connectEmail()}
-                disabled={
-                  emailWorking ||
-                  !emailApiKey.trim() ||
-                  !emailFromEmail.trim()
-                }
+                onClick={() => void connectEmailOAuth()}
+                disabled={emailWorking}
               >
-                {emailWorking ? 'Conectando...' : 'Conectar e-mail'}
+                {emailWorking ? 'Abrindo Resend...' : 'Conectar Resend'}
+                <ExternalLink size={15} />
               </button>
             </div>
           </>
