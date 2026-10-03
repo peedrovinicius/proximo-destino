@@ -55,12 +55,19 @@ export class ClientsController {
   }
 
   @Post()
-  create(@Body() body: CreateClientDto) {
-    return this.clients.create(body)
+  create(
+    @Body() body: CreateClientDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.clients.create(body, request.user.id)
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() body: UpdateClientDto) {
-    return this.clients.update(id, body)
+  update(
+    @Param('id') id: string,
+    @Body() body: UpdateClientDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.clients.update(id, body, request.user.id)
   }
 }
