@@ -7,17 +7,17 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common'
-import { UserRole } from '@prisma/client'
 import type { Response } from 'express'
 import type { AuthenticatedRequest } from '../auth/jwt-auth.guard'
 import { JwtAuthGuard } from '../auth/jwt-auth.guard'
+import { ADMIN_ONLY_ROLES } from '../auth/role-capabilities'
 import { Roles } from '../auth/roles.decorator'
 import { RolesGuard } from '../auth/roles.guard'
 import { PaymentConnectionService } from './payment-connection.service'
 
 @Controller('admin/payments')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN)
+@Roles(...ADMIN_ONLY_ROLES)
 export class PaymentConnectionAdminController {
   constructor(private readonly payments: PaymentConnectionService) {}
 
