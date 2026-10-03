@@ -100,7 +100,8 @@ export class AdminService {
     })
   }
 
-  async dashboard() {
+  async dashboard(role: UserRole = UserRole.ADMIN) {
+    const canViewRelationship = role !== UserRole.FINANCE
     const [clients, pendingReservations, activeTrips, confirmedReservations, birthdays] =
       await Promise.all([
         this.prisma.client.count(),
@@ -113,10 +114,17 @@ export class AdminService {
         this.prisma.reservation.count({
           where: { status: ReservationStatus.CONFIRMED },
         }),
-        this.prisma.client.findMany({
-          where: { birthDate: { not: null } },
-          select: { id: true, fullName: true, phone: true, birthDate: true },
-        }),
+        canViewRelationship
+          ? this.prisma.client.findMany({
+              where: { birthDate: { not: null } },
+              select: {
+                id: true,
+                fullName: true,
+                phone: true,
+                birthDate: true,
+              },
+            })
+          : Promise.resolve([]),
       ])
 
     const now = new Date()
@@ -1912,13 +1920,18 @@ export class AdminService {
     }
   }
 
-  async search(rawQuery: string) {
+  async search(
+    rawQuery: string,
+    role: UserRole = UserRole.ADMIN,
+  ) {
     const query = rawQuery.trim()
     if (query.length < 2) return { clients: [], trips: [], reservations: [] }
     const documentQuery = query.replace(/\D/g, '')
+    const canSearchOperations = role !== UserRole.FINANCE
 
     const [clients, trips, reservations] = await Promise.all([
-      this.prisma.client.findMany({
+      canSearchOperations
+        ? this.prisma.client.findMany({
         where: {
           OR: [
             { fullName: { contains: query, mode: 'insensitive' } },
@@ -1937,8 +1950,10 @@ export class AdminService {
           document: true,
         },
         take: 8,
-      }),
-      this.prisma.trip.findMany({
+      })
+        : Promise.resolve([]),
+      canSearchOperations
+        ? this.prisma.trip.findMany({
         where: {
           OR: [
             { title: { contains: query, mode: 'insensitive' } },
@@ -1955,7 +1970,8 @@ export class AdminService {
           status: true,
         },
         take: 8,
-      }),
+      })
+        : Promise.resolve([]),
       this.prisma.reservation.findMany({
         where: {
           OR: [
