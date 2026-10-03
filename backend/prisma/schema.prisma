@@ -141,6 +141,7 @@ model User {
   issuedDocuments   TravelDocument[]
   paymentConnections PaymentProviderConnection[] @relation("PaymentConnectionOwner")
   emailConnections   EmailProviderConnection[]   @relation("EmailConnectionOwner")
+  emailOauthStates    EmailOAuthState[]
   paymentOauthStates PaymentOAuthState[]
   creditTransactions ClientCreditTransaction[] @relation("CreditActor")
   notifications      AdminNotification[]
@@ -516,21 +517,40 @@ model PaymentProviderConnection {
 }
 
 model EmailProviderConnection {
-  id                 String   @id @default(cuid())
-  provider           String   @unique
-  apiKeyEncrypted    String
-  fromName           String?
-  fromEmail          String
-  replyToEmail       String?
-  adminCopyEmail     String?
-  automationEnabled  Boolean  @default(false)
-  connectedByUserId  String?
-  connectedAt        DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                    String   @id @default(cuid())
+  provider              String   @unique
+  apiKeyEncrypted       String?
+  accessTokenEncrypted  String?
+  refreshTokenEncrypted String?
+  scope                 String?
+  expiresAt             DateTime?
+  fromName              String?
+  fromEmail             String
+  replyToEmail          String?
+  adminCopyEmail        String?
+  automationEnabled     Boolean  @default(false)
+  connectedByUserId     String?
+  connectedAt           DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   connectedBy User? @relation("EmailConnectionOwner", fields: [connectedByUserId], references: [id], onDelete: SetNull)
 
   @@index([connectedByUserId])
+}
+
+model EmailOAuthState {
+  id                    String   @id @default(cuid())
+  provider              String
+  stateHash             String   @unique
+  userId                String
+  codeVerifierEncrypted String
+  expiresAt             DateTime
+  usedAt                DateTime?
+  createdAt             DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
 }
 
 model PaymentOAuthState {
