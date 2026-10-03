@@ -28,6 +28,7 @@ import {
   WebhookSignatureValidator,
 } from 'mercadopago'
 import { randomBytes } from 'node:crypto'
+import { WhatsAppAutomationService } from '../notifications/whatsapp-automation.service'
 import { PaymentConnectionService } from '../payments/payment-connection.service'
 import { PrismaService } from '../prisma/prisma.service'
 import {
@@ -44,7 +45,17 @@ export class PortalService {
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     @Optional() private readonly paymentConnection?: PaymentConnectionService,
+    @Optional() private readonly whatsapp?: WhatsAppAutomationService,
   ) {}
+
+  private async safeWhatsApp(action: () => Promise<unknown> | undefined) {
+    if (!this.whatsapp) return
+    try {
+      await action()
+    } catch {
+      // A comunicação não pode invalidar pagamento ou reserva.
+    }
+  }
 
   async paymentConfig() {
     const configured = this.paymentConnection
@@ -581,6 +592,23 @@ export class PortalService {
         })
       }
     })
+
+    if (status === PurchaseStatus.PAID) {
+      await this.safeWhatsApp(() =>
+        this.whatsapp?.enqueuePaymentConfirmed(purchaseOrderId),
+      )
+      await this.safeWhatsApp(() =>
+        this.whatsapp?.enqueueReservationConfirmed(purchase.reservationId),
+      )
+    } else if (
+      status === PurchaseStatus.CANCELLED ||
+      status === PurchaseStatus.EXPIRED ||
+      status === PurchaseStatus.REFUNDED
+    ) {
+      await this.safeWhatsApp(() =>
+        this.whatsapp?.enqueueReservationCancelled(purchase.reservationId),
+      )
+    }
 
     return { updated: true, status }
   }
