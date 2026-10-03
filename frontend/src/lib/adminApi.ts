@@ -534,6 +534,28 @@ export type PaymentConnectionStatus = {
   expiresAt: string | null
 }
 
+export type AdminNotification = {
+  id: string
+  type:
+    | 'RESERVATION_PENDING'
+    | 'PAYMENT_PENDING'
+    | 'TRIP_UPCOMING'
+    | 'BIRTHDAY'
+    | 'CANCELLATION_REQUEST'
+    | string
+  title: string
+  message: string
+  actionTab: string | null
+  isRead: boolean
+  readAt: string | null
+  createdAt: string
+}
+
+export type AdminNotificationFeed = {
+  unreadCount: number
+  items: AdminNotification[]
+}
+
 export type WhatsAppAutomationStatus = {
   enabled: boolean
   providerConfigured: boolean
@@ -828,6 +850,26 @@ export const adminApi = {
 
   paymentConnection: (token: string) =>
     adminFetch<PaymentConnectionStatus>(token, '/admin/payments/mercado-pago'),
+
+  notifications: (token: string, limit = 80) =>
+    adminFetch<AdminNotificationFeed>(
+      token,
+      `/admin/notifications?limit=${limit}`,
+    ),
+
+  markNotificationRead: (token: string, id: string) =>
+    adminFetch<AdminNotification>(
+      token,
+      `/admin/notifications/${encodeURIComponent(id)}/read`,
+      { method: 'PATCH' },
+    ),
+
+  markAllNotificationsRead: (token: string) =>
+    adminFetch<{ updated: number }>(
+      token,
+      '/admin/notifications/read-all',
+      { method: 'POST' },
+    ),
 
   whatsappAutomationStatus: (token: string) =>
     adminFetch<WhatsAppAutomationStatus>(
