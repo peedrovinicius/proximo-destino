@@ -43,7 +43,7 @@ export function originProtection(
           message: 'Origem da requisição não permitida',
           requestId: request.requestId ?? null,
           timestamp: new Date().toISOString(),
-          path: request.originalUrl,
+          path: request.path,
         })
         return
       }
@@ -54,7 +54,7 @@ export function originProtection(
         message: 'Origem da requisição não permitida',
         requestId: request.requestId ?? null,
         timestamp: new Date().toISOString(),
-        path: request.originalUrl,
+        path: request.path,
       })
       return
     }
