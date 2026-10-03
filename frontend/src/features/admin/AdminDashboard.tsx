@@ -2701,6 +2701,11 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
   const [message, setMessage] = useState('')
   const [whatsappMessage, setWhatsappMessage] = useState('')
   const [emailMessage, setEmailMessage] = useState('')
+  const [emailApiKey, setEmailApiKey] = useState('')
+  const [emailFromName, setEmailFromName] = useState('Próximo Destino')
+  const [emailFromEmail, setEmailFromEmail] = useState('')
+  const [emailReplyTo, setEmailReplyTo] = useState('')
+  const [emailAdminCopy, setEmailAdminCopy] = useState('')
 
   async function load() {
     setLoading(true)
@@ -2713,6 +2718,10 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
       setStatus(payment)
       setWhatsappStatus(whatsapp)
       setEmailStatus(email)
+      setEmailFromName(email.fromName || 'Próximo Destino')
+      setEmailFromEmail(email.fromEmail || '')
+      setEmailReplyTo(email.replyTo || '')
+      setEmailAdminCopy(email.adminCopyEmail || '')
     } finally {
       setLoading(false)
     }
@@ -2757,6 +2766,88 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
         cause instanceof Error
           ? cause.message
           : 'Não foi possível processar a fila de e-mail.',
+      )
+    } finally {
+      setEmailWorking(false)
+    }
+  }
+
+  async function connectEmail() {
+    if (!emailApiKey.trim() || !emailFromEmail.trim()) {
+      setEmailMessage('Informe a chave do Resend e o e-mail remetente.')
+      return
+    }
+
+    setEmailWorking(true)
+    setEmailMessage('')
+    try {
+      const next = await adminApi.connectEmailProvider(accessToken, {
+        apiKey: emailApiKey.trim(),
+        fromName: emailFromName.trim() || undefined,
+        fromEmail: emailFromEmail.trim(),
+        replyToEmail: emailReplyTo.trim() || undefined,
+        adminCopyEmail: emailAdminCopy.trim() || undefined,
+      })
+      setEmailStatus(next)
+      setEmailApiKey('')
+      setEmailMessage(
+        next.testOnly
+          ? 'Resend conectado em modo de teste. Envie um teste e depois use um domínio próprio verificado para liberar clientes.'
+          : 'E-mail conectado. Faça um teste antes de ativar o envio automático.',
+      )
+    } catch (cause) {
+      setEmailMessage(
+        cause instanceof Error
+          ? cause.message
+          : 'Não foi possível conectar o e-mail.',
+      )
+    } finally {
+      setEmailWorking(false)
+    }
+  }
+
+  async function disconnectEmail() {
+    if (!window.confirm('Desconectar o provedor de e-mail desta plataforma?')) {
+      return
+    }
+    setEmailWorking(true)
+    setEmailMessage('')
+    try {
+      await adminApi.disconnectEmailProvider(accessToken)
+      setEmailApiKey('')
+      setEmailMessage('Provedor de e-mail desconectado.')
+      await load()
+    } catch (cause) {
+      setEmailMessage(
+        cause instanceof Error
+          ? cause.message
+          : 'Não foi possível desconectar o e-mail.',
+      )
+    } finally {
+      setEmailWorking(false)
+    }
+  }
+
+  async function toggleEmailAutomation() {
+    if (!emailStatus?.connected) return
+    setEmailWorking(true)
+    setEmailMessage('')
+    try {
+      const next = await adminApi.setEmailAutomation(
+        accessToken,
+        !emailStatus.enabled,
+      )
+      setEmailStatus(next)
+      setEmailMessage(
+        next.enabled
+          ? 'Envio automático ativado.'
+          : 'Envio automático pausado. Novos eventos continuam salvos na fila.',
+      )
+    } catch (cause) {
+      setEmailMessage(
+        cause instanceof Error
+          ? cause.message
+          : 'Não foi possível alterar a automação de e-mail.',
       )
     } finally {
       setEmailWorking(false)
@@ -3045,56 +3136,69 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
           <span className="whatsapp-automation-icon"><Mail size={20} /></span>
           <div>
             <strong>E-mail transacional</strong>
-            <span>Cliente + cópia administrativa em reservas, pagamentos, cancelamentos e documentos</span>
+            <span>Conexão gerenciada pelo dono da plataforma · cliente + cópia administrativa</span>
           </div>
         </div>
 
         {loading ? (
           <div className="payment-connection-state">Verificando e-mail...</div>
-        ) : (
+        ) : emailStatus?.connected ? (
           <>
             <div
               className={
-                emailStatus?.productionReady
+                emailStatus.productionReady
                   ? 'whatsapp-automation-state whatsapp-automation-state--ready'
                   : 'whatsapp-automation-state whatsapp-automation-state--waiting'
               }
             >
-              {emailStatus?.productionReady ? (
+              {emailStatus.productionReady ? (
                 <CheckCircle2 size={20} />
               ) : (
                 <Mail size={20} />
               )}
               <div>
                 <strong>
-                  {emailStatus?.productionReady
-                    ? 'Envio automático conectado'
-                    : emailStatus?.testOnly
-                      ? 'Resend conectado · modo de teste'
-                      : 'Fila ativa · provedor ainda não conectado'}
+                  {emailStatus.productionReady
+                    ? emailStatus.enabled
+                      ? 'Conectado e enviando automaticamente'
+                      : 'Conectado · envio automático pausado'
+                    : 'Resend conectado · modo de teste'}
                 </strong>
                 <span>
-                  {emailStatus?.productionReady
-                    ? 'Os e-mails transacionais são enviados automaticamente e a administração recebe cópia oculta.'
-                    : emailStatus?.testOnly
-                      ? 'O teste administrativo pode ser enviado, mas mensagens de clientes permanecem na fila até um domínio próprio ser verificado no Resend.'
-                      : 'Nenhum e-mail é marcado como enviado sem confirmação do provedor. A fila permanece salva para reprocessamento.'}
+                  {emailStatus.productionReady
+                    ? 'A credencial fica criptografada no banco e pode ser gerenciada nesta própria tela.'
+                    : 'O remetente @resend.dev serve para testes. Para enviar aos clientes, use um e-mail de domínio próprio verificado no Resend.'}
                 </span>
+              </div>
+            </div>
+
+            <div className="email-connection-details">
+              <div>
+                <small>Remetente</small>
+                <strong>{emailStatus.from || 'Não informado'}</strong>
+              </div>
+              <div>
+                <small>Responder para</small>
+                <strong>{emailStatus.replyTo || 'Não informado'}</strong>
+              </div>
+              <div>
+                <small>Cópia administrativa</small>
+                <strong>{emailStatus.adminCopyEmail || 'Administradores ativos'}</strong>
               </div>
             </div>
 
             <div className="whatsapp-automation-metrics">
               <div>
                 <small>Pendentes</small>
-                <strong>{emailStatus?.counts.pending ?? 0}</strong>
+                <strong>{emailStatus.counts.pending}</strong>
               </div>
               <div>
                 <small>Enviados</small>
-                <strong>{emailStatus?.counts.sent ?? 0}</strong>
+                <strong>{emailStatus.counts.sent}</strong>
               </div>
               <div>
                 <small>Falhas</small>
-                <strong>{emailStatus?.counts.failed ?? 0}</strong>
+                <strong>{emailStatus.counts.failed}</strong>
               </div>
             </div>
 
@@ -3106,29 +3210,28 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
               <span>Estorno</span>
               <span>Voucher / comprovante</span>
               <span>Lembrete 24h</span>
-            </div>
-
-            <div className="payment-connection-copy">
-              <strong>
-                {emailStatus?.adminCopyConfigured
-                  ? 'Cópia administrativa configurada'
-                  : 'Cópia administrativa sem endereço'}
-              </strong>
-              <span>
-                {emailStatus?.adminCopyConfigured
-                  ? 'Os e-mails do cliente também geram cópia administrativa por BCC, sem expor o endereço ao passageiro.'
-                  : 'Configure ADMIN_EMAIL para receber as cópias administrativas.'}
-              </span>
+              <span>Aniversário</span>
             </div>
 
             <div className="payment-connection-actions">
               <button
                 type="button"
-                className="payment-secondary-action"
+                className="payment-primary-action"
                 onClick={() => void sendEmailTest()}
-                disabled={emailWorking || !emailStatus?.adminCopyConfigured}
+                disabled={emailWorking || !emailStatus.adminCopyConfigured}
               >
                 {emailWorking ? 'Processando...' : 'Enviar e-mail de teste'}
+              </button>
+              <button
+                type="button"
+                className="payment-secondary-action"
+                onClick={() => void toggleEmailAutomation()}
+                disabled={
+                  emailWorking ||
+                  (!emailStatus.productionReady && !emailStatus.enabled)
+                }
+              >
+                {emailStatus.enabled ? 'Pausar automação' : 'Ativar automação'}
               </button>
               <button
                 type="button"
@@ -3136,15 +3239,116 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
                 onClick={() => void processEmail()}
                 disabled={emailWorking}
               >
-                Processar fila de e-mail
+                Processar fila
+              </button>
+              <button
+                type="button"
+                className="payment-secondary-action"
+                onClick={() => void disconnectEmail()}
+                disabled={emailWorking}
+              >
+                Desconectar
               </button>
             </div>
+          </>
+        ) : (
+          <>
+            <div className="payment-onboarding-steps" aria-label="Etapas para conectar e-mail">
+              <div>
+                <span>1</span>
+                <p><strong>Conectar Resend</strong><small>Cole a chave criada na sua conta.</small></p>
+              </div>
+              <div>
+                <span>2</span>
+                <p><strong>Definir remetente</strong><small>Nome, e-mail e cópia administrativa.</small></p>
+              </div>
+              <div>
+                <span>3</span>
+                <p><strong>Testar e ativar</strong><small>Confirme a entrega antes de liberar clientes.</small></p>
+              </div>
+            </div>
 
-            {emailMessage ? (
-              <p className="payment-connection-message">{emailMessage}</p>
-            ) : null}
+            <div className="email-connection-form">
+              <label>
+                <span>Chave do Resend</span>
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={emailApiKey}
+                  onChange={(event) => setEmailApiKey(event.target.value)}
+                  placeholder="re_••••••••••••"
+                />
+                <small>A chave é criptografada e nunca volta a aparecer nesta tela.</small>
+              </label>
+
+              <label>
+                <span>Nome do remetente</span>
+                <input
+                  value={emailFromName}
+                  onChange={(event) => setEmailFromName(event.target.value)}
+                  placeholder="Próximo Destino"
+                />
+              </label>
+
+              <label>
+                <span>E-mail remetente</span>
+                <input
+                  type="email"
+                  value={emailFromEmail}
+                  onChange={(event) => setEmailFromEmail(event.target.value)}
+                  placeholder="contato@seudominio.com.br"
+                />
+              </label>
+
+              <label>
+                <span>Responder para</span>
+                <input
+                  type="email"
+                  value={emailReplyTo}
+                  onChange={(event) => setEmailReplyTo(event.target.value)}
+                  placeholder="atendimento@seudominio.com.br"
+                />
+              </label>
+
+              <label>
+                <span>Cópia administrativa</span>
+                <input
+                  type="email"
+                  value={emailAdminCopy}
+                  onChange={(event) => setEmailAdminCopy(event.target.value)}
+                  placeholder="seuemail@exemplo.com"
+                />
+                <small>Recebe BCC dos e-mails enviados ao cliente.</small>
+              </label>
+            </div>
+
+            <div className="payment-connection-copy">
+              <strong>Sem senha da sua caixa de e-mail</strong>
+              <span>
+                A plataforma usa uma chave de API do Resend. Sua senha pessoal do Gmail, Outlook ou outro provedor não é armazenada.
+              </span>
+            </div>
+
+            <div className="payment-connection-actions">
+              <button
+                type="button"
+                className="payment-primary-action"
+                onClick={() => void connectEmail()}
+                disabled={
+                  emailWorking ||
+                  !emailApiKey.trim() ||
+                  !emailFromEmail.trim()
+                }
+              >
+                {emailWorking ? 'Conectando...' : 'Conectar e-mail'}
+              </button>
+            </div>
           </>
         )}
+
+        {emailMessage ? (
+          <p className="payment-connection-message">{emailMessage}</p>
+        ) : null}
       </article>
     </section>
   )
