@@ -53,6 +53,7 @@ import {
 } from '../../lib/adminApi'
 import { openWhatsApp, openWhatsAppTo } from '../../lib/whatsapp'
 import { cpfDigits, formatCpf, isValidCpf } from '../../lib/cpf'
+import { adminCapabilities } from '../../lib/adminPermissions'
 
 type AdminDashboardProps = {
   accessToken: string
@@ -129,11 +130,29 @@ export function AdminDashboard({
   const [notificationsLoading, setNotificationsLoading] = useState(false)
   const scrollPositions = useRef<Partial<Record<Tab, number>>>({})
   const userRole = useMemo(() => roleFromToken(accessToken), [accessToken])
+  const capabilities = useMemo(
+    () => adminCapabilities(userRole),
+    [userRole],
+  )
   const isAdmin = userRole === 'ADMIN'
-  const canViewPayments = userRole === 'ADMIN' || userRole === 'FINANCE'
+
+  function canAccessTab(candidate: Tab) {
+    if (candidate === 'overview') return true
+    if (candidate === 'clients') return capabilities.viewClients
+    if (candidate === 'trips') return capabilities.viewTrips
+    if (candidate === 'reservations') return capabilities.viewReservations
+    if (candidate === 'quotes') return capabilities.viewQuotes
+    if (candidate === 'payments') return capabilities.viewPayments
+    if (candidate === 'finance') return capabilities.viewFinance
+    if (candidate === 'audit') return capabilities.viewAudit
+    if (candidate === 'settings') return capabilities.viewSettings
+    return false
+  }
 
   function navigateTab(next: Tab, replace = false) {
-    if (next === tab) {
+    const target = canAccessTab(next) ? next : 'overview'
+
+    if (target === tab) {
       setAccountMenuOpen(false)
       return
     }
@@ -142,21 +161,21 @@ export function AdminDashboard({
 
     const url = new URL(window.location.href)
     url.searchParams.set('screen', 'admin')
-    url.searchParams.set('tab', next)
+    url.searchParams.set('tab', target)
     url.searchParams.delete('paymentConnection')
     window.history[replace ? 'replaceState' : 'pushState'](
-      { screen: 'admin', tab: next },
+      { screen: 'admin', tab: target },
       '',
       url,
     )
 
-    setTab(next)
+    setTab(target)
     setSearchResult(null)
     setAccountMenuOpen(false)
 
     window.requestAnimationFrame(() => {
       window.scrollTo({
-        top: scrollPositions.current[next] ?? 0,
+        top: scrollPositions.current[target] ?? 0,
         behavior: 'auto',
       })
     })
@@ -174,8 +193,12 @@ export function AdminDashboard({
         notificationData,
       ] = await Promise.all([
         adminApi.dashboard(accessToken),
-        adminApi.clients(accessToken),
-        adminApi.trips(accessToken),
+        capabilities.viewClients
+          ? adminApi.clients(accessToken)
+          : Promise.resolve([]),
+        capabilities.viewTrips
+          ? adminApi.trips(accessToken)
+          : Promise.resolve([]),
         adminApi.reservations(accessToken),
         adminApi.notifications(accessToken).catch(() => null),
       ])
@@ -193,7 +216,7 @@ export function AdminDashboard({
 
   useEffect(() => {
     void reload()
-  }, [])
+  }, [accessToken, capabilities.viewClients, capabilities.viewTrips])
 
   useEffect(() => {
     const url = new URL(window.location.href)
@@ -208,7 +231,8 @@ export function AdminDashboard({
 
   useEffect(() => {
     function onPopState() {
-      const next = tabFromLocation()
+      const requested = tabFromLocation()
+      const next = canAccessTab(requested) ? requested : 'overview'
       scrollPositions.current[tab] = window.scrollY
       setTab(next)
       setSearchResult(null)
@@ -226,13 +250,10 @@ export function AdminDashboard({
   }, [tab])
 
   useEffect(() => {
-    if (
-      (!isAdmin && (tab === 'settings' || tab === 'audit')) ||
-      (!canViewPayments && tab === 'payments')
-    ) {
+    if (!canAccessTab(tab)) {
       navigateTab('overview', true)
     }
-  }, [canViewPayments, isAdmin, tab])
+  }, [capabilities, tab])
 
   useEffect(() => {
     if (tab !== 'settings') return
@@ -314,7 +335,9 @@ export function AdminDashboard({
 
     setNotificationsOpen(false)
     const target = notification.actionTab as Tab | null
-    if (target && adminTabs.has(target)) navigateTab(target)
+    if (target && adminTabs.has(target) && canAccessTab(target)) {
+      navigateTab(target)
+    }
   }
 
   async function markAllNotificationsRead() {
@@ -344,19 +367,29 @@ export function AdminDashboard({
 
         <nav className="admin-nav" aria-label="Administração">
           <button className={tab === 'overview' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('overview')} type="button">Visão geral</button>
-          <button className={tab === 'clients' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('clients')} type="button">Clientes</button>
-          <button className={tab === 'trips' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('trips')} type="button">Viagens</button>
-          <button className={tab === 'reservations' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('reservations')} type="button">Reservas</button>
-          <button className={tab === 'quotes' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('quotes')} type="button">Cotações</button>
-          {canViewPayments ? (
+          {capabilities.viewClients ? (
+            <button className={tab === 'clients' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('clients')} type="button">Clientes</button>
+          ) : null}
+          {capabilities.viewTrips ? (
+            <button className={tab === 'trips' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('trips')} type="button">Viagens</button>
+          ) : null}
+          {capabilities.viewReservations ? (
+            <button className={tab === 'reservations' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('reservations')} type="button">Reservas</button>
+          ) : null}
+          {capabilities.viewQuotes ? (
+            <button className={tab === 'quotes' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('quotes')} type="button">Cotações</button>
+          ) : null}
+          {capabilities.viewPayments ? (
             <button className={tab === 'payments' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('payments')} type="button">Pagamentos</button>
           ) : null}
-          <button className={tab === 'finance' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('finance')} type="button">Financeiro</button>
-          {isAdmin ? (
-            <>
-              <button className={tab === 'audit' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('audit')} type="button">Auditoria</button>
-              <button className={tab === 'settings' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('settings')} type="button">Configurações</button>
-            </>
+          {capabilities.viewFinance ? (
+            <button className={tab === 'finance' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('finance')} type="button">Financeiro</button>
+          ) : null}
+          {capabilities.viewAudit ? (
+            <button className={tab === 'audit' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('audit')} type="button">Auditoria</button>
+          ) : null}
+          {capabilities.viewSettings ? (
+            <button className={tab === 'settings' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('settings')} type="button">Configurações</button>
           ) : null}
         </nav>
 
@@ -549,22 +582,26 @@ export function AdminDashboard({
               <button type="button" onClick={() => setSearchResult(null)}>Fechar</button>
             </div>
             <div className="admin-search-columns">
-              <div>
-                <strong>Clientes</strong>
-                {searchResult.clients.length ? searchResult.clients.map((item) => (
-                  <button type="button" className="admin-search-result-link" key={item.id} onClick={() => navigateTab('clients')}>
-                    {item.fullName}<small>{item.email || item.phone || 'Sem contato'}</small>
-                  </button>
-                )) : <em>Nenhum resultado</em>}
-              </div>
-              <div>
-                <strong>Viagens</strong>
-                {searchResult.trips.length ? searchResult.trips.map((item) => (
-                  <button type="button" className="admin-search-result-link" key={item.id} onClick={() => navigateTab('trips')}>
-                    {item.title}<small>{item.origin} → {item.destination}</small>
-                  </button>
-                )) : <em>Nenhum resultado</em>}
-              </div>
+              {capabilities.viewClients ? (
+                <div>
+                  <strong>Clientes</strong>
+                  {searchResult.clients.length ? searchResult.clients.map((item) => (
+                    <button type="button" className="admin-search-result-link" key={item.id} onClick={() => navigateTab('clients')}>
+                      {item.fullName}<small>{item.email || item.phone || 'Sem contato'}</small>
+                    </button>
+                  )) : <em>Nenhum resultado</em>}
+                </div>
+              ) : null}
+              {capabilities.viewTrips ? (
+                <div>
+                  <strong>Viagens</strong>
+                  {searchResult.trips.length ? searchResult.trips.map((item) => (
+                    <button type="button" className="admin-search-result-link" key={item.id} onClick={() => navigateTab('trips')}>
+                      {item.title}<small>{item.origin} → {item.destination}</small>
+                    </button>
+                  )) : <em>Nenhum resultado</em>}
+                </div>
+              ) : null}
               <div>
                 <strong>Reservas</strong>
                 {searchResult.reservations.length ? searchResult.reservations.map((item) => (
@@ -589,6 +626,7 @@ export function AdminDashboard({
             </section>
 
             <section className="admin-grid">
+              {capabilities.viewClients ? (
               <article className="admin-panel birthday-panel">
                 <div className="admin-panel-heading">
                   <div><span className="eyebrow">Relacionamento</span><h2>Próximos aniversários</h2></div>
@@ -609,6 +647,7 @@ export function AdminDashboard({
                   )) : <p className="admin-empty">Nenhum aniversário nos próximos 30 dias.</p>}
                 </div>
               </article>
+              ) : null}
 
               <article className="admin-panel security-panel">
                 <div className="admin-panel-heading">
@@ -627,11 +666,11 @@ export function AdminDashboard({
           </>
         ) : null}
 
-        {tab === 'clients' ? (
+        {tab === 'clients' && capabilities.viewClients ? (
           <ClientsView accessToken={accessToken} clients={clients} onChanged={reload} />
         ) : null}
 
-        {tab === 'trips' ? (
+        {tab === 'trips' && capabilities.viewTrips ? (
           <TripsView
             accessToken={accessToken}
             trips={trips}
@@ -640,35 +679,39 @@ export function AdminDashboard({
           />
         ) : null}
 
-        {tab === 'reservations' ? (
+        {tab === 'reservations' && capabilities.viewReservations ? (
           <ReservationsView
             accessToken={accessToken}
             clients={clients}
             trips={trips}
             reservations={reservations}
-            canManagePassengers={isAdmin}
-            canViewFinance={canViewPayments}
+            canCreateReservation={capabilities.createReservations}
+            canChangeStatus={capabilities.changeReservationStatus}
+            canManagePassengers={capabilities.managePassengers}
+            canCancelReservations={capabilities.cancelReservations}
+            canManageBonus={capabilities.manageBonus}
+            canViewFinance={capabilities.viewFinance}
             onChanged={reload}
           />
         ) : null}
 
-        {tab === 'quotes' ? (
+        {tab === 'quotes' && capabilities.viewQuotes ? (
           <QuotesWorkspace accessToken={accessToken} reservations={reservations} />
         ) : null}
 
-        {tab === 'payments' && canViewPayments ? (
+        {tab === 'payments' && capabilities.viewPayments ? (
           <PaymentsWorkspace accessToken={accessToken} />
         ) : null}
 
-        {tab === 'finance' ? (
+        {tab === 'finance' && capabilities.viewFinance ? (
           <FinanceWorkspace accessToken={accessToken} />
         ) : null}
 
-        {tab === 'audit' && isAdmin ? (
+        {tab === 'audit' && capabilities.viewAudit ? (
           <AuditWorkspace accessToken={accessToken} />
         ) : null}
 
-        {tab === 'settings' && isAdmin ? (
+        {tab === 'settings' && capabilities.viewSettings ? (
           <PaymentSettings accessToken={accessToken} />
         ) : null}
       </main>
