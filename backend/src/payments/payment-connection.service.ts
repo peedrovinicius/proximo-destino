@@ -111,12 +111,40 @@ export class PaymentConnectionService {
           connectedAt: new Date(),
         },
       }),
-      this.prisma.paymentOAuthState.update({ where: { id: pending.id }, data: { usedAt: new Date() } }),
+      this.prisma.paymentOAuthState.update({
+        where: { id: pending.id },
+        data: { usedAt: new Date() },
+      }),
+      this.prisma.authAuditEvent.create({
+        data: {
+          userId: pending.userId,
+          eventType: 'OPS_MERCADO_PAGO_CONNECTED',
+          metadata: {
+            provider: 'MERCADO_PAGO',
+            externalUserId: token.user_id ? String(token.user_id) : null,
+            liveMode: token.live_mode ?? true,
+          },
+        },
+      }),
     ])
   }
 
-  async disconnect() {
-    await this.prisma.paymentProviderConnection.deleteMany({ where: { provider: 'MERCADO_PAGO' } })
+  async disconnect(actorUserId?: string) {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.paymentProviderConnection.deleteMany({
+        where: { provider: 'MERCADO_PAGO' },
+      })
+
+      if (actorUserId) {
+        await tx.authAuditEvent.create({
+          data: {
+            userId: actorUserId,
+            eventType: 'OPS_MERCADO_PAGO_DISCONNECTED',
+            metadata: { provider: 'MERCADO_PAGO' },
+          },
+        })
+      }
+    })
     return { disconnected: true }
   }
 
