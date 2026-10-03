@@ -57,8 +57,11 @@ export class AdminTripsController {
 
   @Post()
   @Roles(UserRole.ADMIN, UserRole.AGENT)
-  create(@Body() body: CreateTripDto) {
-    return this.trips.create(body)
+  create(
+    @Body() body: CreateTripDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.trips.create(body, request.user.id)
   }
 
   @Post(':id/image')
@@ -71,15 +74,19 @@ export class AdminTripsController {
   uploadImage(
     @Param('id') id: string,
     @UploadedFile()
-    file?: { buffer: Buffer; mimetype: string; size: number },
+    file: { buffer: Buffer; mimetype: string; size: number } | undefined,
+    @Req() request: AuthenticatedRequest,
   ) {
-    return this.trips.uploadTripImage(id, file)
+    return this.trips.uploadTripImage(id, file, request.user.id)
   }
 
   @Delete(':id/image')
   @Roles(UserRole.ADMIN, UserRole.AGENT)
-  clearImage(@Param('id') id: string) {
-    return this.trips.clearTripImage(id)
+  clearImage(
+    @Param('id') id: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.trips.clearTripImage(id, request.user.id)
   }
 
   @Get(':id/seats')
@@ -199,7 +206,11 @@ export class AdminTripsController {
 
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.AGENT)
-  update(@Param('id') id: string, @Body() body: UpdateTripDto) {
-    return this.trips.update(id, body)
+  update(
+    @Param('id') id: string,
+    @Body() body: UpdateTripDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.trips.update(id, body, request.user.id)
   }
 }
