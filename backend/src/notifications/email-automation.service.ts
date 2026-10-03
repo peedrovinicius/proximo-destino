@@ -1,4 +1,5 @@
 import {
+  BadGatewayException,
   BadRequestException,
   Injectable,
   Logger,
@@ -18,6 +19,7 @@ import {
 import {
   createCipheriv,
   createDecipheriv,
+  createHash,
   randomBytes,
   randomUUID,
 } from 'node:crypto'
@@ -48,7 +50,17 @@ type ProviderConfig = {
   adminCopyEmail: string | null
   automationEnabled: boolean
   connectionSource: 'DATABASE' | 'ENVIRONMENT' | 'NONE'
+  connectionMode: 'OAUTH' | 'API_KEY' | 'NONE'
   connectedAt: Date | null
+  expiresAt: Date | null
+  scope: string | null
+}
+
+type ResendOAuthToken = {
+  access_token: string
+  refresh_token?: string
+  expires_in?: number
+  scope?: string
 }
 
 @Injectable()
@@ -101,16 +113,21 @@ export class EmailAutomationService
       })
 
     if (connection) {
+      const credential = connection.accessTokenEncrypted
+        ? await this.getOAuthAccessToken(connection)
+        : connection.apiKeyEncrypted
+          ? this.decrypt(connection.apiKeyEncrypted)
+          : ''
       const from = connection.fromName?.trim()
         ? `${connection.fromName.trim()} <${connection.fromEmail}>`
         : connection.fromEmail
       const testOnly = /@resend\.dev(?:>|\s|$)/i.test(from)
 
       return {
-        configured: true,
-        productionReady: !testOnly,
+        configured: Boolean(credential && from),
+        productionReady: Boolean(credential && from && !testOnly),
         testOnly,
-        apiKey: this.decrypt(connection.apiKeyEncrypted),
+        apiKey: credential,
         apiUrl:
           this.config.get<string>('RESEND_API_URL')?.trim() ||
           'https://api.resend.com/emails',
@@ -119,7 +136,14 @@ export class EmailAutomationService
         adminCopyEmail: connection.adminCopyEmail,
         automationEnabled: connection.automationEnabled,
         connectionSource: 'DATABASE',
+        connectionMode: connection.accessTokenEncrypted
+          ? 'OAUTH'
+          : connection.apiKeyEncrypted
+            ? 'API_KEY'
+            : 'NONE',
         connectedAt: connection.connectedAt,
+        expiresAt: connection.expiresAt,
+        scope: connection.scope,
       }
     }
 
@@ -153,7 +177,10 @@ export class EmailAutomationService
           .get<string>('EMAIL_AUTOMATION_ENABLED')
           ?.trim() !== 'false',
       connectionSource: apiKey && from ? 'ENVIRONMENT' : 'NONE',
+      connectionMode: apiKey && from ? 'API_KEY' : 'NONE',
       connectedAt: null,
+      expiresAt: null,
+      scope: null,
     }
   }
 
@@ -228,6 +255,10 @@ export class EmailAutomationService
         create: {
           provider: 'RESEND',
           apiKeyEncrypted: this.encrypt(apiKey),
+          accessTokenEncrypted: null,
+          refreshTokenEncrypted: null,
+          scope: null,
+          expiresAt: null,
           fromName: input.fromName?.trim() || null,
           fromEmail,
           replyToEmail,
@@ -237,6 +268,10 @@ export class EmailAutomationService
         },
         update: {
           apiKeyEncrypted: this.encrypt(apiKey),
+          accessTokenEncrypted: null,
+          refreshTokenEncrypted: null,
+          scope: null,
+          expiresAt: null,
           fromName: input.fromName?.trim() || null,
           fromEmail,
           replyToEmail,
@@ -338,7 +373,10 @@ export class EmailAutomationService
       enabled: provider.automationEnabled,
       connected: provider.connectionSource !== 'NONE',
       connectionSource: provider.connectionSource,
+      connectionMode: provider.connectionMode,
       connectedAt: provider.connectedAt,
+      expiresAt: provider.expiresAt,
+      scope: provider.scope,
       from: provider.from || null,
       fromName: parsedFrom.name,
       fromEmail: parsedFrom.email,
