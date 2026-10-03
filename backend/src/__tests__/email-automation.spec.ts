@@ -97,6 +97,7 @@ describe('automação transacional de e-mail', () => {
         OR: [
           { sourceId: reservationId },
           { sourceId: purchaseId },
+          { eventType: 'EMAIL_TEST', recipientEmail: adminEmail },
         ],
       },
     })
@@ -179,6 +180,42 @@ describe('automação transacional de e-mail', () => {
     assert.equal(sent.status, 'SENT')
     assert.equal(sent.providerMessageId, 'resend-e2e-id')
     assert.ok(sent.sentAt)
+  })
+
+  it('envia teste administrativo pelo mesmo pipeline transacional', async () => {
+    const providerBodies: Array<{
+      to?: unknown
+      bcc?: unknown
+      subject?: unknown
+    }> = []
+
+    globalThis.fetch = async (_input, init) => {
+      providerBodies.push(
+        JSON.parse(String(init?.body ?? '{}')) as {
+          to?: unknown
+          bcc?: unknown
+          subject?: unknown
+        },
+      )
+      return new Response(JSON.stringify({ id: 'resend-test-id' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    const result = await service.sendTestEmail()
+
+    assert.equal(result.queued, true)
+    assert.equal(result.providerConfigured, true)
+    assert.equal(result.status, 'SENT')
+    assert.equal(result.providerMessageId, 'resend-test-id')
+
+    const testBody = providerBodies.find(
+      (item) => item.subject === 'Teste de e-mail — Próximo Destino',
+    )
+    assert.ok(testBody)
+    assert.deepEqual(testBody.to, [adminEmail])
+    assert.ok(!testBody.bcc || (Array.isArray(testBody.bcc) && testBody.bcc.length === 0))
   })
 
   it('expõe status do provedor e da cópia administrativa', async () => {
