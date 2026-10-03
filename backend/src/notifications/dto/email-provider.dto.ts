@@ -33,6 +33,27 @@ export class ConnectEmailProviderDto {
   adminCopyEmail?: string
 }
 
+export class UpdateEmailProviderSettingsDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  fromName?: string
+
+  @IsEmail()
+  @MaxLength(160)
+  fromEmail!: string
+
+  @IsOptional()
+  @IsEmail()
+  @MaxLength(160)
+  replyToEmail?: string
+
+  @IsOptional()
+  @IsEmail()
+  @MaxLength(160)
+  adminCopyEmail?: string
+}
+
 export class UpdateEmailAutomationDto {
   @IsBoolean()
   enabled!: boolean
