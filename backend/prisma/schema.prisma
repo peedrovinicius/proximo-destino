@@ -89,6 +89,17 @@ enum PurchasePaymentMethod {
   TRANSFER
 }
 
+enum ManualPaymentMethod {
+  CASH
+  TRANSFER
+  BOLETO
+}
+
+enum ManualPaymentStatus {
+  RECEIVED
+  REVERSED
+}
+
 enum TravelDocumentType {
   TRAVEL_VOUCHER
   PURCHASE_RECEIPT
@@ -132,6 +143,8 @@ model User {
   paymentOauthStates PaymentOAuthState[]
   creditTransactions ClientCreditTransaction[] @relation("CreditActor")
   notifications      AdminNotification[]
+  recordedManualPayments ManualPayment[] @relation("ManualPaymentRecorder")
+  reversedManualPayments ManualPayment[] @relation("ManualPaymentReverser")
 
   @@index([role, isActive])
 }
@@ -275,6 +288,7 @@ model Reservation {
   seatAssignments SeatAssignment[]
   passengers      ReservationPassenger[]
   creditTransactions ClientCreditTransaction[]
+  manualPayments ManualPayment[]
 
   @@unique([clientId, tripId])
   @@index([tripId, status])
@@ -420,6 +434,7 @@ model FinancePlan {
   reservation Reservation  @relation(fields: [reservationId], references: [id], onDelete: Restrict)
   quote       Quote        @relation(fields: [quoteId], references: [id], onDelete: Restrict)
   installments Installment[]
+  manualPayments ManualPayment[]
 }
 
 model Installment {
@@ -435,6 +450,7 @@ model Installment {
   updatedAt     DateTime          @updatedAt
 
   financePlan FinancePlan @relation(fields: [financePlanId], references: [id], onDelete: Cascade)
+  manualPayments ManualPayment[]
 
   @@unique([financePlanId, sequence])
   @@index([status, dueDate])
@@ -560,4 +576,34 @@ model AdminNotification {
   @@unique([userId, sourceKey])
   @@index([userId, isRead, createdAt])
   @@index([type, createdAt])
+}
+
+
+model ManualPayment {
+  id               String              @id @default(cuid())
+  reservationId    String
+  financePlanId    String?
+  installmentId    String?
+  method           ManualPaymentMethod
+  status           ManualPaymentStatus @default(RECEIVED)
+  amountCents      Int
+  paidAt           DateTime
+  reference        String?
+  note             String?
+  recordedByUserId String?
+  reversedAt       DateTime?
+  reversedReason   String?
+  reversedByUserId String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  financePlan FinancePlan? @relation(fields: [financePlanId], references: [id], onDelete: SetNull)
+  installment Installment? @relation(fields: [installmentId], references: [id], onDelete: SetNull)
+  recordedBy User? @relation("ManualPaymentRecorder", fields: [recordedByUserId], references: [id], onDelete: SetNull)
+  reversedBy User? @relation("ManualPaymentReverser", fields: [reversedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([reservationId, status, paidAt])
+  @@index([installmentId, status])
+  @@index([method, paidAt])
 }
