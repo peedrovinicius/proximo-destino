@@ -558,6 +558,33 @@ model OutboundMessage {
 }
 
 
+model EmailOutboundMessage {
+  id                String                @id @default(cuid())
+  eventType         String
+  idempotencyKey    String                @unique
+  recipientEmail    String
+  recipientName     String?
+  adminCopyEmails   Json?
+  subject           String
+  textBody          String
+  htmlBody          String?
+  sourceType        String?
+  sourceId          String?
+  status            OutboundMessageStatus @default(PENDING)
+  attempts          Int                   @default(0)
+  scheduledAt       DateTime              @default(now())
+  lastAttemptAt     DateTime?
+  sentAt            DateTime?
+  providerMessageId String?
+  errorMessage      String?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  @@index([status, scheduledAt])
+  @@index([eventType, createdAt])
+  @@index([sourceType, sourceId])
+}
+
 model AdminNotification {
   id         String   @id @default(cuid())
   userId     String
