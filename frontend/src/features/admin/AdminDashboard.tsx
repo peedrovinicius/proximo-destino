@@ -51,6 +51,7 @@ import {
   type SeatLayout,
   type PaymentConnectionStatus,
   type SearchResult,
+  type SecurityPosture,
   type WhatsAppAutomationStatus,
   type VehicleFeature,
 } from '../../lib/adminApi'
@@ -2765,6 +2766,7 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
   const [status, setStatus] = useState<PaymentConnectionStatus | null>(null)
   const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppAutomationStatus | null>(null)
   const [emailStatus, setEmailStatus] = useState<EmailAutomationStatus | null>(null)
+  const [securityPosture, setSecurityPosture] = useState<SecurityPosture | null>(null)
   const [loading, setLoading] = useState(true)
   const [working, setWorking] = useState(false)
   const [whatsappWorking, setWhatsappWorking] = useState(false)
@@ -2780,14 +2782,16 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
   async function load() {
     setLoading(true)
     try {
-      const [payment, whatsapp, email] = await Promise.all([
+      const [payment, whatsapp, email, security] = await Promise.all([
         adminApi.paymentConnection(accessToken),
         adminApi.whatsappAutomationStatus(accessToken),
         adminApi.emailAutomationStatus(accessToken),
+        adminApi.securityPosture(accessToken),
       ])
       setStatus(payment)
       setWhatsappStatus(whatsapp)
       setEmailStatus(email)
+      setSecurityPosture(security)
       setEmailFromName(email.fromName || 'Próximo Destino')
       setEmailFromEmail(email.fromEmail || '')
       setEmailReplyTo(email.replyTo || '')
@@ -3477,6 +3481,92 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
         {emailMessage ? (
           <p className="payment-connection-message">{emailMessage}</p>
         ) : null}
+      </article>
+
+      <article className="security-posture-card">
+        <div className="payment-connection-brand">
+          <span className="security-posture-icon">
+            <ShieldCheck size={20} />
+          </span>
+          <div>
+            <strong>Segurança da plataforma</strong>
+            <span>Verificação automática dos cinco controles críticos</span>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="payment-connection-state">
+            Verificando controles de segurança...
+          </div>
+        ) : securityPosture ? (
+          <>
+            <div
+              className={
+                securityPosture.healthy
+                  ? 'security-posture-summary security-posture-summary--ready'
+                  : 'security-posture-summary security-posture-summary--attention'
+              }
+            >
+              <ShieldCheck size={20} />
+              <div>
+                <strong>
+                  {securityPosture.healthy
+                    ? 'Todos os controles críticos estão ativos'
+                    : 'Há controle de segurança que exige atenção'}
+                </strong>
+                <span>
+                  Última verificação em{' '}
+                  {new Intl.DateTimeFormat('pt-BR', {
+                    dateStyle: 'short',
+                    timeStyle: 'short',
+                  }).format(new Date(securityPosture.checkedAt))}
+                </span>
+              </div>
+            </div>
+
+            <div className="security-checklist">
+              {securityPosture.checks.map((check, index) => (
+                <div
+                  className={
+                    check.healthy
+                      ? 'security-check security-check--ready'
+                      : 'security-check security-check--attention'
+                  }
+                  key={check.id}
+                >
+                  <span className="security-check-number">{index + 1}</span>
+                  <div>
+                    <strong>{check.title}</strong>
+                    <small>{check.detail}</small>
+                  </div>
+                  <span
+                    className="security-check-status"
+                    aria-label={check.healthy ? 'Protegido' : 'Atenção'}
+                  >
+                    {check.healthy ? (
+                      <CheckCircle2 size={17} />
+                    ) : (
+                      <ShieldCheck size={17} />
+                    )}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="security-posture-footnote">
+              <strong>Defesa em profundidade</strong>
+              <span>
+                O navegador não acessa o PostgreSQL diretamente. As permissões
+                continuam sendo aplicadas pela API autenticada; o RLS funciona
+                como barreira adicional para acessos diretos não autorizados.
+              </span>
+            </div>
+          </>
+        ) : (
+          <div className="payment-connection-state">
+            Não foi possível carregar o diagnóstico de segurança.
+          </div>
+        )}
       </article>
     </section>
   )
