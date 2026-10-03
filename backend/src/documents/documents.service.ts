@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import {
@@ -15,6 +16,7 @@ import {
 import { randomBytes } from 'node:crypto'
 import PDFDocument from 'pdfkit'
 import QRCode from 'qrcode'
+import { EmailAutomationService } from '../notifications/email-automation.service'
 import { PrismaService } from '../prisma/prisma.service'
 import {
   IssuePurchaseReceiptDto,
@@ -137,7 +139,17 @@ export class DocumentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    @Optional() private readonly email?: EmailAutomationService,
   ) {}
+
+  private async safeEmail(action: () => Promise<unknown> | undefined) {
+    if (!this.email) return
+    try {
+      await action()
+    } catch {
+      // A emissão do documento não pode falhar por causa do e-mail.
+    }
+  }
 
   async issueTravelVoucher(
     reservationId: string,
@@ -210,7 +222,7 @@ export class DocumentsService {
     })
 
     const issuedAt = new Date()
-    return this.createDocument(
+    const document = await this.createDocument(
       reservationId,
       TravelDocumentType.TRAVEL_VOUCHER,
       issuedByUserId,
@@ -278,6 +290,12 @@ export class DocumentsService {
         }) satisfies TravelVoucherSnapshot,
       issuedAt,
     )
+
+    await this.safeEmail(() =>
+      this.email?.enqueueDocumentIssued(document.id),
+    )
+
+    return document
   }
 
   async issuePurchaseReceipt(
@@ -429,7 +447,7 @@ export class DocumentsService {
       reservation.manualPayments.length > 0
 
     const issuedAt = new Date()
-    return this.createDocument(
+    const document = await this.createDocument(
       reservationId,
       TravelDocumentType.PURCHASE_RECEIPT,
       issuedByUserId,
@@ -496,6 +514,12 @@ export class DocumentsService {
         }) satisfies PurchaseReceiptSnapshot,
       issuedAt,
     )
+
+    await this.safeEmail(() =>
+      this.email?.enqueueDocumentIssued(document.id),
+    )
+
+    return document
   }
 
   listByReservation(reservationId: string) {
