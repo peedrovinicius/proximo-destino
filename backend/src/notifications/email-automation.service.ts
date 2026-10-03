@@ -1991,6 +1991,107 @@ export class EmailAutomationService
     }
   }
 
+  frontendResultUrl(status: 'success' | 'error') {
+    const url = new URL(this.frontendOrigin())
+    url.searchParams.set('screen', 'admin')
+    url.searchParams.set('tab', 'settings')
+    url.searchParams.set('emailConnection', status)
+    return url.toString()
+  }
+
+  private frontendOrigin() {
+    return this.config
+      .getOrThrow<string>('FRONTEND_ORIGIN')
+      .replace(/\/$/, '')
+  }
+
+  private apiBaseUrl() {
+    const configured =
+      this.config.get<string>('PUBLIC_API_URL')?.trim()
+    if (configured) return configured.replace(/\/$/, '')
+
+    const domain =
+      this.config.getOrThrow<string>('RAILWAY_PUBLIC_DOMAIN')
+    return `https://${domain}/api/v1`
+  }
+
+  private oauthClientId() {
+    return `${this.apiBaseUrl()}/notifications/email/oauth/client-metadata`
+  }
+
+  private oauthRedirectUri() {
+    return `${this.apiBaseUrl()}/notifications/email/oauth/callback`
+  }
+
+  private hash(value: string) {
+    return createHash('sha256').update(value).digest('hex')
+  }
+
+  private async getOAuthAccessToken(connection: {
+    id: string
+    accessTokenEncrypted: string | null
+    refreshTokenEncrypted: string | null
+    expiresAt: Date | null
+  }) {
+    if (!connection.accessTokenEncrypted) return ''
+
+    if (
+      !connection.expiresAt ||
+      connection.expiresAt.getTime() > Date.now() + 60_000
+    ) {
+      return this.decrypt(connection.accessTokenEncrypted)
+    }
+
+    if (!connection.refreshTokenEncrypted) {
+      return this.decrypt(connection.accessTokenEncrypted)
+    }
+
+    const response = await fetch('https://api.resend.com/oauth/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        client_id: this.oauthClientId(),
+        refresh_token: this.decrypt(
+          connection.refreshTokenEncrypted,
+        ),
+      }),
+      signal: AbortSignal.timeout(12_000),
+    })
+
+    const raw = await response.text()
+    let token: ResendOAuthToken | null = null
+    try {
+      token = raw ? (JSON.parse(raw) as ResendOAuthToken) : null
+    } catch {
+      token = null
+    }
+
+    if (!response.ok || !token?.access_token) {
+      throw new BadGatewayException(
+        'Não foi possível renovar a conexão com o Resend',
+      )
+    }
+
+    await this.prisma.emailProviderConnection.update({
+      where: { id: connection.id },
+      data: {
+        accessTokenEncrypted: this.encrypt(token.access_token),
+        refreshTokenEncrypted: token.refresh_token
+          ? this.encrypt(token.refresh_token)
+          : connection.refreshTokenEncrypted,
+        expiresAt: token.expires_in
+          ? new Date(Date.now() + token.expires_in * 1_000)
+          : connection.expiresAt,
+        scope: token.scope ?? undefined,
+      },
+    })
+
+    return token.access_token
+  }
+
   private key() {
     const raw =
       this.config.get<string>('EMAIL_ENCRYPTION_KEY')?.trim() ||
