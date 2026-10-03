@@ -33,6 +33,8 @@ type EmailQueueInput = {
 
 type ProviderConfig = {
   configured: boolean
+  productionReady: boolean
+  testOnly: boolean
   apiKey: string
   apiUrl: string
   from: string
@@ -94,8 +96,12 @@ export class EmailAutomationService
       this.config.get<string>('ADMIN_EMAIL')?.trim() ||
       null
 
+    const testOnly = /@resend\.dev(?:>|\s|$)/i.test(from)
+
     return {
       configured: Boolean(apiKey && from),
+      productionReady: Boolean(apiKey && from && !testOnly),
+      testOnly,
       apiKey,
       apiUrl:
         this.config.get<string>('RESEND_API_URL')?.trim() ||
@@ -121,8 +127,12 @@ export class EmailAutomationService
         this.config.get<string>('EMAIL_AUTOMATION_ENABLED')?.trim() !==
         'false',
       providerConfigured: provider.configured,
+      productionReady: provider.productionReady,
+      testOnly: provider.testOnly,
       deliveryMode: provider.configured
-        ? 'RESEND_API'
+        ? provider.testOnly
+          ? 'RESEND_TEST'
+          : 'RESEND_API'
         : 'OUTBOX_ONLY',
       adminCopyConfigured: Boolean(
         this.config.get<string>('ADMIN_EMAIL')?.trim(),
@@ -1129,6 +1139,10 @@ export class EmailAutomationService
     const provider = this.providerConfig()
     if (!provider.configured) return 0
 
+    const adminEmail = this.normalizeEmail(
+      this.config.get<string>('ADMIN_EMAIL')?.trim(),
+    )
+
     const messages = await this.prisma.emailOutboundMessage.findMany({
       where: {
         status: {
@@ -1139,6 +1153,11 @@ export class EmailAutomationService
         },
         attempts: { lt: 5 },
         scheduledAt: { lte: new Date() },
+        ...(provider.testOnly && adminEmail
+          ? { recipientEmail: adminEmail }
+          : provider.testOnly
+            ? { id: '__no-test-recipient__' }
+            : {}),
       },
       orderBy: { scheduledAt: 'asc' },
       take: 10,
