@@ -652,7 +652,10 @@ export type EmailAutomationStatus = {
   enabled: boolean
   connected: boolean
   connectionSource: 'DATABASE' | 'ENVIRONMENT' | 'NONE'
+  connectionMode: 'OAUTH' | 'API_KEY' | 'NONE'
   connectedAt: string | null
+  expiresAt: string | null
+  scope: string | null
   from: string | null
   fromName: string | null
   fromEmail: string | null
@@ -1068,6 +1071,32 @@ export const adminApi = {
       '/admin/notifications/email/connection',
       {
         method: 'POST',
+        body: JSON.stringify(input),
+      },
+    ),
+
+
+  connectResendOAuth: (token: string) =>
+    adminFetch<{ authorizationUrl: string }>(
+      token,
+      '/admin/notifications/email/oauth/connect',
+      { method: 'POST' },
+    ),
+
+  updateEmailProviderSettings: (
+    token: string,
+    input: {
+      fromName?: string
+      fromEmail: string
+      replyToEmail?: string
+      adminCopyEmail?: string
+    },
+  ) =>
+    adminFetch<EmailAutomationStatus>(
+      token,
+      '/admin/notifications/email/connection/settings',
+      {
+        method: 'PATCH',
         body: JSON.stringify(input),
       },
     ),
