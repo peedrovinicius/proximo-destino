@@ -38,6 +38,7 @@ jobs:
       JWT_MFA_SECRET: ci-mfa-secret-not-for-production
       AUDIT_HASH_KEY: ci-audit-hash-key-not-for-production
       MFA_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      PII_ENCRYPTION_KEY: ci-pii-encryption-key-not-for-production
 
     defaults:
       run:
