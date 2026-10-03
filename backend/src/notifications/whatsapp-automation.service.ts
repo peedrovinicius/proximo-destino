@@ -500,8 +500,9 @@ export class WhatsAppAutomationService
 
     for (const client of clients) {
       if (!client.birthDate) continue
-      const birth = this.fortalezaParts(client.birthDate)
-      if (birth.month !== local.month || birth.day !== local.day) continue
+      const birthMonth = client.birthDate.getUTCMonth() + 1
+      const birthDay = client.birthDate.getUTCDate()
+      if (birthMonth !== local.month || birthDay !== local.day) continue
       await this.enqueueBirthday(client, local.year)
     }
   }
