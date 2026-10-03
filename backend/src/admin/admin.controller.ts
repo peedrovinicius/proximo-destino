@@ -19,7 +19,9 @@ import {
   CancelReservationDto,
   CreateReservationDto,
   RefundReservationPaymentDto,
+  RegisterManualPaymentDto,
   ResolveCancellationRequestDto,
+  ReverseManualPaymentDto,
   UpdateReservationPassengersDto,
   UpdateReservationStatusDto,
 } from './dto/reservation.dto'
@@ -140,6 +142,36 @@ export class AdminController {
   ) {
     return this.admin.reconcileReservationPayment(
       id,
+      request.user.id,
+    )
+  }
+
+  @Post('reservations/:id/finance/manual-payments')
+  @Roles(UserRole.ADMIN, UserRole.FINANCE)
+  registerManualPayment(
+    @Param('id') id: string,
+    @Body() body: RegisterManualPaymentDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.admin.registerManualPayment(
+      id,
+      body,
+      request.user.id,
+    )
+  }
+
+  @Post('reservations/:id/finance/manual-payments/:paymentId/reverse')
+  @Roles(UserRole.ADMIN, UserRole.FINANCE)
+  reverseManualPayment(
+    @Param('id') id: string,
+    @Param('paymentId') paymentId: string,
+    @Body() body: ReverseManualPaymentDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.admin.reverseManualPayment(
+      id,
+      paymentId,
+      body.reason,
       request.user.id,
     )
   }
