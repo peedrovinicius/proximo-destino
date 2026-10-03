@@ -19,6 +19,10 @@ import QRCode from 'qrcode'
 import { EmailAutomationService } from '../notifications/email-automation.service'
 import { PrismaService } from '../prisma/prisma.service'
 import {
+  maskSensitiveDocument,
+  revealDocument,
+} from '../security/sensitive-data'
+import {
   IssuePurchaseReceiptDto,
   IssueTravelVoucherDto,
 } from './dto/document.dto'
@@ -174,6 +178,7 @@ export class DocumentsService {
             sequence: true,
             fullName: true,
             document: true,
+            documentEncrypted: true,
             seatAssignment: { select: { seatNumber: true } },
           },
           orderBy: { sequence: 'asc' },
@@ -247,7 +252,9 @@ export class DocumentsService {
               (passenger.sequence === 1
                 ? reservation.client.fullName
                 : 'Passageiro não identificado'),
-            document: passenger.document,
+            document: maskSensitiveDocument(
+              revealDocument(passenger),
+            ),
             seatNumber: passenger.seatAssignment?.seatNumber ?? null,
           })),
           trip: {
@@ -321,6 +328,7 @@ export class DocumentsService {
             sequence: true,
             fullName: true,
             document: true,
+            documentEncrypted: true,
             seatAssignment: { select: { seatNumber: true } },
           },
           orderBy: { sequence: 'asc' },
@@ -472,7 +480,9 @@ export class DocumentsService {
               (passenger.sequence === 1
                 ? reservation.client.fullName
                 : 'Passageiro não identificado'),
-            document: passenger.document,
+            document: maskSensitiveDocument(
+              revealDocument(passenger),
+            ),
             seatNumber: passenger.seatAssignment?.seatNumber ?? null,
           })),
           trip: {
