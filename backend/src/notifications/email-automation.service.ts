@@ -78,12 +78,9 @@ export class EmailAutomationService
       verification.unref()
     }
 
-    const enabled =
-      this.config.get<string>('EMAIL_AUTOMATION_ENABLED')?.trim() !== 'false'
-
-    if (!enabled) {
-      this.logger.log('Automação de e-mail desativada por configuração')
-      return
+    const provider = await this.providerConfig()
+    if (!provider.automationEnabled) {
+      this.logger.log('Automação de e-mail pausada')
     }
 
     const initial = setTimeout(() => void this.tick(), 7_000)
@@ -352,7 +349,8 @@ export class EmailAutomationService
           : 'RESEND_API'
         : 'OUTBOX_ONLY',
       adminCopyConfigured: Boolean(
-        this.config.get<string>('ADMIN_EMAIL')?.trim(),
+        provider.adminCopyEmail ||
+          this.config.get<string>('ADMIN_EMAIL')?.trim(),
       ),
       fromConfigured: Boolean(provider.from),
       counts: {
@@ -448,7 +446,7 @@ export class EmailAutomationService
     return {
       queued: Boolean(queued),
       processed,
-      providerConfigured: this.providerConfig().configured,
+      providerConfigured: provider.configured,
       status: current?.status ?? null,
       providerMessageId: current?.providerMessageId ?? null,
       errorMessage: current?.errorMessage ?? null,
@@ -1360,7 +1358,7 @@ export class EmailAutomationService
   }
 
   private async processPending() {
-    const provider = this.providerConfig()
+    const provider = await this.providerConfig()
     if (!provider.configured) return 0
 
     const adminEmail =
@@ -1454,7 +1452,7 @@ export class EmailAutomationService
   }
 
   private async verifyProviderOnStart() {
-    const provider = this.providerConfig()
+    const provider = await this.providerConfig()
     const recipient =
       provider.adminCopyEmail ||
       this.normalizeEmail(
