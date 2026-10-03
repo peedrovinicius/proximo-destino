@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   Phone,
   Users,
+  X,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Brand } from '../../components/Brand'
@@ -139,12 +140,32 @@ export function AdminDashboard({
     useState<AdminNotificationFeed | null>(null)
   const [notificationsLoading, setNotificationsLoading] = useState(false)
   const scrollPositions = useRef<Partial<Record<Tab, number>>>({})
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
   const userRole = useMemo(() => roleFromToken(accessToken), [accessToken])
   const capabilities = useMemo(
     () => adminCapabilities(userRole),
     [userRole],
   )
   const isAdmin = userRole === 'ADMIN'
+
+  useEffect(() => {
+    function onSearchShortcut(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        setMobileSearchOpen(true)
+        window.setTimeout(() => searchInputRef.current?.focus(), 0)
+      }
+
+      if (event.key === 'Escape') {
+        setMobileSearchOpen(false)
+        setSearchResult(null)
+        searchInputRef.current?.blur()
+      }
+    }
+
+    window.addEventListener('keydown', onSearchShortcut)
+    return () => window.removeEventListener('keydown', onSearchShortcut)
+  }, [])
 
   function canAccessTab(candidate: Tab) {
     if (candidate === 'overview') return true
@@ -409,7 +430,15 @@ export function AdminDashboard({
             type="button"
             aria-label="Abrir pesquisa"
             aria-expanded={mobileSearchOpen}
-            onClick={() => setMobileSearchOpen((value) => !value)}
+            onClick={() => {
+              setMobileSearchOpen((value) => {
+                const next = !value
+                if (next) {
+                  window.setTimeout(() => searchInputRef.current?.focus(), 0)
+                }
+                return next
+              })
+            }}
           >
             <Search size={17} />
           </button>
@@ -429,6 +458,7 @@ export function AdminDashboard({
               <Search size={16} />
             </button>
             <input
+              ref={searchInputRef}
               value={searchQuery}
               onChange={(event) => {
                 setSearchQuery(event.target.value)
@@ -441,6 +471,23 @@ export function AdminDashboard({
                   : 'Buscar cliente, viagem ou reserva...'
               }
             />
+            {searchQuery ? (
+              <button
+                className="admin-search-clear"
+                type="button"
+                aria-label="Limpar pesquisa"
+                title="Limpar pesquisa"
+                onClick={() => {
+                  setSearchQuery('')
+                  setSearchResult(null)
+                  searchInputRef.current?.focus()
+                }}
+              >
+                <X size={14} />
+              </button>
+            ) : (
+              <span className="admin-search-shortcut" aria-hidden="true">⌘K</span>
+            )}
           </form>
           <div className="admin-notifications">
             <button
