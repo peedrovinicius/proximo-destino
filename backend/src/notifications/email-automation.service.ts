@@ -147,10 +147,17 @@ export class EmailAutomationService
       }
     }
 
-    const apiKey =
-      this.config.get<string>('RESEND_API_KEY')?.trim() ?? ''
-    const from =
-      this.config.get<string>('EMAIL_FROM')?.trim() ?? ''
+    const allowEnvironmentFallback =
+      this.config
+        .get<string>('EMAIL_ALLOW_ENV_FALLBACK')
+        ?.trim()
+        .toLowerCase() !== 'false'
+    const apiKey = allowEnvironmentFallback
+      ? this.config.get<string>('RESEND_API_KEY')?.trim() ?? ''
+      : ''
+    const from = allowEnvironmentFallback
+      ? this.config.get<string>('EMAIL_FROM')?.trim() ?? ''
+      : ''
     const replyTo =
       this.config.get<string>('EMAIL_REPLY_TO')?.trim() ||
       this.config.get<string>('ADMIN_EMAIL')?.trim() ||
@@ -185,6 +192,15 @@ export class EmailAutomationService
   }
 
   private async bootstrapConnectionFromEnvironment() {
+    if (
+      this.config
+        .get<string>('EMAIL_ALLOW_ENV_FALLBACK')
+        ?.trim()
+        .toLowerCase() === 'false'
+    ) {
+      return
+    }
+
     const existing =
       await this.prisma.emailProviderConnection.findUnique({
         where: { provider: 'RESEND' },
@@ -219,6 +235,248 @@ export class EmailAutomationService
             ?.trim() !== 'false',
       },
     })
+  }
+
+  oauthClientMetadata() {
+    const clientId = this.oauthClientId()
+    return {
+      client_id: clientId,
+      client_name: 'Próximo Destino',
+      client_uri: this.frontendOrigin(),
+      redirect_uris: [this.oauthRedirectUri()],
+      grant_types: ['authorization_code', 'refresh_token'],
+      response_types: ['code'],
+      token_endpoint_auth_method: 'none',
+      scope: 'emails:send',
+    }
+  }
+
+  async beginOAuth(actorUserId: string) {
+    const state = randomBytes(32).toString('base64url')
+    const codeVerifier = randomBytes(64).toString('base64url')
+    const codeChallenge = createHash('sha256')
+      .update(codeVerifier)
+      .digest('base64url')
+
+    await this.prisma.emailOAuthState.deleteMany({
+      where: {
+        OR: [
+          { expiresAt: { lt: new Date() } },
+          { userId: actorUserId, usedAt: null },
+        ],
+      },
+    })
+
+    await this.prisma.emailOAuthState.create({
+      data: {
+        provider: 'RESEND',
+        stateHash: this.hash(state),
+        userId: actorUserId,
+        codeVerifierEncrypted: this.encrypt(codeVerifier),
+        expiresAt: new Date(Date.now() + 10 * 60_000),
+      },
+    })
+
+    const url = new URL('https://api.resend.com/oauth/authorize')
+    url.searchParams.set('client_id', this.oauthClientId())
+    url.searchParams.set('response_type', 'code')
+    url.searchParams.set('redirect_uri', this.oauthRedirectUri())
+    url.searchParams.set('scope', 'emails:send')
+    url.searchParams.set('state', state)
+    url.searchParams.set('code_challenge', codeChallenge)
+    url.searchParams.set('code_challenge_method', 'S256')
+
+    return { authorizationUrl: url.toString() }
+  }
+
+  async completeOAuth(code: string, state: string) {
+    if (!code?.trim() || !state?.trim()) {
+      throw new BadGatewayException(
+        'Resposta de autorização do Resend inválida',
+      )
+    }
+
+    const pending = await this.prisma.emailOAuthState.findUnique({
+      where: { stateHash: this.hash(state) },
+    })
+
+    if (
+      !pending ||
+      pending.usedAt ||
+      pending.expiresAt.getTime() < Date.now()
+    ) {
+      throw new BadGatewayException(
+        'Autorização do Resend expirada ou inválida',
+      )
+    }
+
+    const response = await fetch('https://api.resend.com/oauth/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        client_id: this.oauthClientId(),
+        code: code.trim(),
+        redirect_uri: this.oauthRedirectUri(),
+        code_verifier: this.decrypt(
+          pending.codeVerifierEncrypted,
+        ),
+      }),
+      signal: AbortSignal.timeout(12_000),
+    })
+
+    const raw = await response.text()
+    let token: ResendOAuthToken | null = null
+    try {
+      token = raw ? (JSON.parse(raw) as ResendOAuthToken) : null
+    } catch {
+      token = null
+    }
+
+    if (!response.ok || !token?.access_token) {
+      throw new BadGatewayException(
+        'Não foi possível concluir a conexão com o Resend',
+      )
+    }
+
+    const existing =
+      await this.prisma.emailProviderConnection.findUnique({
+        where: { provider: 'RESEND' },
+      })
+    const envSender = this.parseFrom(
+      this.config.get<string>('EMAIL_FROM')?.trim() ?? '',
+    )
+    const fromEmail =
+      existing?.fromEmail ||
+      envSender.email ||
+      'onboarding@resend.dev'
+    const fromName =
+      existing?.fromName ||
+      envSender.name ||
+      'Próximo Destino'
+    const expiresAt = token.expires_in
+      ? new Date(Date.now() + token.expires_in * 1_000)
+      : null
+
+    await this.prisma.$transaction([
+      this.prisma.emailProviderConnection.upsert({
+        where: { provider: 'RESEND' },
+        create: {
+          provider: 'RESEND',
+          apiKeyEncrypted: null,
+          accessTokenEncrypted: this.encrypt(token.access_token),
+          refreshTokenEncrypted: token.refresh_token
+            ? this.encrypt(token.refresh_token)
+            : null,
+          scope: token.scope ?? 'emails:send',
+          expiresAt,
+          fromName,
+          fromEmail,
+          replyToEmail:
+            this.normalizeEmail(
+              this.config.get<string>('EMAIL_REPLY_TO')?.trim(),
+            ) ||
+            this.normalizeEmail(
+              this.config.get<string>('ADMIN_EMAIL')?.trim(),
+            ),
+          adminCopyEmail: this.normalizeEmail(
+            this.config.get<string>('ADMIN_EMAIL')?.trim(),
+          ),
+          automationEnabled: false,
+          connectedByUserId: pending.userId,
+        },
+        update: {
+          apiKeyEncrypted: null,
+          accessTokenEncrypted: this.encrypt(token.access_token),
+          refreshTokenEncrypted: token.refresh_token
+            ? this.encrypt(token.refresh_token)
+            : existing?.refreshTokenEncrypted ?? null,
+          scope: token.scope ?? 'emails:send',
+          expiresAt,
+          connectedByUserId: pending.userId,
+          connectedAt: new Date(),
+        },
+      }),
+      this.prisma.emailOAuthState.update({
+        where: { id: pending.id },
+        data: { usedAt: new Date() },
+      }),
+      this.prisma.authAuditEvent.create({
+        data: {
+          userId: pending.userId,
+          eventType: 'OPS_INTEGRATION_EMAIL_OAUTH_CONNECTED',
+          metadata: {
+            provider: 'RESEND',
+            scope: token.scope ?? 'emails:send',
+          },
+        },
+      }),
+    ])
+
+    return this.status()
+  }
+
+  async updateProviderSettings(
+    input: {
+      fromName?: string
+      fromEmail: string
+      replyToEmail?: string
+      adminCopyEmail?: string
+    },
+    actorUserId: string,
+  ) {
+    const fromEmail = this.normalizeEmail(input.fromEmail)
+    const replyToEmail = this.normalizeEmail(input.replyToEmail)
+    const adminCopyEmail = this.normalizeEmail(input.adminCopyEmail)
+
+    if (!fromEmail) {
+      throw new BadRequestException('E-mail remetente inválido')
+    }
+    if (input.replyToEmail?.trim() && !replyToEmail) {
+      throw new BadRequestException('E-mail de resposta inválido')
+    }
+    if (input.adminCopyEmail?.trim() && !adminCopyEmail) {
+      throw new BadRequestException('E-mail administrativo inválido')
+    }
+
+    const connection =
+      await this.prisma.emailProviderConnection.findUnique({
+        where: { provider: 'RESEND' },
+        select: { id: true },
+      })
+    if (!connection) {
+      throw new BadRequestException(
+        'Conecte sua conta Resend primeiro',
+      )
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.emailProviderConnection.update({
+        where: { provider: 'RESEND' },
+        data: {
+          fromName: input.fromName?.trim() || null,
+          fromEmail,
+          replyToEmail,
+          adminCopyEmail,
+          automationEnabled: false,
+        },
+      }),
+      this.prisma.authAuditEvent.create({
+        data: {
+          userId: actorUserId,
+          eventType: 'OPS_INTEGRATION_EMAIL_SENDER_UPDATED',
+          metadata: {
+            provider: 'RESEND',
+            fromEmail,
+            adminCopyConfigured: Boolean(adminCopyEmail),
+          },
+        },
+      }),
+    ])
+
+    return this.status()
   }
 
   async connectProvider(
@@ -297,9 +555,36 @@ export class EmailAutomationService
   }
 
   async disconnectProvider(actorUserId: string) {
+    const connection =
+      await this.prisma.emailProviderConnection.findUnique({
+        where: { provider: 'RESEND' },
+      })
+
+    if (connection?.refreshTokenEncrypted) {
+      try {
+        await fetch('https://api.resend.com/oauth/revoke', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({
+            client_id: this.oauthClientId(),
+            token: this.decrypt(connection.refreshTokenEncrypted),
+            token_type_hint: 'refresh_token',
+          }),
+          signal: AbortSignal.timeout(12_000),
+        })
+      } catch {
+        // A revogação remota é best-effort; a credencial local será removida.
+      }
+    }
+
     await this.prisma.$transaction([
       this.prisma.emailProviderConnection.deleteMany({
         where: { provider: 'RESEND' },
+      }),
+      this.prisma.emailOAuthState.deleteMany({
+        where: { userId: actorUserId },
       }),
       this.prisma.authAuditEvent.create({
         data: {
