@@ -13,12 +13,16 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common'
-import { UserRole } from '@prisma/client'
 import { FileInterceptor } from '@nestjs/platform-express'
 import {
   JwtAuthGuard,
   type AuthenticatedRequest,
 } from '../auth/jwt-auth.guard'
+import {
+  ADMIN_ONLY_ROLES,
+  OPERATIONS_ROLES,
+  STAFF_ROLES,
+} from '../auth/role-capabilities'
 import { Roles } from '../auth/roles.decorator'
 import { RolesGuard } from '../auth/roles.guard'
 import {
@@ -35,28 +39,30 @@ import { TripsService } from './trips.service'
 
 @Controller('admin/trips')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN, UserRole.AGENT, UserRole.FINANCE)
+@Roles(...STAFF_ROLES)
 export class AdminTripsController {
   constructor(private readonly trips: TripsService) {}
 
   @Get('bus-templates')
+  @Roles(...OPERATIONS_ROLES)
   busTemplates() {
     return this.trips.busTemplates()
   }
 
   @Get()
+  @Roles(...OPERATIONS_ROLES)
   list(@Query('q') query?: string) {
     return this.trips.listAdmin(query)
   }
 
   @Get('image-suggestions')
-  @Roles(UserRole.ADMIN, UserRole.AGENT)
+  @Roles(...OPERATIONS_ROLES)
   imageSuggestions(@Query('q') query?: string) {
     return this.trips.imageSuggestions(query)
   }
 
   @Post()
-  @Roles(UserRole.ADMIN, UserRole.AGENT)
+  @Roles(...OPERATIONS_ROLES)
   create(
     @Body() body: CreateTripDto,
     @Req() request: AuthenticatedRequest,
@@ -65,7 +71,7 @@ export class AdminTripsController {
   }
 
   @Post(':id/image')
-  @Roles(UserRole.ADMIN, UserRole.AGENT)
+  @Roles(...OPERATIONS_ROLES)
   @UseInterceptors(
     FileInterceptor('file', {
       limits: { fileSize: 2_500_000 },
@@ -81,7 +87,7 @@ export class AdminTripsController {
   }
 
   @Delete(':id/image')
-  @Roles(UserRole.ADMIN, UserRole.AGENT)
+  @Roles(...OPERATIONS_ROLES)
   clearImage(
     @Param('id') id: string,
     @Req() request: AuthenticatedRequest,
@@ -90,13 +96,13 @@ export class AdminTripsController {
   }
 
   @Get(':id/seats')
-  @Roles(UserRole.ADMIN)
+  @Roles(...ADMIN_ONLY_ROLES)
   seatMap(@Param('id') id: string) {
     return this.trips.findAdminSeatMap(id)
   }
 
   @Post(':id/seats/:seatNumber/assignment')
-  @Roles(UserRole.ADMIN)
+  @Roles(...ADMIN_ONLY_ROLES)
   assignSeatClient(
     @Param('id') id: string,
     @Param('seatNumber', ParseIntPipe) seatNumber: number,
@@ -107,7 +113,7 @@ export class AdminTripsController {
   }
 
   @Patch(':id/seats/:seatNumber/assignment')
-  @Roles(UserRole.ADMIN)
+  @Roles(...ADMIN_ONLY_ROLES)
   moveSeatAssignment(
     @Param('id') id: string,
     @Param('seatNumber', ParseIntPipe) seatNumber: number,
@@ -123,7 +129,7 @@ export class AdminTripsController {
   }
 
   @Patch(':id/seats/:seatNumber')
-  @Roles(UserRole.ADMIN)
+  @Roles(...ADMIN_ONLY_ROLES)
   updateSeat(
     @Param('id') id: string,
     @Param('seatNumber', ParseIntPipe) seatNumber: number,
@@ -139,19 +145,19 @@ export class AdminTripsController {
   }
 
   @Get(':id/audit')
-  @Roles(UserRole.ADMIN)
+  @Roles(...ADMIN_ONLY_ROLES)
   audit(@Param('id') id: string) {
     return this.trips.operationalAudit(id)
   }
 
   @Get(':id/boarding')
-  @Roles(UserRole.ADMIN)
+  @Roles(...ADMIN_ONLY_ROLES)
   boardingList(@Param('id') id: string) {
     return this.trips.boardingList(id)
   }
 
   @Post(':id/boarding/scan')
-  @Roles(UserRole.ADMIN)
+  @Roles(...ADMIN_ONLY_ROLES)
   scanBoardingQr(
     @Param('id') id: string,
     @Body() body: ScanBoardingQrDto,
@@ -165,7 +171,7 @@ export class AdminTripsController {
   }
 
   @Patch(':id/boarding')
-  @Roles(UserRole.ADMIN)
+  @Roles(...ADMIN_ONLY_ROLES)
   bulkUpdateBoarding(
     @Param('id') id: string,
     @Body() body: BulkUpdateBoardingStatusDto,
@@ -180,7 +186,7 @@ export class AdminTripsController {
   }
 
   @Patch(':id/boarding/:passengerId')
-  @Roles(UserRole.ADMIN)
+  @Roles(...ADMIN_ONLY_ROLES)
   updateBoarding(
     @Param('id') id: string,
     @Param('passengerId') passengerId: string,
@@ -196,7 +202,7 @@ export class AdminTripsController {
   }
 
   @Post(':id/complete')
-  @Roles(UserRole.ADMIN)
+  @Roles(...ADMIN_ONLY_ROLES)
   complete(
     @Param('id') id: string,
     @Req() request: AuthenticatedRequest,
@@ -205,7 +211,7 @@ export class AdminTripsController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.ADMIN, UserRole.AGENT)
+  @Roles(...OPERATIONS_ROLES)
   update(
     @Param('id') id: string,
     @Body() body: UpdateTripDto,
