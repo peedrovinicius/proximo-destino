@@ -162,6 +162,24 @@ export function HomePage({
         </nav>
 
         <div className="public-header-actions">
+          <button
+            className="public-search-access"
+            type="button"
+            aria-label="Pesquisar viagens"
+            title="Pesquisar viagens"
+            onClick={() => {
+              document
+                .getElementById('travel-search')
+                ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+              window.setTimeout(() => {
+                document
+                  .getElementById('travel-destination')
+                  ?.focus()
+              }, 420)
+            }}
+          >
+            <Search size={17} />
+          </button>
           <button className="public-client-access" type="button" onClick={onClientAccess}>
             Minha viagem
           </button>
@@ -191,7 +209,7 @@ export function HomePage({
             </div>
           </div>
 
-          <form className="travel-search-card" onSubmit={handleSearch}>
+          <form id="travel-search" className="travel-search-card" onSubmit={handleSearch}>
             <label>
               <span><MapPin size={15} /> Saindo de</span>
               <select value={origin} onChange={(event) => handleOriginChange(event.target.value)}>
@@ -202,7 +220,11 @@ export function HomePage({
 
             <label>
               <span><Bus size={15} /> Indo para</span>
-              <select value={destination} onChange={(event) => setDestination(event.target.value)}>
+              <select
+                id="travel-destination"
+                value={destination}
+                onChange={(event) => setDestination(event.target.value)}
+              >
                 <option value="">Todos os destinos disponíveis</option>
                 {destinations.map((item) => <option key={item}>{item}</option>)}
               </select>
