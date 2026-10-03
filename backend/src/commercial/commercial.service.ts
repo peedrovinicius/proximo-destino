@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common'
 import {
   InstallmentStatus,
@@ -10,6 +11,7 @@ import {
   QuoteStatus,
   ReservationServiceStatus,
 } from '@prisma/client'
+import { EmailAutomationService } from '../notifications/email-automation.service'
 import { PrismaService } from '../prisma/prisma.service'
 import { buildInstallmentSchedule } from './finance-math'
 import {
@@ -20,7 +22,19 @@ import {
 
 @Injectable()
 export class CommercialService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly email?: EmailAutomationService,
+  ) {}
+
+  private async safeEmail(action: () => Promise<unknown> | undefined) {
+    if (!this.email) return
+    try {
+      await action()
+    } catch {
+      // O envio não deve invalidar a operação comercial.
+    }
+  }
 
   private async recordAudit(
     actorUserId: string | undefined,
@@ -199,7 +213,7 @@ export class CommercialService {
       throw new BadRequestException('A validade da cotação já expirou')
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const sent = await this.prisma.$transaction(async (tx) => {
       await tx.quote.updateMany({
         where: {
           reservationId: quote.reservationId,
@@ -244,6 +258,12 @@ export class CommercialService {
 
       return sent
     })
+
+    await this.safeEmail(() =>
+      this.email?.enqueueQuoteSent(sent.id),
+    )
+
+    return sent
   }
 
   async reviseQuote(quoteId: string, actorUserId?: string) {
