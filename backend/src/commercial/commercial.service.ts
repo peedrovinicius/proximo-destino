@@ -21,6 +21,21 @@ import {
 export class CommercialService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private async recordAudit(
+    actorUserId: string | undefined,
+    eventType: string,
+    metadata: Record<string, unknown>,
+  ) {
+    if (!actorUserId) return
+    await this.prisma.authAuditEvent.create({
+      data: {
+        userId: actorUserId,
+        eventType,
+        metadata,
+      },
+    })
+  }
+
   listQuotes(reservationId?: string) {
     return this.prisma.quote.findMany({
       where: reservationId ? { reservationId } : undefined,
@@ -56,7 +71,7 @@ export class CommercialService {
     })
   }
 
-  async createQuote(data: CreateQuoteDto) {
+  async createQuote(data: CreateQuoteDto, actorUserId?: string) {
     const reservation = await this.prisma.reservation.findUnique({
       where: { id: data.reservationId },
       select: { id: true },
@@ -69,7 +84,7 @@ export class CommercialService {
       _max: { revision: true },
     })
 
-    return this.prisma.quote.create({
+    const quote = await this.prisma.quote.create({
       data: {
         reservationId: data.reservationId,
         revision: (aggregate._max.revision ?? 0) + 1,
@@ -89,15 +104,28 @@ export class CommercialService {
         },
       },
     })
+
+    await this.recordAudit(actorUserId, 'OPS_QUOTE_CREATED', {
+      quoteId: quote.id,
+      reservationId: data.reservationId,
+      revision: quote.revision,
+      discountCents: quote.discountCents,
+    })
+
+    return quote
   }
 
-  async addQuoteItem(quoteId: string, data: AddQuoteItemDto) {
+  async addQuoteItem(
+    quoteId: string,
+    data: AddQuoteItemDto,
+    actorUserId?: string,
+  ) {
     await this.assertDraftQuote(quoteId)
 
     const totalCostCents = data.unitCostCents * data.quantity
     const totalSaleCents = data.unitSaleCents * data.quantity
 
-    await this.prisma.quoteItem.create({
+    const item = await this.prisma.quoteItem.create({
       data: {
         quoteId,
         category: data.category,
@@ -111,10 +139,24 @@ export class CommercialService {
       },
     })
 
-    return this.recalculateQuote(quoteId)
+    const quote = await this.recalculateQuote(quoteId)
+    await this.recordAudit(actorUserId, 'OPS_QUOTE_ITEM_ADDED', {
+      quoteId,
+      itemId: item.id,
+      reservationId: quote.reservationId,
+      category: data.category,
+      quantity: data.quantity,
+      totalSaleCents,
+    })
+
+    return quote
   }
 
-  async removeQuoteItem(quoteId: string, itemId: string) {
+  async removeQuoteItem(
+    quoteId: string,
+    itemId: string,
+    actorUserId?: string,
+  ) {
     await this.assertDraftQuote(quoteId)
 
     const item = await this.prisma.quoteItem.findFirst({
@@ -125,10 +167,16 @@ export class CommercialService {
     if (!item) throw new NotFoundException('Item da cotação não encontrado')
 
     await this.prisma.quoteItem.delete({ where: { id: itemId } })
-    return this.recalculateQuote(quoteId)
+    const quote = await this.recalculateQuote(quoteId)
+    await this.recordAudit(actorUserId, 'OPS_QUOTE_ITEM_REMOVED', {
+      quoteId,
+      itemId,
+      reservationId: quote.reservationId,
+    })
+    return quote
   }
 
-  async sendQuote(quoteId: string) {
+  async sendQuote(quoteId: string, actorUserId?: string) {
     await this.recalculateQuote(quoteId)
 
     const quote = await this.prisma.quote.findUnique({
@@ -160,7 +208,7 @@ export class CommercialService {
         data: { status: QuoteStatus.EXPIRED },
       })
 
-      return tx.quote.update({
+      const sent = await tx.quote.update({
         where: { id: quoteId },
         data: {
           status: QuoteStatus.SENT,
@@ -176,10 +224,28 @@ export class CommercialService {
           },
         },
       })
+
+      if (actorUserId) {
+        await tx.authAuditEvent.create({
+          data: {
+            userId: actorUserId,
+            eventType: 'OPS_QUOTE_SENT',
+            metadata: {
+              quoteId,
+              reservationId: quote.reservationId,
+              beforeStatus: quote.status,
+              afterStatus: QuoteStatus.SENT,
+              totalCents: quote.totalCents,
+            },
+          },
+        })
+      }
+
+      return sent
     })
   }
 
-  async reviseQuote(quoteId: string) {
+  async reviseQuote(quoteId: string, actorUserId?: string) {
     const source = await this.prisma.quote.findUnique({
       where: { id: quoteId },
       include: { items: true },
@@ -198,7 +264,7 @@ export class CommercialService {
       _max: { revision: true },
     })
 
-    return this.prisma.quote.create({
+    const revised = await this.prisma.quote.create({
       data: {
         reservationId: source.reservationId,
         revision: (aggregate._max.revision ?? source.revision) + 1,
@@ -225,6 +291,16 @@ export class CommercialService {
       },
       include: { items: true },
     })
+
+    await this.recordAudit(actorUserId, 'OPS_QUOTE_REVISED', {
+      sourceQuoteId: quoteId,
+      quoteId: revised.id,
+      reservationId: source.reservationId,
+      beforeRevision: source.revision,
+      afterRevision: revised.revision,
+    })
+
+    return revised
   }
 
   listServices(reservationId?: string) {
@@ -252,14 +328,32 @@ export class CommercialService {
     })
   }
 
-  async updateServiceStatus(id: string, status: ReservationServiceStatus) {
-    const exists = await this.prisma.reservationService.count({ where: { id } })
-    if (!exists) throw new NotFoundException('Serviço não encontrado')
+  async updateServiceStatus(
+    id: string,
+    status: ReservationServiceStatus,
+    actorUserId?: string,
+  ) {
+    const current = await this.prisma.reservationService.findUnique({
+      where: { id },
+      select: { id: true, reservationId: true, status: true },
+    })
+    if (!current) throw new NotFoundException('Serviço não encontrado')
 
-    return this.prisma.reservationService.update({
+    const updated = await this.prisma.reservationService.update({
       where: { id },
       data: { status },
     })
+
+    if (current.status !== status) {
+      await this.recordAudit(actorUserId, 'OPS_SERVICE_STATUS_CHANGED', {
+        serviceId: id,
+        reservationId: current.reservationId,
+        beforeStatus: current.status,
+        afterStatus: status,
+      })
+    }
+
+    return updated
   }
 
   listFinancePlans() {
@@ -295,7 +389,10 @@ export class CommercialService {
     })
   }
 
-  async createFinancePlan(data: CreateFinancePlanDto) {
+  async createFinancePlan(
+    data: CreateFinancePlanDto,
+    actorUserId?: string,
+  ) {
     const existing = await this.prisma.financePlan.findUnique({
       where: { reservationId: data.reservationId },
       select: { id: true },
@@ -332,7 +429,7 @@ export class CommercialService {
       data.firstDueDate,
     )
 
-    return this.prisma.financePlan.create({
+    const plan = await this.prisma.financePlan.create({
       data: {
         reservationId: data.reservationId,
         quoteId: quote.id,
@@ -352,16 +449,34 @@ export class CommercialService {
         installments: { orderBy: { sequence: 'asc' } },
       },
     })
+
+    await this.recordAudit(actorUserId, 'OPS_FINANCE_PLAN_CREATED', {
+      financePlanId: plan.id,
+      reservationId: data.reservationId,
+      quoteId: quote.id,
+      totalCents: quote.totalCents,
+      downPaymentCents,
+      installmentCount: data.installmentCount,
+    })
+
+    return plan
   }
 
   async updateInstallment(
     id: string,
     status: InstallmentStatus,
     paymentMethod?: string,
+    actorUserId?: string,
   ) {
     const installment = await this.prisma.installment.findUnique({
       where: { id },
-      select: { id: true, status: true },
+      select: {
+        id: true,
+        status: true,
+        financePlan: {
+          select: { reservationId: true },
+        },
+      },
     })
 
     if (!installment) throw new NotFoundException('Parcela não encontrada')
@@ -375,7 +490,7 @@ export class CommercialService {
       )
     }
 
-    return this.prisma.installment.update({
+    const updated = await this.prisma.installment.update({
       where: { id },
       data: {
         status,
@@ -383,6 +498,17 @@ export class CommercialService {
         paymentMethod: null,
       },
     })
+
+    if (installment.status !== status) {
+      await this.recordAudit(actorUserId, 'OPS_INSTALLMENT_STATUS_CHANGED', {
+        installmentId: id,
+        reservationId: installment.financePlan.reservationId,
+        beforeStatus: installment.status,
+        afterStatus: status,
+      })
+    }
+
+    return updated
   }
 
   private async assertDraftQuote(quoteId: string) {
