@@ -1,6 +1,11 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { ClientCreditTransactionType } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
+import {
+  encryptedDocumentFields,
+  hashSensitive,
+  revealDocument,
+} from '../security/sensitive-data'
 import { CreateClientDto } from './dto/create-client.dto'
 import { UpdateClientDto } from './dto/update-client.dto'
 
@@ -47,7 +52,10 @@ export class ClientsService {
 
     const duplicate = await this.prisma.client.findFirst({
       where: {
-        document: cpf,
+        OR: [
+          { documentHash: hashSensitive(cpf) ?? undefined },
+          { document: cpf },
+        ],
         ...(excludeClientId ? { id: { not: excludeClientId } } : {}),
       },
       select: { id: true },
@@ -70,13 +78,15 @@ export class ClientsService {
           email: data.email?.trim().toLowerCase(),
           phone: data.phone?.trim(),
           birthDate: data.birthDate,
-          document: cpf,
+          ...encryptedDocumentFields(cpf),
           notes: data.notes?.trim(),
           companions: data.companions?.length
             ? {
                 create: data.companions.map((companion) => ({
                   fullName: companion.fullName.trim(),
-                  document: companion.document?.trim(),
+                  ...encryptedDocumentFields(
+                    companion.document?.trim() || null,
+                  ),
                   birthDate: companion.birthDate,
                   relationship: companion.relationship?.trim(),
                 })),
@@ -122,8 +132,14 @@ export class ClientsService {
               { fullName: { contains: q, mode: 'insensitive' } },
               { email: { contains: q, mode: 'insensitive' } },
               { phone: { contains: q, mode: 'insensitive' } },
-              ...(documentQuery
-                ? [{ document: { contains: documentQuery } }]
+              ...(documentQuery.length === 11
+                ? [
+                    {
+                      documentHash:
+                        hashSensitive(documentQuery) ?? undefined,
+                    },
+                    { document: documentQuery },
+                  ]
                 : []),
             ],
           }
@@ -135,6 +151,7 @@ export class ClientsService {
         phone: true,
         birthDate: true,
         document: true,
+        documentEncrypted: true,
         createdAt: true,
         _count: { select: { companions: true, reservations: true } },
       },
@@ -155,6 +172,8 @@ export class ClientsService {
 
     return clients.map((client) => ({
       ...client,
+      document: revealDocument(client),
+      documentEncrypted: undefined,
       bonusBalanceCents: Math.max(0, byClient.get(client.id) ?? 0),
     }))
   }
@@ -182,7 +201,16 @@ export class ClientsService {
     })
 
     if (!client) throw new NotFoundException('Cliente não encontrado')
-    return client
+    return {
+      ...client,
+      document: revealDocument(client),
+      documentEncrypted: undefined,
+      companions: client.companions.map((companion) => ({
+        ...companion,
+        document: revealDocument(companion),
+        documentEncrypted: undefined,
+      })),
+    }
   }
 
   async credits(id: string) {
@@ -286,7 +314,7 @@ export class ClientsService {
           phone: data.phone?.trim(),
           birthDate: data.birthDate,
           ...(data.document !== undefined
-            ? { document: cpf ?? null }
+            ? encryptedDocumentFields(cpf ?? null)
             : {}),
           notes: data.notes?.trim(),
         },
