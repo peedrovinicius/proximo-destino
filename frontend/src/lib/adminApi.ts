@@ -366,6 +366,34 @@ export type TripImageSuggestion = {
   license: string | null
 }
 
+export type AdminAuditTrail = {
+  summary: {
+    total: number
+    byCategory: Record<string, number>
+    byRole: Record<string, number>
+  }
+  events: Array<{
+    id: string
+    eventType: string
+    category:
+      | 'RESERVATIONS'
+      | 'CLIENTS'
+      | 'TRIPS'
+      | 'SEATS'
+      | 'FINANCE'
+      | 'COMMERCIAL'
+      | 'SETTINGS'
+      | 'OTHER'
+    metadata: Record<string, unknown> | null
+    createdAt: string
+    user: {
+      id: string
+      email: string
+      role: string
+    } | null
+  }>
+}
+
 export type AdminOperationalAudit = {
   trip: {
     id: string
@@ -719,6 +747,30 @@ export function adminTripImageUrl(trip: Pick<AdminTrip, 'id' | 'imageUrl' | 'has
 }
 
 export const adminApi = {
+  auditTrail: (
+    token: string,
+    filters: {
+      category?: string
+      role?: string
+      q?: string
+      from?: string
+      to?: string
+    } = {},
+  ) => {
+    const params = new URLSearchParams()
+    if (filters.category) params.set('category', filters.category)
+    if (filters.role) params.set('role', filters.role)
+    if (filters.q) params.set('q', filters.q)
+    if (filters.from) params.set('from', filters.from)
+    if (filters.to) params.set('to', filters.to)
+
+    const suffix = params.toString() ? `?${params.toString()}` : ''
+    return adminFetch<AdminAuditTrail>(
+      token,
+      `/admin/audit${suffix}`,
+    )
+  },
+
   boardingList: (token: string, tripId: string) =>
     adminFetch<AdminBoardingList>(
       token,
