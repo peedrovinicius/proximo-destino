@@ -10,8 +10,12 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common'
-import { UserRole } from '@prisma/client'
 import { JwtAuthGuard, type AuthenticatedRequest } from '../auth/jwt-auth.guard'
+import {
+  FINANCE_ROLES,
+  OPERATIONS_ROLES,
+  STAFF_ROLES,
+} from '../auth/role-capabilities'
 import { Roles } from '../auth/roles.decorator'
 import { RolesGuard } from '../auth/roles.guard'
 import { CommercialService } from './commercial.service'
@@ -25,7 +29,7 @@ import {
 
 @Controller('admin/commercial')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN, UserRole.AGENT, UserRole.FINANCE)
+@Roles(...STAFF_ROLES)
 export class AdminCommercialController {
   constructor(private readonly commercial: CommercialService) {}
 
@@ -35,7 +39,7 @@ export class AdminCommercialController {
   }
 
   @Post('quotes')
-  @Roles(UserRole.ADMIN, UserRole.AGENT)
+  @Roles(...OPERATIONS_ROLES)
   createQuote(
     @Body() body: CreateQuoteDto,
     @Req() request: AuthenticatedRequest,
@@ -44,7 +48,7 @@ export class AdminCommercialController {
   }
 
   @Post('quotes/:id/items')
-  @Roles(UserRole.ADMIN, UserRole.AGENT)
+  @Roles(...OPERATIONS_ROLES)
   addItem(
     @Param('id') id: string,
     @Body() body: AddQuoteItemDto,
@@ -54,7 +58,7 @@ export class AdminCommercialController {
   }
 
   @Delete('quotes/:quoteId/items/:itemId')
-  @Roles(UserRole.ADMIN, UserRole.AGENT)
+  @Roles(...OPERATIONS_ROLES)
   removeItem(
     @Param('quoteId') quoteId: string,
     @Param('itemId') itemId: string,
@@ -68,7 +72,7 @@ export class AdminCommercialController {
   }
 
   @Post('quotes/:id/send')
-  @Roles(UserRole.ADMIN, UserRole.AGENT)
+  @Roles(...OPERATIONS_ROLES)
   sendQuote(
     @Param('id') id: string,
     @Req() request: AuthenticatedRequest,
@@ -77,7 +81,7 @@ export class AdminCommercialController {
   }
 
   @Post('quotes/:id/revise')
-  @Roles(UserRole.ADMIN, UserRole.AGENT)
+  @Roles(...OPERATIONS_ROLES)
   reviseQuote(
     @Param('id') id: string,
     @Req() request: AuthenticatedRequest,
@@ -91,7 +95,7 @@ export class AdminCommercialController {
   }
 
   @Patch('services/:id/status')
-  @Roles(UserRole.ADMIN, UserRole.AGENT)
+  @Roles(...OPERATIONS_ROLES)
   updateServiceStatus(
     @Param('id') id: string,
     @Body() body: UpdateReservationServiceDto,
@@ -105,13 +109,13 @@ export class AdminCommercialController {
   }
 
   @Get('finance/plans')
-  @Roles(UserRole.ADMIN, UserRole.FINANCE)
+  @Roles(...FINANCE_ROLES)
   listFinancePlans() {
     return this.commercial.listFinancePlans()
   }
 
   @Post('finance/plans')
-  @Roles(UserRole.ADMIN, UserRole.FINANCE)
+  @Roles(...FINANCE_ROLES)
   createFinancePlan(
     @Body() body: CreateFinancePlanDto,
     @Req() request: AuthenticatedRequest,
@@ -120,7 +124,7 @@ export class AdminCommercialController {
   }
 
   @Patch('finance/installments/:id')
-  @Roles(UserRole.ADMIN, UserRole.FINANCE)
+  @Roles(...FINANCE_ROLES)
   updateInstallment(
     @Param('id') id: string,
     @Body() body: UpdateInstallmentDto,
