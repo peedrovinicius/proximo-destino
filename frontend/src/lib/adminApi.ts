@@ -428,6 +428,45 @@ export type AdminBoardingList = {
   }>
 }
 
+export type AdminManualPayment = {
+  id: string
+  method: 'CASH' | 'TRANSFER' | 'BOLETO'
+  status: 'RECEIVED' | 'REVERSED'
+  amountCents: number
+  paidAt: string
+  reference: string | null
+  note: string | null
+  reversedAt: string | null
+  reversedReason: string | null
+  createdAt: string
+  installment: {
+    id: string
+    sequence: number
+    dueDate: string
+    amountCents: number
+  } | null
+  recordedBy: { id: string; email: string; role: string } | null
+  reversedBy: { id: string; email: string; role: string } | null
+  reservation: {
+    id: string
+    status: AdminReservation['status']
+    seatAssignments: Array<{ seatNumber: number }>
+    client: {
+      id: string
+      fullName: string
+      email: string | null
+      phone: string | null
+    }
+    trip: {
+      id: string
+      title: string
+      origin: string
+      destination: string
+      departureDate: string
+    }
+  }
+}
+
 export type AdminPaymentsDashboard = {
   summary: {
     totalOrders: number
@@ -439,8 +478,13 @@ export type AdminPaymentsDashboard = {
     paidCents: number
     pendingCents: number
     refundedCents: number
+    manualReceivedCount: number
+    manualReceivedCents: number
+    manualReversedCount: number
+    manualReversedCents: number
   }
   orders: AdminPurchaseOrder[]
+  manualPayments: AdminManualPayment[]
 }
 
 export type AdminReservationFinance = {
