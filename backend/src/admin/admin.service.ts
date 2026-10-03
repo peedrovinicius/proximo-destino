@@ -975,6 +975,9 @@ export class AdminService {
         status: true,
         amountCents: true,
         method: true,
+        reservation: {
+          select: { status: true },
+        },
       },
     })
 
@@ -1017,9 +1020,12 @@ export class AdminService {
               where: { id: installment.id },
               data: {
                 status:
-                  installment.dueDate.getTime() < Date.now()
-                    ? InstallmentStatus.OVERDUE
-                    : InstallmentStatus.OPEN,
+                  payment.reservation.status ===
+                  ReservationStatus.CANCELLED
+                    ? InstallmentStatus.CANCELLED
+                    : installment.dueDate.getTime() < Date.now()
+                      ? InstallmentStatus.OVERDUE
+                      : InstallmentStatus.OPEN,
                 paidAt: null,
                 paymentMethod: null,
               },
@@ -1514,8 +1520,19 @@ export class AdminService {
         financePlan: {
           select: {
             installments: {
-              select: { amountCents: true, status: true },
+              select: {
+                id: true,
+                amountCents: true,
+                status: true,
+              },
             },
+          },
+        },
+        manualPayments: {
+          select: {
+            installmentId: true,
+            status: true,
+            amountCents: true,
           },
         },
       },
@@ -1537,9 +1554,29 @@ export class AdminService {
           ) - (reservation.purchaseOrder.refundedCents ?? 0),
           0,
         )
-      : reservation.financePlan?.installments
-          .filter((item) => item.status === InstallmentStatus.PAID)
-          .reduce((sum, item) => sum + item.amountCents, 0) ?? 0
+      : (() => {
+          const manualInstallmentIds = new Set(
+            reservation.manualPayments
+              .map((payment) => payment.installmentId)
+              .filter((value): value is string => Boolean(value)),
+          )
+          const legacyPaid =
+            reservation.financePlan?.installments
+              .filter(
+                (item) =>
+                  item.status === InstallmentStatus.PAID &&
+                  !manualInstallmentIds.has(item.id),
+              )
+              .reduce((sum, item) => sum + item.amountCents, 0) ?? 0
+          const manualPaid = reservation.manualPayments
+            .filter(
+              (payment) =>
+                payment.status === ManualPaymentStatus.RECEIVED,
+            )
+            .reduce((sum, payment) => sum + payment.amountCents, 0)
+
+          return legacyPaid + manualPaid
+        })()
 
     if (reservation.status === ReservationStatus.CANCELLED) {
       const credit = await this.prisma.clientCreditTransaction.findUnique({
