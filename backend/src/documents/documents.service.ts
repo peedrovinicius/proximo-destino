@@ -335,6 +335,7 @@ export class DocumentsService {
             totalCents: true,
             installments: {
               select: {
+                id: true,
                 sequence: true,
                 dueDate: true,
                 amountCents: true,
@@ -392,13 +393,7 @@ export class DocumentsService {
         .filter(
           (item) =>
             item.status === InstallmentStatus.PAID &&
-            !manualInstallmentIds.has(
-              finance.installments.find(
-                (candidate) =>
-                  candidate.sequence === item.sequence &&
-                  candidate.dueDate.getTime() === item.dueDate.getTime(),
-              )?.sequence.toString() ?? '',
-            ),
+            !manualInstallmentIds.has(item.id),
         )
         .reduce((sum, item) => sum + item.amountCents, 0) ?? 0
 
