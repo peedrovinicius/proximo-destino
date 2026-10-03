@@ -53,6 +53,18 @@ export class EmailAutomationService
   ) {}
 
   onModuleInit() {
+    const verifyOnStart =
+      this.config.get<string>('EMAIL_PROVIDER_VERIFY_ON_START')?.trim() ===
+      'true'
+
+    if (verifyOnStart) {
+      const verification = setTimeout(
+        () => void this.verifyProviderOnStart(),
+        3_000,
+      )
+      verification.unref()
+    }
+
     const enabled =
       this.config.get<string>('EMAIL_AUTOMATION_ENABLED')?.trim() !== 'false'
 
@@ -1194,6 +1206,72 @@ export class EmailAutomationService
     }
 
     return processed
+  }
+
+  private async verifyProviderOnStart() {
+    const provider = this.providerConfig()
+    const recipient = this.normalizeEmail(
+      this.config.get<string>('ADMIN_EMAIL')?.trim(),
+    )
+
+    if (!provider.configured) {
+      this.logger.warn('EMAIL_PROVIDER_VERIFY provider_not_configured')
+      return
+    }
+
+    if (!recipient) {
+      this.logger.warn('EMAIL_PROVIDER_VERIFY admin_email_not_configured')
+      return
+    }
+
+    try {
+      const response = await fetch(provider.apiUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${provider.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: provider.from,
+          to: [recipient],
+          ...(provider.replyTo ? { reply_to: provider.replyTo } : {}),
+          subject: 'Teste de e-mail — Próximo Destino',
+          text:
+            'Teste único de validação do provedor de e-mail da Próximo Destino.',
+        }),
+        signal: AbortSignal.timeout(12_000),
+      })
+
+      const raw = await response.text()
+      let parsed: { id?: string; message?: string } = {}
+      try {
+        parsed = raw ? JSON.parse(raw) : {}
+      } catch {
+        parsed = {}
+      }
+
+      if (!response.ok) {
+        this.logger.warn(
+          `EMAIL_PROVIDER_VERIFY failed http=${response.status} message=${(
+            parsed.message || 'provider_rejected'
+          ).slice(0, 180)}`,
+        )
+        return
+      }
+
+      this.logger.log(
+        `EMAIL_PROVIDER_VERIFY success provider_message_id=${
+          parsed.id || 'unknown'
+        }`,
+      )
+    } catch (error) {
+      this.logger.warn(
+        `EMAIL_PROVIDER_VERIFY failed message=${this.errorText(error).slice(
+          0,
+          180,
+        )}`,
+      )
+    }
   }
 
   private async sendMessage(
