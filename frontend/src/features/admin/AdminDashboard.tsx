@@ -674,9 +674,12 @@ function paymentStatusLabel(status: AdminPurchaseOrder['status']) {
   return 'Cancelado'
 }
 
-function paymentMethodLabel(method: AdminPurchaseOrder['paymentMethod']) {
+function paymentMethodLabel(
+  method: AdminPurchaseOrder['paymentMethod'] | 'CASH',
+) {
   if (method === 'CARD') return 'Cartão'
   if (method === 'PIX') return 'PIX'
+  if (method === 'CASH') return 'Dinheiro'
   if (method === 'BOLETO') return 'Boleto'
   return 'Transferência'
 }
@@ -684,7 +687,9 @@ function paymentMethodLabel(method: AdminPurchaseOrder['paymentMethod']) {
 function PaymentsWorkspace({ accessToken }: { accessToken: string }) {
   const [data, setData] = useState<AdminPaymentsDashboard | null>(null)
   const [statusFilter, setStatusFilter] = useState<'ALL' | AdminPurchaseOrder['status']>('ALL')
-  const [methodFilter, setMethodFilter] = useState<'ALL' | AdminPurchaseOrder['paymentMethod']>('ALL')
+  const [methodFilter, setMethodFilter] = useState<
+    'ALL' | AdminPurchaseOrder['paymentMethod'] | 'CASH'
+  >('ALL')
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -709,7 +714,12 @@ function PaymentsWorkspace({ accessToken }: { accessToken: string }) {
     const normalized = query.trim().toLowerCase()
     return (data?.orders ?? []).filter((order) => {
       if (statusFilter !== 'ALL' && order.status !== statusFilter) return false
-      if (methodFilter !== 'ALL' && order.paymentMethod !== methodFilter) return false
+      if (
+        methodFilter !== 'ALL' &&
+        order.paymentMethod !== methodFilter
+      ) {
+        return false
+      }
       if (!normalized) return true
 
       return [
@@ -725,15 +735,52 @@ function PaymentsWorkspace({ accessToken }: { accessToken: string }) {
     })
   }, [data, methodFilter, query, statusFilter])
 
+  const manualPayments = useMemo(() => {
+    const normalized = query.trim().toLowerCase()
+
+    return (data?.manualPayments ?? []).filter((payment) => {
+      if (
+        methodFilter !== 'ALL' &&
+        payment.method !== methodFilter
+      ) {
+        return false
+      }
+
+      if (
+        statusFilter !== 'ALL' &&
+        !(
+          (statusFilter === 'PAID' && payment.status === 'RECEIVED') ||
+          (statusFilter === 'REFUNDED' && payment.status === 'REVERSED')
+        )
+      ) {
+        return false
+      }
+
+      if (!normalized) return true
+
+      return [
+        payment.id,
+        payment.reference ?? '',
+        payment.reservation.id,
+        payment.reservation.client.fullName,
+        payment.reservation.client.email ?? '',
+        payment.reservation.client.phone ?? '',
+        payment.reservation.trip.title,
+        payment.reservation.trip.origin,
+        payment.reservation.trip.destination,
+      ].some((value) => value.toLowerCase().includes(normalized))
+    })
+  }, [data, methodFilter, query, statusFilter])
+
   const summary = data?.summary
 
   return (
     <section className="admin-payments-workspace">
       <div className="admin-payments-heading">
         <div>
-          <span className="eyebrow">Compra online</span>
+          <span className="eyebrow">Financeiro integrado</span>
           <h2>Pagamentos</h2>
-          <p>Pedidos criados pelo fluxo de compra com PIX e cartão.</p>
+          <p>PIX, cartão, dinheiro, transferência e boleto em uma única visão.</p>
         </div>
         <button type="button" onClick={() => void load()} disabled={loading}>
           {loading ? 'Atualizando...' : 'Atualizar'}
@@ -746,7 +793,10 @@ function PaymentsWorkspace({ accessToken }: { accessToken: string }) {
         <article>
           <small>Recebido</small>
           <strong>{money.format((summary?.paidCents ?? 0) / 100)}</strong>
-          <span>{summary?.paidOrders ?? 0} pagos</span>
+          <span>
+            {summary?.paidOrders ?? 0} online ·{' '}
+            {summary?.manualReceivedCount ?? 0} manual(is)
+          </span>
         </article>
         <article>
           <small>Pendente</small>
@@ -761,7 +811,10 @@ function PaymentsWorkspace({ accessToken }: { accessToken: string }) {
         <article>
           <small>Estornado</small>
           <strong>{money.format((summary?.refundedCents ?? 0) / 100)}</strong>
-          <span>{summary?.refundedOrders ?? 0} estorno(s) total(is)</span>
+          <span>
+            {summary?.refundedOrders ?? 0} online ·{' '}
+            {summary?.manualReversedCount ?? 0} manual(is)
+          </span>
         </article>
       </div>
 
@@ -800,6 +853,7 @@ function PaymentsWorkspace({ accessToken }: { accessToken: string }) {
             <option value="ALL">Todos</option>
             <option value="PIX">PIX</option>
             <option value="CARD">Cartão</option>
+            <option value="CASH">Dinheiro</option>
             <option value="BOLETO">Boleto</option>
             <option value="TRANSFER">Transferência</option>
           </select>
@@ -874,6 +928,118 @@ function PaymentsWorkspace({ accessToken }: { accessToken: string }) {
           </div>
         )) : (
           <p className="admin-empty">Nenhum pagamento encontrado.</p>
+        )}
+      </article>
+
+      <article className="admin-manual-payment-list">
+        <div className="admin-manual-payment-list-head">
+          <div>
+            <span className="eyebrow">Recebimentos manuais</span>
+            <strong>Dinheiro, transferência e boleto</strong>
+          </div>
+          <span>
+            {money.format((summary?.manualReceivedCents ?? 0) / 100)} recebido
+            {(summary?.manualReversedCents ?? 0) > 0
+              ? ` · ${money.format(
+                  (summary?.manualReversedCents ?? 0) / 100,
+                )} estornado`
+              : ''}
+          </span>
+        </div>
+
+        {loading ? (
+          <p className="admin-empty">Carregando recebimentos...</p>
+        ) : manualPayments.length ? (
+          manualPayments.map((payment) => (
+            <div className="admin-manual-payment-row" key={payment.id}>
+              <div className="admin-payment-main">
+                <strong>{payment.reservation.client.fullName}</strong>
+                <span>{payment.reservation.trip.title}</span>
+                <small>
+                  {date.format(
+                    new Date(payment.reservation.trip.departureDate),
+                  )}
+                  {' · '}
+                  {payment.reservation.trip.origin} →{' '}
+                  {payment.reservation.trip.destination}
+                </small>
+              </div>
+
+              <div>
+                <strong>{paymentMethodLabel(payment.method)}</strong>
+                <span>{date.format(new Date(payment.paidAt))}</span>
+                <small>
+                  {payment.reference
+                    ? `Ref. ${payment.reference}`
+                    : 'Sem referência'}
+                </small>
+              </div>
+
+              <div>
+                <strong>
+                  #{payment.reservation.id.slice(-8).toUpperCase()}
+                </strong>
+                <span>
+                  {payment.installment
+                    ? payment.installment.sequence === 0
+                      ? 'Entrada'
+                      : `Parcela ${payment.installment.sequence}`
+                    : 'Sem parcela vinculada'}
+                </span>
+                <small>
+                  {payment.recordedBy?.email || 'Sistema'}
+                </small>
+              </div>
+
+              <div className="admin-payment-value">
+                <strong>{money.format(payment.amountCents / 100)}</strong>
+                <span>
+                  {payment.note || 'Recebimento registrado'}
+                </span>
+              </div>
+
+              <div className="admin-payment-status-actions">
+                <span
+                  className={
+                    'admin-payment-status admin-payment-status--' +
+                    (payment.status === 'RECEIVED'
+                      ? 'paid'
+                      : 'refunded')
+                  }
+                >
+                  {payment.status === 'RECEIVED'
+                    ? 'Recebido'
+                    : 'Estornado'}
+                </span>
+                {payment.reservation.client.phone ? (
+                  <button
+                    type="button"
+                    className="admin-payment-whatsapp"
+                    onClick={() =>
+                      openWhatsAppTo(
+                        payment.reservation.client.phone!,
+                        payment.status === 'RECEIVED'
+                          ? `Olá, ${payment.reservation.client.fullName}! Registramos o recebimento de ${money.format(
+                              payment.amountCents / 100,
+                            )} por ${paymentMethodLabel(
+                              payment.method,
+                            )} referente a ${payment.reservation.trip.title}.`
+                          : `Olá, ${payment.reservation.client.fullName}. O lançamento de ${money.format(
+                              payment.amountCents / 100,
+                            )} referente a ${payment.reservation.trip.title} foi estornado em nosso financeiro.`,
+                      )
+                    }
+                  >
+                    WhatsApp
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ))
+        ) : (
+          <p className="admin-empty">
+            Nenhum recebimento manual encontrado para estes filtros.
+          </p>
         )}
       </article>
     </section>
