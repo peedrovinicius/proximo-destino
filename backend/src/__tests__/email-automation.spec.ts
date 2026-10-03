@@ -250,6 +250,7 @@ describe('automação transacional de e-mail', () => {
       await prisma.emailProviderConnection.findUniqueOrThrow({
         where: { provider: 'RESEND' },
       })
+    assert.ok(stored.apiKeyEncrypted)
     assert.notEqual(stored.apiKeyEncrypted, testApiKey)
     assert.equal(stored.apiKeyEncrypted.includes(testApiKey), false)
 
