@@ -123,7 +123,7 @@ export class ClientsService {
 
   async list(query?: string) {
     const q = query?.trim()
-    const documentQuery = q?.replace(/\D/g, '')
+    const documentQuery = q?.replace(/\D/g, '') ?? ''
 
     const clients = await this.prisma.client.findMany({
       where: q
