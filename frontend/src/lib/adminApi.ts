@@ -651,7 +651,9 @@ export type AdminNotificationFeed = {
 export type EmailAutomationStatus = {
   enabled: boolean
   providerConfigured: boolean
-  deliveryMode: 'RESEND_API' | 'OUTBOX_ONLY'
+  productionReady: boolean
+  testOnly: boolean
+  deliveryMode: 'RESEND_API' | 'RESEND_TEST' | 'OUTBOX_ONLY'
   adminCopyConfigured: boolean
   fromConfigured: boolean
   counts: {
