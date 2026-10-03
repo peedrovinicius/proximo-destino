@@ -1,13 +1,13 @@
 import { Controller, Get, Param, UseGuards } from '@nestjs/common'
-import { UserRole } from '@prisma/client'
 import { JwtAuthGuard } from '../auth/jwt-auth.guard'
+import { ADMIN_ONLY_ROLES } from '../auth/role-capabilities'
 import { Roles } from '../auth/roles.decorator'
 import { RolesGuard } from '../auth/roles.guard'
 import { PrivacyService } from './privacy.service'
 
 @Controller('admin/privacy')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN)
+@Roles(...ADMIN_ONLY_ROLES)
 export class PrivacyController {
   constructor(private readonly privacy: PrivacyService) {}
 
