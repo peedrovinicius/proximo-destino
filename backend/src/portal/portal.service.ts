@@ -33,6 +33,10 @@ import { WhatsAppAutomationService } from '../notifications/whatsapp-automation.
 import { PaymentConnectionService } from '../payments/payment-connection.service'
 import { PrismaService } from '../prisma/prisma.service'
 import {
+  encryptedDocumentFields,
+  revealDocument,
+} from '../security/sensitive-data'
+import {
   ClientPortalLoginDto,
   RequestReservationDto,
   UpdateClientPassengersDto,
@@ -291,7 +295,9 @@ export class PortalService {
                 fullName:
                   providedPassengers?.[index]?.fullName ??
                   (index === 0 ? data.fullName.trim() : null),
-                document: providedPassengers?.[index]?.document ?? null,
+                ...encryptedDocumentFields(
+                  providedPassengers?.[index]?.document ?? null,
+                ),
                 isPrimary: index === 0,
               },
               select: { id: true },
@@ -360,6 +366,7 @@ export class PortalService {
         sequence: true,
         fullName: true,
         document: true,
+        documentEncrypted: true,
         isPrimary: true,
         seatAssignment: { select: { seatNumber: true } },
       },
@@ -407,7 +414,11 @@ export class PortalService {
       reservation,
       accessCode,
       selectedSeats,
-      passengers,
+      passengers: passengers.map((passenger) => ({
+        ...passenger,
+        document: revealDocument(passenger),
+        documentEncrypted: undefined,
+      })),
       purchaseOrder,
       payment,
       message: purchaseIntent
@@ -1013,7 +1024,9 @@ export class PortalService {
           where: { id: passenger.id },
           data: {
             fullName: passenger.fullName.trim(),
-            document: passenger.document?.trim() || null,
+            ...encryptedDocumentFields(
+              passenger.document?.trim() || null,
+            ),
             birthDate: passenger.birthDate ?? null,
           },
         })
@@ -1297,6 +1310,7 @@ export class PortalService {
             sequence: true,
             fullName: true,
             document: true,
+            documentEncrypted: true,
             birthDate: true,
             isPrimary: true,
             seatAssignment: { select: { seatNumber: true } },
@@ -1539,6 +1553,11 @@ export class PortalService {
 
     return {
       ...reservation,
+      passengers: reservation.passengers.map((passenger) => ({
+        ...passenger,
+        document: revealDocument(passenger),
+        documentEncrypted: undefined,
+      })),
       client,
       bonus: {
         balanceCents: bonusBalanceCents,
