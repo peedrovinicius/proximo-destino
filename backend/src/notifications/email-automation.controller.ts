@@ -26,4 +26,9 @@ export class EmailAutomationController {
   process() {
     return this.email.processNow()
   }
+
+  @Post('test')
+  test() {
+    return this.email.sendTestEmail()
+  }
 }
