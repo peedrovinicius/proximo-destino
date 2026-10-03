@@ -1546,6 +1546,10 @@ export class AdminService {
       return reservation
     })
 
+    await this.safeEmail(() =>
+      this.email?.enqueueReservationCreated(created.id),
+    )
+
     return created
   }
 
