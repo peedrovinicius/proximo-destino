@@ -42,6 +42,18 @@ export class AdminController {
     return this.admin.search(query)
   }
 
+  @Get('audit')
+  @Roles(UserRole.ADMIN)
+  audit(
+    @Query('category') category = 'ALL',
+    @Query('role') role = 'ALL',
+    @Query('q') query = '',
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.admin.auditTrail(category, role, query, from, to)
+  }
+
   @Get('reservations')
   reservations() {
     return this.admin.listReservations()
