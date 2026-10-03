@@ -2,7 +2,10 @@ import { Module } from '@nestjs/common'
 import { AuthModule } from '../auth/auth.module'
 import { AdminNotificationsController } from './admin-notifications.controller'
 import { AdminNotificationsService } from './admin-notifications.service'
-import { EmailAutomationController } from './email-automation.controller'
+import {
+  EmailAutomationController,
+  EmailOAuthController,
+} from './email-automation.controller'
 import { EmailAutomationService } from './email-automation.service'
 import { WhatsAppAutomationController } from './whatsapp-automation.controller'
 import { WhatsAppAutomationService } from './whatsapp-automation.service'
@@ -12,6 +15,7 @@ import { WhatsAppAutomationService } from './whatsapp-automation.service'
   controllers: [
     AdminNotificationsController,
     EmailAutomationController,
+    EmailOAuthController,
     WhatsAppAutomationController,
   ],
   providers: [
