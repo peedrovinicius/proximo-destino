@@ -121,3 +121,12 @@ export function revealDocument(input: {
     null
   )
 }
+
+export function maskSensitiveDocument(
+  value: string | null | undefined,
+) {
+  const normalized = value?.replace(/\s+/g, '') ?? ''
+  if (!normalized) return null
+  const visible = normalized.slice(-4)
+  return `${'•'.repeat(Math.max(4, normalized.length - visible.length))}${visible}`
+}
