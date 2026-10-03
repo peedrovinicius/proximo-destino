@@ -7,8 +7,10 @@ import {
   Post,
   Query,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common'
+import type { Response } from 'express'
 import {
   JwtAuthGuard,
   type AuthenticatedRequest,
@@ -19,6 +21,7 @@ import { RolesGuard } from '../auth/roles.guard'
 import {
   ConnectEmailProviderDto,
   UpdateEmailAutomationDto,
+  UpdateEmailProviderSettingsDto,
 } from './dto/email-provider.dto'
 import { EmailAutomationService } from './email-automation.service'
 
@@ -31,6 +34,22 @@ export class EmailAutomationController {
   @Get('status')
   status() {
     return this.email.status()
+  }
+
+  @Post('oauth/connect')
+  oauthConnect(@Req() request: AuthenticatedRequest) {
+    return this.email.beginOAuth(request.user.id)
+  }
+
+  @Patch('connection/settings')
+  updateSettings(
+    @Body() body: UpdateEmailProviderSettingsDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.email.updateProviderSettings(
+      body,
+      request.user.id,
+    )
   }
 
   @Post('connection')
@@ -71,5 +90,34 @@ export class EmailAutomationController {
   @Post('test')
   test() {
     return this.email.sendTestEmail()
+  }
+}
+
+
+@Controller('notifications/email/oauth')
+export class EmailOAuthController {
+  constructor(private readonly email: EmailAutomationService) {}
+
+  @Get('client-metadata')
+  clientMetadata() {
+    return this.email.oauthClientMetadata()
+  }
+
+  @Get('callback')
+  async callback(
+    @Query('code') code: string,
+    @Query('state') state: string,
+    @Res() response: Response,
+  ) {
+    try {
+      await this.email.completeOAuth(code, state)
+      return response.redirect(
+        this.email.frontendResultUrl('success'),
+      )
+    } catch {
+      return response.redirect(
+        this.email.frontendResultUrl('error'),
+      )
+    }
   }
 }
