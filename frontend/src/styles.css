@@ -14567,3 +14567,46 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
     width: auto;
   }
 }
+
+
+.admin-search-clear {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: #8b99a7;
+  background: transparent;
+  cursor: pointer;
+  transition: color .18s ease, background .18s ease;
+}
+
+.admin-search-clear:hover {
+  color: #425d72;
+  background: #eef3f7;
+}
+
+.admin-search-shortcut {
+  display: inline-flex;
+  min-width: 28px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  border: 1px solid #e1e8ed;
+  border-radius: 6px;
+  color: #93a0ab;
+  background: #fff;
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: -.02em;
+}
+
+@media (max-width: 1100px) {
+  .admin-search-shortcut {
+    display: none;
+  }
+}
