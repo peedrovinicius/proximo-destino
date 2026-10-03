@@ -862,7 +862,34 @@ export class EmailAutomationService
       ),
       sourceType: 'RESERVATION',
       sourceId: reservation.id,
-      includeAdminCopy: false,
+    })
+  }
+
+  private async enqueueBirthday(
+    client: {
+      id: string
+      fullName: string
+      email: string | null
+    },
+    year: number,
+  ) {
+    const firstName = this.firstName(client.fullName)
+
+    return this.enqueue({
+      eventType: 'BIRTHDAY',
+      idempotencyKey: `email:birthday:${client.id}:${year}`,
+      recipientEmail: client.email,
+      recipientName: client.fullName,
+      subject: `Feliz aniversário, ${firstName}!`,
+      textBody:
+        `Feliz aniversário, ${firstName}! A Próximo Destino deseja um novo ciclo cheio de saúde, boas experiências e viagens inesquecíveis.`,
+      htmlBody: this.emailHtml(
+        `Feliz aniversário, ${firstName}!`,
+        'A Próximo Destino deseja um novo ciclo cheio de saúde, boas experiências e viagens inesquecíveis.',
+        [],
+      ),
+      sourceType: 'CLIENT',
+      sourceId: client.id,
     })
   }
 
@@ -975,6 +1002,55 @@ export class EmailAutomationService
 
     for (const reservation of reservations) {
       await this.enqueueTripReminder(reservation.id)
+    }
+
+    const local = this.fortalezaParts(now)
+    if (local.hour < 8) return
+
+    const clients = await this.prisma.client.findMany({
+      where: {
+        email: { not: null },
+        birthDate: { not: null },
+      },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        birthDate: true,
+      },
+      take: 5_000,
+    })
+
+    for (const client of clients) {
+      if (!client.birthDate) continue
+      if (
+        client.birthDate.getUTCMonth() + 1 !== local.month ||
+        client.birthDate.getUTCDate() !== local.day
+      ) {
+        continue
+      }
+      await this.enqueueBirthday(client, local.year)
+    }
+  }
+
+  private fortalezaParts(value: Date) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Fortaleza',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      hourCycle: 'h23',
+    }).formatToParts(value)
+
+    const read = (type: Intl.DateTimeFormatPartTypes) =>
+      Number(parts.find((part) => part.type === type)?.value ?? 0)
+
+    return {
+      year: read('year'),
+      month: read('month'),
+      day: read('day'),
+      hour: read('hour'),
     }
   }
 
