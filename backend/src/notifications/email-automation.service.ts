@@ -386,6 +386,155 @@ export class EmailAutomationService
     })
   }
 
+  async enqueueCancellationRejected(reservationId: string) {
+    const reservation = await this.prisma.reservation.findUnique({
+      where: { id: reservationId },
+      select: {
+        id: true,
+        cancellationRequestStatus: true,
+        cancellationRequestResolutionNote: true,
+        client: {
+          select: { fullName: true, email: true },
+        },
+        trip: {
+          select: { title: true },
+        },
+      },
+    })
+
+    if (
+      !reservation ||
+      reservation.cancellationRequestStatus !== 'REJECTED'
+    ) {
+      return null
+    }
+
+    return this.enqueue({
+      eventType: 'CANCELLATION_REJECTED',
+      idempotencyKey: `email:cancellation-rejected:${reservation.id}`,
+      recipientEmail: reservation.client.email,
+      recipientName: reservation.client.fullName,
+      subject: `Atualização do cancelamento — ${reservation.trip.title}`,
+      textBody:
+        `Olá, ${this.firstName(reservation.client.fullName)}. Seu pedido de cancelamento para ` +
+        `${reservation.trip.title} foi analisado e não foi aprovado. Motivo: ` +
+        `${reservation.cancellationRequestResolutionNote || 'consulte a Próximo Destino'}.`,
+      htmlBody: this.emailHtml(
+        'Atualização do cancelamento',
+        `Sua solicitação referente a <strong>${this.escape(reservation.trip.title)}</strong> foi analisada e não foi aprovada.`,
+        [
+          [
+            'Motivo',
+            reservation.cancellationRequestResolutionNote ||
+              'Consulte a Próximo Destino',
+          ],
+          ['Reserva', '#' + reservation.id.slice(-8).toUpperCase()],
+        ],
+      ),
+      sourceType: 'RESERVATION',
+      sourceId: reservation.id,
+    })
+  }
+
+  async enqueueBonusUsed(
+    reservationId: string,
+    amountCents: number,
+    balanceCents: number,
+    eventKey: string,
+  ) {
+    const reservation = await this.prisma.reservation.findUnique({
+      where: { id: reservationId },
+      select: {
+        id: true,
+        client: {
+          select: { fullName: true, email: true },
+        },
+        trip: {
+          select: { title: true },
+        },
+      },
+    })
+
+    if (!reservation) return null
+
+    return this.enqueue({
+      eventType: 'BONUS_USED',
+      idempotencyKey: `email:bonus-used:${eventKey}`,
+      recipientEmail: reservation.client.email,
+      recipientName: reservation.client.fullName,
+      subject: `Bônus aplicado — ${reservation.trip.title}`,
+      textBody:
+        `Olá, ${this.firstName(reservation.client.fullName)}! Aplicamos ` +
+        `${this.formatMoney(amountCents)} do seu bônus em ${reservation.trip.title}. ` +
+        `Saldo restante: ${this.formatMoney(balanceCents)}.`,
+      htmlBody: this.emailHtml(
+        'Bônus aplicado',
+        `Seu bônus foi usado em <strong>${this.escape(reservation.trip.title)}</strong>.`,
+        [
+          ['Valor aplicado', this.formatMoney(amountCents)],
+          ['Saldo restante', this.formatMoney(balanceCents)],
+        ],
+      ),
+      sourceType: 'RESERVATION',
+      sourceId: reservation.id,
+    })
+  }
+
+  async enqueueQuoteSent(quoteId: string) {
+    const quote = await this.prisma.quote.findUnique({
+      where: { id: quoteId },
+      select: {
+        id: true,
+        status: true,
+        title: true,
+        revision: true,
+        totalCents: true,
+        validUntil: true,
+        reservation: {
+          select: {
+            id: true,
+            client: {
+              select: { fullName: true, email: true },
+            },
+            trip: {
+              select: { title: true },
+            },
+          },
+        },
+      },
+    })
+
+    if (!quote || quote.status !== 'SENT') return null
+
+    return this.enqueue({
+      eventType: 'QUOTE_SENT',
+      idempotencyKey: `email:quote-sent:${quote.id}:${quote.revision}`,
+      recipientEmail: quote.reservation.client.email,
+      recipientName: quote.reservation.client.fullName,
+      subject: `Cotação disponível — ${quote.reservation.trip.title}`,
+      textBody:
+        `Olá, ${this.firstName(quote.reservation.client.fullName)}! Sua cotação ` +
+        `${quote.title} para ${quote.reservation.trip.title} está disponível. ` +
+        `Valor: ${this.formatMoney(quote.totalCents)}.` +
+        (quote.validUntil
+          ? ` Validade: ${this.formatDate(quote.validUntil)}.`
+          : ''),
+      htmlBody: this.emailHtml(
+        'Cotação disponível',
+        `Sua cotação para <strong>${this.escape(quote.reservation.trip.title)}</strong> está disponível.`,
+        [
+          ['Cotação', quote.title],
+          ['Valor', this.formatMoney(quote.totalCents)],
+          ...(quote.validUntil
+            ? [['Validade', this.formatDate(quote.validUntil)] as [string, string]]
+            : []),
+        ],
+      ),
+      sourceType: 'QUOTE',
+      sourceId: quote.id,
+    })
+  }
+
   async enqueueReservationCancelled(reservationId: string) {
     const reservation = await this.prisma.reservation.findUnique({
       where: { id: reservationId },
@@ -992,6 +1141,13 @@ export class EmailAutomationService
     return new Intl.DateTimeFormat('pt-BR', {
       dateStyle: 'short',
       timeStyle: 'short',
+      timeZone: 'America/Fortaleza',
+    }).format(value)
+  }
+
+  private formatDate(value: Date) {
+    return new Intl.DateTimeFormat('pt-BR', {
+      dateStyle: 'short',
       timeZone: 'America/Fortaleza',
     }).format(value)
   }
