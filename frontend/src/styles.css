@@ -13469,3 +13469,117 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
     width: 100%;
   }
 }
+
+
+/* WhatsApp automation settings */
+
+.whatsapp-automation-card {
+  display: grid;
+  gap: 18px;
+  margin-top: 18px;
+  border: 1px solid #dce7e1;
+  border-radius: 20px;
+  padding: 20px;
+  background:
+    radial-gradient(circle at 0 0, rgba(53, 145, 92, .08), transparent 32%),
+    #fff;
+  box-shadow: 0 16px 36px rgba(28, 70, 103, .06);
+}
+
+.whatsapp-automation-icon {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border-radius: 14px;
+  color: #2f7d53;
+  background: #edf8f1;
+}
+
+.whatsapp-automation-state {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  border-radius: 14px;
+  padding: 13px 14px;
+}
+
+.whatsapp-automation-state > div {
+  display: grid;
+  gap: 3px;
+}
+
+.whatsapp-automation-state strong {
+  color: #31566c;
+  font-size: 9px;
+}
+
+.whatsapp-automation-state span {
+  color: #718795;
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.whatsapp-automation-state--ready {
+  color: #29754f;
+  background: #f1faf5;
+}
+
+.whatsapp-automation-state--waiting {
+  color: #8b6d2a;
+  background: #fff9e9;
+}
+
+.whatsapp-automation-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.whatsapp-automation-metrics > div {
+  display: grid;
+  gap: 3px;
+  border: 1px solid #e3eaee;
+  border-radius: 13px;
+  padding: 12px 13px;
+  background: rgba(255, 255, 255, .86);
+}
+
+.whatsapp-automation-metrics small {
+  color: #81909b;
+  font-size: 7px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+.whatsapp-automation-metrics strong {
+  color: #294f68;
+  font: 750 20px 'Manrope', sans-serif;
+}
+
+.whatsapp-automation-events {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.whatsapp-automation-events span {
+  border: 1px solid #dce8e1;
+  border-radius: 999px;
+  padding: 6px 9px;
+  color: #537267;
+  background: #f7fbf8;
+  font-size: 7px;
+  font-weight: 800;
+}
+
+@media (max-width: 720px) {
+  .whatsapp-automation-card {
+    padding: 16px;
+  }
+
+  .whatsapp-automation-metrics {
+    grid-template-columns: 1fr;
+  }
+}
