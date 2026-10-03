@@ -17,6 +17,7 @@ import {
   TripStatus,
 } from '@prisma/client'
 import { MercadoPagoConfig, Order, Payment, PaymentRefund } from 'mercadopago'
+import { WhatsAppAutomationService } from '../notifications/whatsapp-automation.service'
 import { PaymentConnectionService } from '../payments/payment-connection.service'
 import { PrismaService } from '../prisma/prisma.service'
 import { CreateReservationDto, UpdateReservationPassengersDto } from './dto/reservation.dto'
@@ -26,7 +27,17 @@ export class AdminService {
   constructor(
     private readonly prisma: PrismaService,
     @Optional() private readonly paymentConnection?: PaymentConnectionService,
+    @Optional() private readonly whatsapp?: WhatsAppAutomationService,
   ) {}
+
+  private async safeWhatsApp(action: () => Promise<unknown> | undefined) {
+    if (!this.whatsapp) return
+    try {
+      await action()
+    } catch {
+      // A comunicação nunca deve impedir a operação principal.
+    }
+  }
 
   private async mercadoPagoClient() {
     if (!this.paymentConnection) {
@@ -986,10 +997,18 @@ export class AdminService {
       )
     }
 
-    return this.prisma.reservation.update({
+    const updated = await this.prisma.reservation.update({
       where: { id },
       data: { status },
     })
+
+    if (status === ReservationStatus.CONFIRMED) {
+      await this.safeWhatsApp(() =>
+        this.whatsapp?.enqueueReservationConfirmed(id),
+      )
+    }
+
+    return updated
   }
 
   async cancelReservation(
@@ -1158,6 +1177,10 @@ export class AdminService {
         },
       })
     })
+
+    await this.safeWhatsApp(() =>
+      this.whatsapp?.enqueueReservationCancelled(id),
+    )
 
     return {
       cancelled: true,
