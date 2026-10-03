@@ -403,11 +403,12 @@ export class DocumentsService {
 
     const onlineGrossCents =
       reservation.purchaseOrder &&
-      [
-        PurchaseStatus.PAID,
-        PurchaseStatus.PARTIALLY_REFUNDED,
-        PurchaseStatus.REFUNDED,
-      ].includes(reservation.purchaseOrder.status)
+      (
+        reservation.purchaseOrder.status === PurchaseStatus.PAID ||
+        reservation.purchaseOrder.status ===
+          PurchaseStatus.PARTIALLY_REFUNDED ||
+        reservation.purchaseOrder.status === PurchaseStatus.REFUNDED
+      )
         ? reservation.purchaseOrder.totalCents
         : 0
     const onlineNetCents = Math.max(
