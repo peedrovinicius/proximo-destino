@@ -14,6 +14,9 @@ import { SessionService } from '../auth/session.service'
 import { AdminDocumentsController } from '../documents/documents.controller'
 import { DocumentsService } from '../documents/documents.service'
 import { PrismaService } from '../prisma/prisma.service'
+import { ClientPortalGuard } from '../portal/client-portal.guard'
+import { PortalController } from '../portal/portal.controller'
+import { PortalService } from '../portal/portal.service'
 
 // Exercises real HTTP routing, JWT verification, session checks and role filters.
 // Only persistence is simulated; it does not establish production DB behavior.
@@ -35,12 +38,18 @@ describe('autorização HTTP dos documentos administrativos', () => {
     { id: 'receipt', reservationId: 'reservation', type: TravelDocumentType.PURCHASE_RECEIPT },
   ]
   type DocumentQuery = {
-    where: { id?: string; reservationId?: string; type: { in: TravelDocumentType[] } }
+    where: {
+      id?: string
+      reservationId?: string
+      type?: { in: TravelDocumentType[] }
+      reservation?: { clientId: string }
+    }
   }
   const matches = (query: DocumentQuery) => documents.filter((document) =>
     (!query.where.id || document.id === query.where.id) &&
     (!query.where.reservationId || document.reservationId === query.where.reservationId) &&
-    query.where.type.in.includes(document.type),
+    (!query.where.type || query.where.type.in.includes(document.type)) &&
+    (!query.where.reservation || query.where.reservation.clientId === 'client-a'),
   )
   const prisma = {
     user: {
@@ -65,9 +74,13 @@ describe('autorização HTTP dos documentos administrativos', () => {
       new SessionService(prisma, config), {} as AuditService,
     )
     const module = await Test.createTestingModule({
-      controllers: [AdminDocumentsController],
+      controllers: [AdminDocumentsController, PortalController],
       providers: [
         JwtAuthGuard, RolesGuard,
+        ClientPortalGuard,
+        { provide: JwtService, useValue: jwt },
+        { provide: ConfigService, useValue: config },
+        { provide: PortalService, useValue: {} },
         { provide: AuthService, useValue: auth },
         { provide: DocumentsService, useValue: new DocumentsService(prisma, config) },
       ],
@@ -145,5 +158,27 @@ describe('autorização HTTP dos documentos administrativos', () => {
       revoked.delete('session-admin')
     }
     assert.equal((await request('reservation/reservation', await token('missing'))).status, 401)
+  })
+
+  async function clientPdf(clientId: string, reservationId: string, overrides: Record<string, unknown> = {}) {
+    const accessToken = await jwt.signAsync({
+      sub: clientId, rid: reservationId, type: 'client_portal', ...overrides,
+    }, { secret, expiresIn: '1m' })
+    return fetch(base + '/api/v1/client/documents/voucher/pdf', {
+      headers: { Authorization: 'Bearer ' + accessToken },
+    })
+  }
+
+  it('nega PDF pertencente a outro cliente', async () => {
+    assert.equal((await clientPdf('client-b', 'reservation')).status, 404)
+  })
+
+  it('nega PDF de outra reserva mesmo para o mesmo cliente', async () => {
+    assert.equal((await clientPdf('client-a', 'other-reservation')).status, 404)
+  })
+
+  it('nega token administrativo e token sem reserva no portal do viajante', async () => {
+    assert.equal((await clientPdf('client-a', 'reservation', { type: 'access' })).status, 401)
+    assert.equal((await clientPdf('client-a', 'reservation', { rid: '' })).status, 401)
   })
 })
