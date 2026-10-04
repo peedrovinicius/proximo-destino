@@ -523,6 +523,19 @@ model PaymentProviderConnection {
   @@index([connectedByUserId])
 }
 
+model PaymentPlatformConfig {
+  id                     String   @id @default(cuid())
+  provider               String   @unique
+  clientId               String
+  clientSecretEncrypted  String
+  webhookSecretEncrypted String
+  configuredByUserId     String?
+  configuredAt           DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@index([configuredByUserId])
+}
+
 model EmailProviderConnection {
   id                    String   @id @default(cuid())
   provider              String   @unique
