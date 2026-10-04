@@ -26,7 +26,7 @@ Mercado Pago e e-mail serão configurados pelo administrador da página, conform
 - [ ] Validar sessão administrativa e portal em navegador, com MFA fornecido pelo proprietário; não contornar MFA.
 - [ ] Executar compra em modo de teste do provedor, incluindo webhook assinado, conciliação e PDFs; depois confirmar ativação comercial pelo proprietário.
 - [ ] Confirmar entrega de e-mail a cliente e agência; não inferir entrega pela presença de variáveis.
-- [x] Oito testes HTTP isolados passaram com os guards, verificação JWT e serviços reais de autenticação e documentos, usando persistência simulada: ADMIN/AGENT/FINANCE, CLIENT negado, PDFs fora do escopo, token inválido/refresh, sessão revogada, usuário inexistente e papel atual prevalecendo sobre o JWT.
+- [x] Nove testes HTTP isolados passaram com os guards, verificação JWT e serviços reais de autenticação e documentos, usando persistência simulada: ADMIN/AGENT/FINANCE, CLIENT negado, PDFs fora do escopo, token inválido/refresh, sessão revogada, usuário inexistente, papel atual prevalecendo sobre o JWT e negativa de CLIENT diretamente no serviço. O serviço exige papel explícito e nega por padrão. CI do commit 6b474867: 86 testes em 27 suítes, zero falhas ou testes ignorados.
 - [ ] Validar permissões autenticadas com contas e dados de produção e acesso a recursos de outro cliente. Os testes isolados não comprovam configuração ou comportamento do banco de produção.
 - [ ] Validar os fluxos móveis, upload, modelos de ônibus e acessibilidade em navegador autenticado.
 - [ ] Definir política recorrente de backup e alertas com destino do proprietário. O estado observado tem janela de recuperação de 6 horas e um snapshot manual, sem garantia de backup externo recorrente.
