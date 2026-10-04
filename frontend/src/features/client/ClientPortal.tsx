@@ -35,6 +35,7 @@ import {
 
 type ClientPortalProps = {
   accessToken: string
+  onExitToSite: () => void
   onLogout: () => void
 }
 
@@ -82,7 +83,11 @@ const installmentStatusLabel = {
   CANCELLED: 'Cancelado',
 } as const
 
-export function ClientPortal({ accessToken, onLogout }: ClientPortalProps) {
+export function ClientPortal({
+  accessToken,
+  onExitToSite,
+  onLogout,
+}: ClientPortalProps) {
   const [data, setData] = useState<ClientPortalData | null>(null)
   const [error, setError] = useState('')
   const [responding, setResponding] = useState(false)
@@ -272,6 +277,7 @@ export function ClientPortal({ accessToken, onLogout }: ClientPortalProps) {
         </nav>
 
         <div className="client-top-actions">
+          <button className="text-button" type="button" onClick={onExitToSite}>Voltar ao site</button>
           <button className="text-button" type="button" onClick={onLogout}>Sair</button>
           <span className="client-avatar">{data.client.fullName.slice(0, 2).toUpperCase()}</span>
         </div>
