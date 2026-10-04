@@ -178,7 +178,7 @@ export class AdminService {
     }
   }
 
-  async listReservations() {
+  async listReservations(role: UserRole = UserRole.ADMIN) {
     const reservations = await this.prisma.reservation.findMany({
       select: {
         id: true,
@@ -221,19 +221,31 @@ export class AdminService {
       take: 100,
     })
 
+    const financeView = role === UserRole.FINANCE
+
     return reservations.map((reservation) => {
       const { creditTransactions, ...client } = reservation.client
+      const bonusBalanceCents = Math.max(
+        0,
+        creditTransactions.reduce(
+          (sum, transaction) => sum + transaction.amountCents,
+          0,
+        ),
+      )
+
       return {
         ...reservation,
+        cancellationRequestReason: financeView
+          ? null
+          : reservation.cancellationRequestReason,
+        cancellationRequestResolutionNote: financeView
+          ? null
+          : reservation.cancellationRequestResolutionNote,
         client: {
           ...client,
-          bonusBalanceCents: Math.max(
-            0,
-            creditTransactions.reduce(
-              (sum, transaction) => sum + transaction.amountCents,
-              0,
-            ),
-          ),
+          email: financeView ? null : client.email,
+          phone: financeView ? null : client.phone,
+          bonusBalanceCents: financeView ? 0 : bonusBalanceCents,
         },
       }
     })
