@@ -36,6 +36,30 @@ async function fit(page, label) {
   const dimensions = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth }))
   assert(dimensions.scroll <= dimensions.width + 1, `${label}: horizontal overflow ${JSON.stringify(dimensions)}`)
 }
+async function checkFooter(page, width) {
+  const footer = page.getByRole('contentinfo', { name: 'Rodapé da Próximo Destino' })
+  await footer.scrollIntoViewIfNeeded()
+  await fit(page, 'footer')
+  for (const name of ['Empresa', 'Sua viagem', 'Políticas e compromissos']) {
+    assert.equal(await footer.getByRole('navigation', { name, exact: true }).count(), 1)
+  }
+  const controls = footer.locator('a, button')
+  assert.equal(await controls.count(), 19, 'Preserve all 15 institutional pages, social channels and admin access')
+  const bounds = await controls.evaluateAll((elements) => elements.map((element) => {
+    const box = element.getBoundingClientRect()
+    return { label: element.textContent || element.getAttribute('aria-label'),
+      left: box.left, right: box.right, height: box.height, width: innerWidth }
+  }))
+  for (const box of bounds) {
+    assert(box.height >= 43.9, `Footer touch target: ${box.label}`)
+    assert(box.left >= 0 && box.right <= box.width, `Footer control clipped: ${box.label}`)
+  }
+  await page.screenshot({ path: `${output}/footer-${width}.png`, fullPage: false })
+  await footer.getByRole('button', { name: 'Privacidade', exact: true }).click()
+  await page.getByRole('heading', { name: 'Política de Privacidade', exact: true }).waitFor()
+  await fit(page, 'institutional page')
+  await page.goto(base)
+}
 async function test(name, viewport, execute) {
   const context = await browser.newContext({ viewport, reducedMotion: 'reduce' })
   const page = await context.newPage()
@@ -82,6 +106,7 @@ try {
       await page.goto(base)
       await page.getByRole('button', { name: 'Abrir viagem', exact: true }).waitFor()
       await fit(page, 'home')
+      await checkFooter(page, width)
       await page.getByRole('button', { name: 'Abrir viagem', exact: true }).click()
       await page.getByRole('button', { name: 'Escolher assentos', exact: true }).waitFor()
       await fit(page, 'trip details')
@@ -142,6 +167,11 @@ try {
       })
     }
   }
+  await test('footer-desktop-1440', { width: 1440, height: 1000 }, async (page) => {
+    await page.goto(base)
+    await page.getByRole('button', { name: 'Abrir viagem', exact: true }).waitFor()
+    await checkFooter(page, 1440)
+  })
   console.log(`${checks - failures}/${checks} isolated mobile browser checks passed`)
   process.exitCode = failures ? 1 : 0
 } finally {
