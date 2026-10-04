@@ -16,6 +16,7 @@ import {
 } from '@prisma/client'
 import { AdminService } from '../admin/admin.service'
 import { DocumentsService } from '../documents/documents.service'
+import { EmailAutomationService } from '../notifications/email-automation.service'
 import { PortalService } from '../portal/portal.service'
 import { PrismaService } from '../prisma/prisma.service'
 import { TripsService } from '../trips/trips.service'
@@ -35,6 +36,9 @@ describe('E2E do ciclo completo da viagem', () => {
   const config = new ConfigService({
     JWT_ACCESS_SECRET: 'full-lifecycle-test-secret',
     PUBLIC_API_URL: 'http://localhost:3000/api/v1',
+    ADMIN_EMAIL: `e2e-admin-${suffix}@example.com`,
+    EMAIL_FROM: 'Próximo Destino <noreply@example.com>',
+    RESEND_API_KEY: 're_e2e_fake_key_not_sent',
   })
 
   const paymentConnection = {
@@ -42,11 +46,14 @@ describe('E2E do ciclo completo da viagem', () => {
     getAccessToken: async () => 'fake-access-token',
   }
 
+  const email = new EmailAutomationService(prisma, config)
   const portal = new PortalService(
     prisma,
     new JwtService(),
     config,
     paymentConnection as never,
+    undefined,
+    email,
   )
   const admin = new AdminService(prisma)
   const trips = new TripsService(prisma)
@@ -151,6 +158,23 @@ describe('E2E do ciclo completo da viagem', () => {
     const reservationIds = reservations.map((item) => item.id)
     const clientIds = [...new Set(reservations.map((item) => item.clientId))]
 
+    await prisma.emailOutboundMessage.deleteMany({
+      where: {
+        OR: [
+          { sourceId: { in: reservationIds } },
+          { sourceId: { in: reservationIds.length ? reservationIds : ['__none__'] } },
+        ],
+      },
+    })
+    if (reservationIds.length) {
+      const purchaseIds = await prisma.purchaseOrder.findMany({
+        where: { reservationId: { in: reservationIds } },
+        select: { id: true },
+      })
+      await prisma.emailOutboundMessage.deleteMany({
+        where: { sourceId: { in: purchaseIds.map((item) => item.id) } },
+      })
+    }
     await prisma.travelDocument.deleteMany({
       where: { reservationId: { in: reservationIds } },
     })
@@ -240,6 +264,28 @@ describe('E2E do ciclo completo da viagem', () => {
     assert.equal(confirmed.status, ReservationStatus.CONFIRMED)
     assert.equal(confirmed.purchaseOrder?.status, PurchaseStatus.PAID)
     assert.ok(confirmed.purchaseOrder?.paidAt)
+
+    const transactionalEmails = await prisma.emailOutboundMessage.findMany({
+      where: {
+        OR: [
+          { sourceId: purchase.reservation.id },
+          { sourceId: purchase.purchaseOrder!.id },
+        ],
+      },
+      orderBy: { createdAt: 'asc' },
+    })
+    const eventTypes = transactionalEmails.map((message) => message.eventType)
+    assert.ok(eventTypes.includes('RESERVATION_CREATED'))
+    assert.ok(eventTypes.includes('PAYMENT_CONFIRMED'))
+    assert.ok(eventTypes.includes('RESERVATION_CONFIRMED'))
+    for (const message of transactionalEmails) {
+      assert.equal(message.recipientEmail, journeyEmail)
+      assert.ok(Array.isArray(message.adminCopyEmails))
+      assert.ok(
+        message.adminCopyEmails.includes(`e2e-admin-${suffix}@example.com`),
+      )
+      assert.ok(!message.adminCopyEmails.includes(journeyEmail))
+    }
 
     const passengerUpdate = await portal.updateClientPassengers(
       confirmed.clientId,
