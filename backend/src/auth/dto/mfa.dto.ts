@@ -3,6 +3,7 @@ import { IsString, Length, MaxLength, MinLength } from 'class-validator'
 export class MfaChallengeDto {
   @IsString()
   @MinLength(20)
+  @MaxLength(2048)
   challengeToken!: string
 }
 
