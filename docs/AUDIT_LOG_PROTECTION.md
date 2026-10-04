@@ -40,6 +40,16 @@ prova integridade dos logs. Somente ativação e ensaio reais encerram esse item
 
 ## Aceite
 
+Na inicialização, a API consulta os privilégios efetivos da conexão e registra
+DATABASE_SECURITY_CHECK: somente booleanos sobre superuser, BYPASSRLS, vínculo
+ao proprietário e SELECT/INSERT/UPDATE/DELETE/TRUNCATE da auditoria. Não registra
+credenciais, nomes de papéis ou dados de usuários. restrictedAuditWriter só é
+verdadeiro com leitura/inserção e sem esses poderes administrativos ou de edição.
+Uma falha emite DATABASE_SECURITY_CHECK_UNAVAILABLE sem detalhes do erro e não
+impede a inicialização. O diagnóstico não altera permissões nem comprova políticas
+RLS, isolamento de linhas ou retenção externa. O teste PostgreSQL confirma que ele
+reconhece o proprietário, o escritor restrito e uma concessão posterior de UPDATE.
+
 Testes de limiares e de PostgreSQL isolado devem comprovar persistência,
 deduplicação concorrente, ausência de dados sensíveis, isolamento por usuário e
 revogação de acesso após rebaixamento. O CI não comprova recebimento pelo usuário
