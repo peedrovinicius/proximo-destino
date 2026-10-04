@@ -11,6 +11,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard'
 import { MfaService } from '../auth/mfa.service'
 import { RolesGuard } from '../auth/roles.guard'
 import { SessionService } from '../auth/session.service'
+import { CompanyScopeService } from '../tenancy/company-scope.service'
 import { AdminDocumentsController } from '../documents/documents.controller'
 import { DocumentsService } from '../documents/documents.service'
 import { PrismaService } from '../prisma/prisma.service'
@@ -65,10 +66,12 @@ describe('autorização HTTP dos documentos e configurações de provedores', ()
     user: {
       findUnique: async ({ where }: { where: { id: string } }) =>
         roles[where.id]
-          ? { id: where.id, email: where.id + '@example.com', role: roles[where.id], isActive: true }
+          ? { id: where.id, email: where.id + '@example.com', role: roles[where.id], isActive: true,
+            companyManaged: false, companyMemberships: [] }
           : null,
     },
     authSession: {
+      findUnique: async () => ({ companyId: null }),
       count: async ({ where }: { where: { id: string; userId: string } }) =>
         where.id === 'session-' + where.userId && !revoked.has(where.id) ? 1 : 0,
     },
@@ -87,6 +90,7 @@ describe('autorização HTTP dos documentos e configurações de provedores', ()
       controllers: [AdminDocumentsController, PortalController, PaymentConnectionAdminController, EmailAutomationController],
       providers: [
         JwtAuthGuard, RolesGuard,
+        { provide: CompanyScopeService, useValue: new CompanyScopeService(prisma) },
         ClientPortalGuard,
         { provide: JwtService, useValue: jwt },
         { provide: ConfigService, useValue: config },

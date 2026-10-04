@@ -22,6 +22,8 @@ export type MfaChallengePayload = {
 }
 
 export type AuthenticatedUser = {
+  companyId?: string | null
+  requiresCompanyScope?: boolean
   id: string
   email: string
   role: UserRole

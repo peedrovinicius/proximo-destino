@@ -17,6 +17,8 @@ import {
 import { Roles } from '../auth/roles.decorator'
 import { RolesGuard } from '../auth/roles.guard'
 import { ClientsService } from './clients.service'
+import { CompanyDataService } from '../tenancy/company-data.service'
+import { CompanyRead } from '../tenancy/company-access.decorator'
 import { CreateClientDto } from './dto/create-client.dto'
 import { UpdateClientDto } from './dto/update-client.dto'
 import { RemoveClientBonusDto } from './dto/bonus.dto'
@@ -25,15 +27,19 @@ import { RemoveClientBonusDto } from './dto/bonus.dto'
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(...OPERATIONS_ROLES)
 export class ClientsController {
-  constructor(private readonly clients: ClientsService) {}
+  constructor(private readonly clients: ClientsService, private readonly scoped: CompanyDataService) {}
 
   @Get()
-  list(@Query('q') query?: string) {
+  @CompanyRead()
+  list(@Req() request: AuthenticatedRequest, @Query('q') query?: string) {
+    if (request.companyScope) return this.scoped.clients(request.user.id, request.user.sessionId, query)
     return this.clients.list(query)
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
+  @CompanyRead()
+  findOne(@Param('id') id: string, @Req() request: AuthenticatedRequest) {
+    if (request.companyScope) return this.scoped.client(request.user.id, request.user.sessionId, id)
     return this.clients.findById(id)
   }
 

@@ -22,6 +22,7 @@ import { MfaChallengeDto, MfaVerifyDto } from './dto/mfa.dto'
 import { JwtAuthGuard, type AuthenticatedRequest } from './jwt-auth.guard'
 import { Roles } from './roles.decorator'
 import { RolesGuard } from './roles.guard'
+import { OwnSessionAccess } from '../tenancy/company-access.decorator'
 
 const REFRESH_COOKIE = 'pd_refresh'
 
@@ -117,6 +118,7 @@ export class AuthController {
   }
 
   @Post('logout')
+  @OwnSessionAccess()
   @UseGuards(JwtAuthGuard)
   @HttpCode(204)
   async logout(
@@ -132,12 +134,14 @@ export class AuthController {
   }
 
   @Get('sessions')
+  @OwnSessionAccess()
   @UseGuards(JwtAuthGuard)
   sessions(@Req() request: AuthenticatedRequest) {
     return this.auth.listSessions(request.user.id, request.user.sessionId)
   }
 
   @Delete('sessions/:sessionId')
+  @OwnSessionAccess()
   @UseGuards(JwtAuthGuard)
   @HttpCode(204)
   async revokeSession(
@@ -156,6 +160,7 @@ export class AuthController {
   }
 
   @Post('sessions/revoke-all')
+  @OwnSessionAccess()
   @UseGuards(JwtAuthGuard)
   @HttpCode(204)
   async revokeAll(

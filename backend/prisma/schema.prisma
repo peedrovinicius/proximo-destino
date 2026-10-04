@@ -177,6 +177,7 @@ model User {
   refreshTokenHash          String?
   role                      UserRole
   isActive                  Boolean   @default(true)
+  companyManaged            Boolean   @default(false)
   failedLoginAttempts       Int       @default(0)
   lockedUntil               DateTime?
   lastLoginAt               DateTime?

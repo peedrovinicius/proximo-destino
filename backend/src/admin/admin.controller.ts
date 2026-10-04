@@ -19,6 +19,8 @@ import {
 import { Roles } from '../auth/roles.decorator'
 import { RolesGuard } from '../auth/roles.guard'
 import { AdminService } from './admin.service'
+import { CompanyDataService } from '../tenancy/company-data.service'
+import { CompanyRead } from '../tenancy/company-access.decorator'
 import {
   ApplyReservationBonusDto,
   CancelReservationDto,
@@ -35,7 +37,7 @@ import {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(...STAFF_ROLES)
 export class AdminController {
-  constructor(private readonly admin: AdminService) {}
+  constructor(private readonly admin: AdminService, private readonly scoped: CompanyDataService) {}
 
   @Get('dashboard')
   dashboard(@Req() request: AuthenticatedRequest) {
@@ -63,7 +65,9 @@ export class AdminController {
   }
 
   @Get('reservations')
+  @CompanyRead()
   reservations(@Req() request: AuthenticatedRequest) {
+    if (request.companyScope) return this.scoped.reservations(request.user.id, request.user.sessionId)
     return this.admin.listReservations(request.user.role)
   }
 

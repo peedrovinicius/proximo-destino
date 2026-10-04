@@ -36,12 +36,14 @@ import {
   UpdateTripDto,
 } from './dto/admin-trip.dto'
 import { TripsService } from './trips.service'
+import { CompanyDataService } from '../tenancy/company-data.service'
+import { CompanyRead } from '../tenancy/company-access.decorator'
 
 @Controller('admin/trips')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(...STAFF_ROLES)
 export class AdminTripsController {
-  constructor(private readonly trips: TripsService) {}
+  constructor(private readonly trips: TripsService, private readonly scoped: CompanyDataService) {}
 
   @Get('bus-templates')
   @Roles(...OPERATIONS_ROLES)
@@ -50,8 +52,10 @@ export class AdminTripsController {
   }
 
   @Get()
+  @CompanyRead()
   @Roles(...OPERATIONS_ROLES)
-  list(@Query('q') query?: string) {
+  list(@Req() request: AuthenticatedRequest, @Query('q') query?: string) {
+    if (request.companyScope) return this.scoped.trips(request.user.id, request.user.sessionId)
     return this.trips.listAdmin(query)
   }
 

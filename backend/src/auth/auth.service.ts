@@ -293,7 +293,9 @@ export class AuthService {
 
       const user = await this.prisma.user.findUnique({
         where: { id: payload.sub },
-        select: { id: true, email: true, role: true, isActive: true },
+        select: { id: true, email: true, role: true, isActive: true,
+          companyManaged: true,
+          companyMemberships: { select: { id: true }, take: 1 } },
       })
       if (!user?.isActive) {
         throw new UnauthorizedException('Token inválido')
@@ -303,11 +305,18 @@ export class AuthService {
         throw new UnauthorizedException('Sessão revogada')
       }
 
+      const persistedSession = await this.prisma.authSession.findUnique({
+        where: { id: payload.sid }, select: { companyId: true },
+      })
+      if (!persistedSession) throw new UnauthorizedException('Sessão inválida')
+
       return {
         id: user.id,
         email: user.email,
         role: user.role,
         sessionId: payload.sid,
+        companyId: persistedSession.companyId,
+        requiresCompanyScope: user.companyManaged || user.companyMemberships.length > 0,
       }
     } catch {
       throw new UnauthorizedException('Token inválido')

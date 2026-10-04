@@ -34,9 +34,9 @@ O início desta etapa adiciona `AuthSession.companyId` opcional e um resolvedor
 server-only `CompanyScopeService`. Ele verifica sessão vigente e do usuário,
 empresa ativa, conta ativa e vínculo vigente compatível com o papel atual.
 Não recebe companyId do navegador e não atribui sessões antigas a uma empresa.
-Sessões antigas sem vínculo são recusadas pelo resolvedor. **O resolvedor ainda
-não está ligado às rotas operacionais**, pois suas consultas precisam ser
-escopadas primeiro; não representa isolamento operacional concluído.
+Sessões antigas sem vínculo são recusadas pelo resolvedor. O resolvedor está
+ligado às leituras administrativas descritas abaixo; não representa isolamento
+operacional concluído.
 
 O bloco seguinte adiciona `companyId` opcional em Client, Trip e Reservation,
 sem atribuir registros existentes automaticamente. `CompanyDataService` faz
@@ -45,8 +45,21 @@ Reservas também verificam o escopo dos seus pais, com projeções limitadas e
 identidade reduzida para FINANCE. IDs de outra empresa retornam 404.
 Constraints adiáveis, null-safe e com bloqueio de leitura dos pais impedem
 referências inconsistentes e permitem um futuro backfill transacional revisado.
-**Esses leitores ainda não substituem as APIs legadas. Não cadastrar dados de
-empresas operacionais nem ativar contas antes de escopar todas as APIs legadas,
+As listas GET `/admin/clients`, `/admin/trips`, `/admin/reservations` e o detalhe
+GET `/admin/clients/:id` usam esses leitores para sessões de empresa. Contas
+legadas sem vínculo preservam o comportamento anterior. A busca textual de
+viagens ainda não é aplicada ao leitor de empresa.
+
+O guard nega às contas de empresa todas as outras rotas administrativas
+protegidas por ele, incluindo gravações, dashboard e financeiro. As únicas
+exceções são consultar/revogar as próprias sessões e logout. O marcador
+persistente `User.companyManaged` é definido pelo vínculo e não pode voltar a
+false: revogar ou apagar o vínculo nunca restaura acesso global pelas rotas
+legadas. O contexto vem da sessão persistida, não de claims de empresa do JWT.
+Testes HTTP com JWT assinado e PostgreSQL isolado cobrem esses limites.
+
+**Não cadastrar dados de empresas operacionais nem ativar contas antes de
+escopar todas as APIs legadas,
 rotas públicas, portal, gravações, entidades derivadas e integrações.**
 
 - Atribuir a operação atual a uma empresa inicial, com plano de conferência e
