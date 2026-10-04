@@ -126,3 +126,10 @@ Não há evidência suficiente para declarar encerradas essas pendências. O ens
 - [x] Rodapé compartilhado da home e páginas institucionais reorganizado em Empresa, Sua viagem e Políticas e compromissos; todos os 15 destinos institucionais preservados. Marca e nome alinhados, texto/contraste/espaçamento ampliados, canais sociais e acesso administrativo na faixa inferior.
 - [x] Chromium: dez de dez cenários passaram em 320, 390, 768 e 1440 px, incluindo os 19 controles do rodapé com altura mínima de 44 px, limites horizontais e navegação para privacidade. API simulada, sem reservas ou transações reais. CI e CodeQL 6653315b aprovados.
 - [x] Frontend 6653315b publicado no deployment d2ad4acb-9d8e-4b6c-9542-b56d689bcb79, SUCCESS em 2026-10-04T12:32:41Z. Rodapé conferido visualmente e link de privacidade aberto no navegador de produção; screenshot registrado. Pendências comerciais e autenticadas continuam abertas.
+
+## Escala tipográfica proporcional — 2026-10-04
+
+- [x] Normalizadas 526 declarações pequenas em CSS compartilhado, incluindo painel: escala em rem com mínimo de 12 px para metadados, 14 px para texto compacto e 16 px para campos. Títulos principais públicos de 32 a 64 px conforme viewport; títulos de seção até 32 px, subtítulos institucionais 20 px. Rodapé alinhado à mesma hierarquia. Botão Voltar ao início do login do viajante mantém texto legível no mobile.
+- [x] Chromium 780a3c92: dez de dez cenários passaram em 320/390/768/1440 px. Verificação inclui texto renderizado >=12 px, títulos principais entre 24 e 64 px, campos visíveis >=16 px, ausência de overflow horizontal, rodapé e mapas de assentos. CI e CodeQL aprovados.
+- [x] Frontend 780a3c92 publicado, deployment 034a8b68-c083-4f4e-aeba-fe54fabbd0be SUCCESS em 2026-10-04T12:43:20Z. Conferência visual em produção: título 64 px, seção 32 px, links do rodapé 14 px, campos 16 px. Screenshot registrado.
+- [ ] Os estilos compartilhados também afetam a área interna; revisão visual dos fluxos autenticados reais do painel continua pendente. Ensaios de navegador usam dados fictícios e não comprovam produção autenticada.
