@@ -668,8 +668,9 @@ export class PortalService {
     xSignature?: string
     xRequestId?: string
   }) {
-    const secret =
-      this.config.get<string>('MERCADO_PAGO_WEBHOOK_SECRET')?.trim()
+    const secret = this.paymentConnection
+      ? await this.paymentConnection.getWebhookSecret()
+      : this.config.get<string>('MERCADO_PAGO_WEBHOOK_SECRET')?.trim()
 
     if (!secret) {
       throw new ServiceUnavailableException(
