@@ -397,7 +397,15 @@ export function AdminDashboard({
       <header className="admin-topbar">
         <Brand compact />
 
-        <nav className="admin-nav" aria-label="Administração">
+        <nav
+          className="admin-nav"
+          aria-label="Administração"
+          onFocusCapture={(event) => {
+            if (event.target instanceof HTMLButtonElement) {
+              event.target.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' })
+            }
+          }}
+        >
           <button aria-current={tab === 'overview' ? 'page' : undefined} className={tab === 'overview' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('overview')} type="button">Visão geral</button>
           {capabilities.viewClients ? (
             <button aria-current={tab === 'clients' ? 'page' : undefined} className={tab === 'clients' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('clients')} type="button">Clientes</button>
