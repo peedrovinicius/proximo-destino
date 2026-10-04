@@ -15,6 +15,8 @@ import {
   ArrowUpCircle,
   Armchair,
   Ban,
+  CircleAlert,
+  RefreshCw,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Brand } from '../../components/Brand'
@@ -250,19 +252,43 @@ export function ClientPortal({
 
   if (error && !data) {
     return (
-      <main className="client-login-panel">
-        <div className="client-login-card">
+      <main className="client-state-shell">
+        <section className="client-state-card client-state-card--error" role="alert">
           <Brand compact />
-          <h2>Não foi possível abrir sua viagem</h2>
-          <p>{error}</p>
-          <button className="client-login-submit" type="button" onClick={onLogout}>Voltar ao acesso</button>
-        </div>
+          <span className="client-state-icon"><CircleAlert size={22} /></span>
+          <div>
+            <span className="eyebrow">Área do viajante</span>
+            <h2>Não foi possível abrir sua viagem</h2>
+            <p>{error}</p>
+          </div>
+          <div className="client-state-actions">
+            <button type="button" onClick={() => void loadPortal()}>
+              <RefreshCw size={16} />
+              Tentar novamente
+            </button>
+            <button type="button" className="secondary" onClick={onLogout}>
+              Voltar ao acesso
+            </button>
+          </div>
+        </section>
       </main>
     )
   }
 
   if (!data) {
-    return <div className="admin-loading">Carregando sua viagem...</div>
+    return (
+      <main className="client-state-shell" role="status" aria-live="polite">
+        <section className="client-state-card client-state-card--loading">
+          <Brand compact />
+          <span className="client-loading-orbit" aria-hidden="true" />
+          <div>
+            <span className="eyebrow">Área do viajante</span>
+            <h2>Preparando sua viagem</h2>
+            <p>Carregando reserva, passageiros, assentos e documentos com segurança.</p>
+          </div>
+        </section>
+      </main>
+    )
   }
 
   const quote = data.quotes[0] ?? null
