@@ -106,7 +106,11 @@ async function test(name, viewport, execute) {
     if (!url.pathname.startsWith('/api/')) { await route.continue(); return }
     let body
     let status = 200
-    if (url.pathname.endsWith('/public/trips')) body = [trip]
+    if (url.pathname.endsWith('/auth/refresh')) body = { accessToken: `test.${Buffer.from(JSON.stringify({ role: 'ADMIN' })).toString('base64url')}.test` }
+    else if (url.pathname.endsWith('/admin/dashboard')) body = { metrics: { clients: 0, pendingReservations: 0, activeTrips: 0, confirmedReservations: 0 }, birthdays: [] }
+    else if (url.pathname.endsWith('/admin/notifications')) body = { unreadCount: 0, items: [] }
+    else if (['/admin/clients', '/admin/trips', '/admin/reservations', '/admin/trips/bus-templates'].some((path) => url.pathname.endsWith(path))) body = []
+    else if (url.pathname.endsWith('/public/trips')) body = [trip]
     else if (url.pathname.endsWith(`/public/trips/${trip.id}`)) body = trip
     else if (url.pathname.endsWith('/seats')) body = map
     else if (url.pathname.endsWith('/public/payments/config')) body = { configured: false, provider: 'MERCADO_PAGO', methods: { PIX: false, CARD: false, BOLETO: false, TRANSFER: false } }
@@ -199,6 +203,30 @@ try {
     await page.getByRole('button', { name: 'Abrir viagem', exact: true }).waitFor()
     await checkFooter(page, 1440)
   })
+  for (const width of [320, 390, 768, 1440]) {
+    await test(`admin-navigation-${width}`, { width, height: 900 }, async (page) => {
+      await page.goto(`${base}/?screen=admin`)
+      const nav = page.getByRole('navigation', { name: 'Administração', exact: true })
+      await nav.waitFor()
+      await page.getByText('Carregando dados operacionais...', { exact: true }).waitFor({ state: 'hidden' })
+      await fit(page, 'admin overview')
+      for (const name of ['Visão geral', 'Clientes', 'Viagens', 'Reservas', 'Cotações', 'Pagamentos', 'Financeiro', 'Auditoria', 'Configurações']) {
+        const control = nav.getByRole('button', { name, exact: true })
+        assert.equal(await control.isVisible(), true, `${name} must remain available`)
+        await control.focus()
+        const bounds = await control.boundingBox()
+        assert(bounds.height >= 43.9, `${name}: touch target at least 44px`)
+        assert(bounds.x >= -1 && bounds.x + bounds.width <= width + 1, `${name}: keyboard focus scrolls control into view`)
+      }
+      for (const [name, tab] of [['Clientes', 'clients'], ['Reservas', 'reservations'], ['Visão geral', 'overview']]) {
+        const control = nav.getByRole('button', { name, exact: true })
+        await control.click()
+        assert.equal(new URL(page.url()).searchParams.get('tab'), tab)
+        assert.equal(await control.getAttribute('aria-current'), 'page')
+        await fit(page, `admin ${tab}`)
+      }
+    })
+  }
   console.log(`${checks - failures}/${checks} isolated mobile browser checks passed`)
   process.exitCode = failures ? 1 : 0
 } finally {

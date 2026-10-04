@@ -133,3 +133,13 @@ Não há evidência suficiente para declarar encerradas essas pendências. O ens
 - [x] Chromium 780a3c92: dez de dez cenários passaram em 320/390/768/1440 px. Verificação inclui texto renderizado >=12 px, títulos principais entre 24 e 64 px, campos visíveis >=16 px, ausência de overflow horizontal, rodapé e mapas de assentos. CI e CodeQL aprovados.
 - [x] Frontend 780a3c92 publicado, deployment 034a8b68-c083-4f4e-aeba-fe54fabbd0be SUCCESS em 2026-10-04T12:43:20Z. Conferência visual em produção: título 64 px, seção 32 px, links do rodapé 14 px, campos 16 px. Screenshot registrado.
 - [ ] Os estilos compartilhados também afetam a área interna; revisão visual dos fluxos autenticados reais do painel continua pendente. Ensaios de navegador usam dados fictícios e não comprovam produção autenticada.
+
+## Navegação interna responsiva — preparação de 2026-10-04
+
+- [x] Corrigida regra que ocultava as abas administrativas após Viagens em telas até 620 px. Todas as seções permitidas permanecem disponíveis em uma faixa com rolagem horizontal.
+- [x] Cabeçalho até 980 px reorganizado em duas linhas: marca/ações e navegação. Abas com alvo mínimo de 44 px, fonte de 14 px, foco visível e indicação aria-current da seção ativa.
+- [x] Build local TypeScript/Vite passou; revisão do componente preserva as permissões existentes. Nenhuma conta, reserva ou integração real foi alterada.
+- [x] Preparados quatro cenários Chromium em 320/390/768/1440 px para visibilidade das nove abas, alcance por teclado, tamanho de controles e navegação entre Visão geral, Clientes e Reservas. Sessão e API são fictícias.
+- [ ] Executar os quatro novos cenários e os dez cenários públicos existentes. Chromium indisponível localmente: download falhou. Não considerar testes de navegador aprovados.
+- [ ] Envio ao GitHub, CI e implantação pendentes: revisão automática bloqueou publicação da branch refine/internal-delivery. Solicitar autorização explícita antes de publicar.
+- [ ] Validar o painel publicado com MFA e contas autorizadas; o ensaio simulado não comprova autenticação ou permissões em produção.
