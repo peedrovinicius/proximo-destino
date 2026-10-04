@@ -620,6 +620,8 @@ export type PaymentConnectionStatus = {
   webhookConfigured: boolean
   connected: boolean
   readyForPayments: boolean
+  configurationSource: 'DATABASE' | 'ENVIRONMENT' | 'NONE'
+  configuredAt: string | null
   externalUserId: string | null
   liveMode: boolean | null
   connectedAt: string | null
@@ -1209,6 +1211,23 @@ export const adminApi = {
       token,
       '/admin/notifications/whatsapp/process',
       { method: 'POST' },
+    ),
+
+  configureMercadoPagoPlatform: (
+    token: string,
+    input: {
+      clientId: string
+      clientSecret: string
+      webhookSecret: string
+    },
+  ) =>
+    adminFetch<PaymentConnectionStatus>(
+      token,
+      '/admin/payments/mercado-pago/platform',
+      {
+        method: 'POST',
+        body: JSON.stringify(input),
+      },
     ),
 
   connectMercadoPago: (token: string) =>
