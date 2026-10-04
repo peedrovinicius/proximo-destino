@@ -887,6 +887,20 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
   }
 
   .text-button { display: none; }
+
+  .client-top-actions {
+    gap: 2px;
+  }
+
+  .client-top-actions .text-button {
+    display: inline-flex;
+    min-height: 32px;
+    align-items: center;
+    padding: 0 6px;
+    white-space: nowrap;
+    font-size: 8px;
+  }
+
   .client-main,
   .admin-main { padding-inline: 16px; }
   .client-hero { align-items: flex-start; flex-direction: column; padding: 28px; }
