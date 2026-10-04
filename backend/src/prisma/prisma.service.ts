@@ -1,15 +1,32 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
 import { PrismaClient } from '@prisma/client'
 import {
   encryptedDocumentFields,
   sensitiveDataConfigured,
 } from '../security/sensitive-data'
+import { readDatabaseSecurityState, restrictedAuditWriter } from '../security/database-privileges'
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+  private readonly securityLogger = new Logger('DatabaseSecurity')
+
   async onModuleInit() {
     await this.$connect()
+    await this.reportDatabaseSecurity()
     await this.backfillSensitiveDocuments()
+  }
+
+  private async reportDatabaseSecurity() {
+    try {
+      const state = await readDatabaseSecurityState(this)
+      const restricted = restrictedAuditWriter(state)
+      const payload = JSON.stringify({ event: 'DATABASE_SECURITY_CHECK', restrictedAuditWriter: restricted, ...state })
+      if (restricted) this.securityLogger.log(payload)
+      else this.securityLogger.warn(payload)
+    } catch {
+      // A failed diagnostic must not prevent startup or leak a database error.
+      this.securityLogger.warn(JSON.stringify({ event: 'DATABASE_SECURITY_CHECK_UNAVAILABLE' }))
+    }
   }
 
   private async backfillSensitiveDocuments() {

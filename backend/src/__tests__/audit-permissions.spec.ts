@@ -3,6 +3,7 @@ import { after, before, describe, it } from 'node:test'
 import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { PrismaService } from '../prisma/prisma.service'
+import { readDatabaseSecurityState, restrictedAuditWriter } from '../security/database-privileges'
 
 describe('procedimento opt-in de proteção da auditoria em PostgreSQL isolado', () => {
   const prisma = new PrismaService()
@@ -39,10 +40,16 @@ describe('procedimento opt-in de proteção da auditoria em PostgreSQL isolado',
   })
 
   it('script real permite registrar/consultar e nega UPDATE, DELETE e TRUNCATE', async () => {
+    const ownerState = await readDatabaseSecurityState(prisma)
+    assert.equal(ownerState.canAssumeAuditOwner, true)
+    assert.equal(restrictedAuditWriter(ownerState), false)
     execFileSync('psql', [database.toString(), '-X', '--set=ON_ERROR_STOP=1',
       `--set=audit_runtime_role=${role}`, '--file=scripts/security/protect-audit.sql'], { stdio: 'pipe' })
     await prisma.$transaction(async tx => {
       await tx.$executeRawUnsafe(`SET LOCAL ROLE "${role}"`)
+      const state = await readDatabaseSecurityState(tx)
+      assert.equal(restrictedAuditWriter(state), true)
+      assert.ok(Object.values(state).every(value => typeof value === 'boolean'))
       await tx.$executeRaw`INSERT INTO "AuthAuditEvent" ("id", "eventType") VALUES (${id}, 'TEST_AUDIT_PROTECTION')`
       const rows = await tx.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "AuthAuditEvent" WHERE "id" = ${id}`
       assert.equal(rows[0].id, id)
@@ -58,6 +65,14 @@ describe('procedimento opt-in de proteção da auditoria em PostgreSQL isolado',
       }), /permission denied/)
     }
     assert.equal((await prisma.authAuditEvent.findUniqueOrThrow({ where: { id } })).eventType, 'TEST_AUDIT_PROTECTION')
+    await prisma.$executeRawUnsafe(`GRANT UPDATE ON TABLE "AuthAuditEvent" TO "${role}"`)
+    await prisma.$transaction(async tx => {
+      await tx.$executeRawUnsafe(`SET LOCAL ROLE "${role}"`)
+      const state = await readDatabaseSecurityState(tx)
+      assert.equal(state.canUpdateAudit, true)
+      assert.equal(restrictedAuditWriter(state), false)
+    })
+    await prisma.$executeRawUnsafe(`REVOKE UPDATE ON TABLE "AuthAuditEvent" FROM "${role}"`)
   })
 
   it('recusa um proprietário e um papel inexistente antes de alterar permissões', async () => {
