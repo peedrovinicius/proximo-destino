@@ -1,0 +1,33 @@
+name: Encrypted external backup
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '33 8 * * *'
+permissions:
+  contents: read
+concurrency:
+  group: encrypted-external-backup
+  cancel-in-progress: false
+jobs:
+  backup:
+    # Owner opt-in: no DB/cloud access until configuration and key custody are ready.
+    if: vars.BACKUP_ENABLED == 'true'
+    environment: external-backup
+    runs-on: ubuntu-latest
+    container: postgres:18
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install encryption and storage tools
+        run: apt-get update -qq && apt-get install -y --no-install-recommends age awscli python3
+      - name: Dump, encrypt, upload and verify stored bytes
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          BACKUP_AGE_RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}
+          BACKUP_KEY_VERSION: ${{ vars.BACKUP_KEY_VERSION }}
+          BACKUP_S3_BUCKET: ${{ vars.BACKUP_S3_BUCKET }}
+          BACKUP_S3_ENDPOINT: ${{ vars.BACKUP_S3_ENDPOINT }}
+          AWS_DEFAULT_REGION: ${{ vars.BACKUP_S3_REGION }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
+        run: python3 scripts/backup-external.py

@@ -85,3 +85,17 @@ Não há evidência suficiente para declarar encerradas essas pendências. O ens
 - [x] API ad5ec077 publicada com deploy SUCCESS; pós-deploy executou seis verificações de produção com sucesso, incluindo readiness do banco, headers do frontend e negativas 401 nas quatro rotas protegidas verificadas.
 
 - [x] CI e CodeQL do commit a549beb0 passaram. Ensaio de dump/restore e smoke test passaram com PostgreSQL 18, alinhado à versão principal observada na produção.
+
+## Preparação de backup externo de 2026-10-04
+
+- [x] Rotina de dump direto com TLS, criptografia age antes de gravação em disco,
+  envio S3 compatível e conferência dos bytes armazenados por download/SHA-256.
+  Falhas de dump/criptografia impedem upload; temporários removidos ao finalizar.
+- [x] Workflow diário com ativação explícita por `BACKUP_ENABLED`, environment
+  separado e destinatário público; chave privada age fica fora do CI e do bucket.
+- [x] Testes com age real e dump/armazenamento simulados cobrem roundtrip,
+  configuração insegura, dump incompleto, destinatário inválido, falha de envio e
+  corrupção no download. Não comprovam backup real de produção.
+- [ ] Responsável configurar bucket privado, retenção, credenciais e custódia das
+  chaves; ativar, verificar primeiro objeto real e restaurá-lo em banco isolado.
+  A rotina preparada não encerra a prioridade P0 de backup operacional.

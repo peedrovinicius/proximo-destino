@@ -99,3 +99,71 @@ Antes de promover uma recuperação real, testar descriptografia em ambiente iso
 Resultado observado em 2026-10-04: CI do commit 8d1d2d47, job Backend build and smoke test, concluiu o ensaio com sucesso: 27 migrations, 12 tabelas com RLS, schema e registros idênticos, campos criptografados legíveis e financeiro reconciliado. O smoke test posterior também respondeu ready/database=ok.
 
 Em 2026-10-04, a versão principal do PostgreSQL de produção foi confirmada como 18. O CI foi alinhado para postgres:18 no commit a549beb0; o ensaio sintético e o smoke test passaram nessa versão. Isso não comprova restauração de um backup real ou guarda das chaves reais.
+
+## Backup externo criptografado (ativação pelo responsável)
+
+O workflow `Encrypted external backup` prepara uma cópia diária às 08:33 UTC
+(05:33 em Fortaleza) e permite execução manual. Permanece **desativado** até
+`BACKUP_ENABLED=true` nas variables do repositório. Não cria contas, buckets,
+credenciais ou chaves para o proprietário. Execução ignorada não significa backup
+bem-sucedido; confirmar o job executado e o objeto verificado antes de operar.
+
+O script `scripts/backup-external.py` usa PostgreSQL 18, conexão direta com TLS,
+transação somente leitura e `pg_dump --format=custom`. O dump passa direto para
+`age`; apenas o arquivo criptografado é gravado em diretório temporário restrito.
+Erros de dump ou criptografia impedem upload. Após enviar para S3 compatível,
+baixa os bytes criptografados e compara SHA-256. Apaga os arquivos locais ao
+terminar. Não publica artifacts, não registra erros brutos com dados de conexão,
+não restaura produção nem apaga backups remotos. Falhas após upload podem deixar
+um objeto criptografado sem confirmação; não tratá-lo como ponto validado.
+
+### Configuração e custódia
+
+1. Escolher armazenamento **privado e independente do banco**. Configurar
+   retenção/lifecycle no provedor, versionamento quando disponível e permissões
+   de acesso restritas. Política inicial sugerida: 30 cópias diárias; o responsável
+   deve confirmar prazo e custos antes de ativar. O script não altera lifecycle.
+2. Gerar a identidade age em equipamento seguro: `age-keygen -o backup-identity.txt`.
+   Guardar a chave privada fora de GitHub/Railway e do bucket, em cofre recuperável,
+   com cópia protegida. Usar `age-keygen -y backup-identity.txt` para obter o
+   destinatário público. Não enviar a identidade privada ao workflow.
+3. Criar o environment `external-backup` no GitHub. Restringir à branch `main` e
+   permitir que o agendamento rode sem aprovação humana a cada execução. Usar
+   credenciais de armazenamento limitadas a escrita/leitura do prefixo
+   `proximo-destino/`, sem exclusão. O papel PostgreSQL deve conseguir ler todas
+   as tabelas a recuperar, incluindo as protegidas por RLS, sem permissões de
+   escrita desnecessárias; validar o dump completo antes de usar papel limitado.
+4. Cadastrar secrets do environment: `BACKUP_DATABASE_URL` (direta, não `-pooler`,
+   com `sslmode=require` ou verificação mais forte), `BACKUP_S3_ACCESS_KEY_ID` e
+   `BACKUP_S3_SECRET_ACCESS_KEY`.
+5. Cadastrar variables do environment: `BACKUP_AGE_RECIPIENT` (público),
+   `BACKUP_KEY_VERSION` (identificador sem segredo, por exemplo `keys-2026-10`),
+   `BACKUP_S3_BUCKET`, `BACKUP_S3_ENDPOINT` (HTTPS) e `BACKUP_S3_REGION`.
+   O identificador deve corresponder ao inventário seguro de **todas** as chaves
+   da aplicação usadas nesse ponto; age protege o arquivo, mas não substitui as
+   chaves de PII/MFA/provedores/auditoria.
+6. Após confirmar custódia, retenção e configuração, definir a variable do
+   **repositório** `BACKUP_ENABLED=true`. Executar o workflow manualmente e
+   confirmar `Backup stored and verified`, a data e o SHA-256.
+7. Validar restauração desse objeto real em banco isolado antes de encerrar a
+   pendência. A cópia diária tem RPO de até aproximadamente 24 horas (maior se
+   houver falha); não equivale a recuperação contínua/PITR.
+
+### Restore do objeto real
+
+Em ambiente seguro, baixar o objeto criptografado e conferir SHA-256 com a
+execução. Descriptografar com `age --decrypt --identity backup-identity.txt
+--output backup.dump backup.dump.age`; o arquivo resultante contém dados
+sensíveis e exige disco protegido e descarte após o teste. Restaurar exclusivamente
+em banco vazio isolado com `pg_restore --exit-on-error --single-transaction`,
+configurando conexão direta por variáveis `PG*`. Revisar owners e grants antes de
+usar `--no-owner --no-acl`: essas opções removem controles que precisam ser
+reaplicados e verificados. Executar as comparações de schema, migrations,
+contagens, RLS, financeiro e descriptografia já descritas acima. Registrar somente
+evidências agregadas, sem dados pessoais; nunca apontar esse teste à produção.
+
+Para suspender novas cópias, definir `BACKUP_ENABLED=false`. Isso não remove
+objetos existentes. GitHub deve notificar o responsável de falhas pelo canal que
+ele habilitar; entrega de alerta e recuperação das chaves seguem pendentes até
+validação real. Os testes de CI usam dados fictícios e armazenamento simulado,
+com age real, sem acessar banco ou bucket de produção.
