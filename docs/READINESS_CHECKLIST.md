@@ -59,7 +59,7 @@ Não houve alteração de permissões ou restauração do banco durante esta aud
 - [x] Ensaio preservou as 27 migrations, schema, contagens e digests de todas as tabelas, constraints, índices e as 12 tabelas com RLS/políticas. Campos de documento de cliente, acompanhante e passageiro descriptografados com a chave correta; chave errada rejeitada; parcelas reconciliadas.
 - [x] Script recusa execução fora do CI antes de acessar banco; não aceita conexão de produção, não sobrescreve bancos existentes e não publica dump como artifact. Ver RECOVERY.md.
 - [x] Grade mobile de assentos ajustada para manter largura mínima de 44 px e caber no espaço de uma tela de 320 px, considerando corredor, bordas e paddings. Build local e no CI passaram. Frontend 8d1d2d47 com deploy SUCCESS; CSS corrigido confirmado em HTTPS de produção no asset index-Cg16D8wV.css.
-- [ ] Validação visual em viewport mobile continua pendente: o navegador disponível não oferece controle de viewport. A inspeção do CSS e o build não substituem essa validação.
+- [x] Chromium no CI validou layouts públicos e telas de login com dados fictícios em viewports de 320, 390 e 768 px. Os nove cenários passaram após corrigir o corte horizontal do diálogo de assentos. Fluxos autenticados e dados reais em mobile continuam pendentes.
 - [ ] Ensaio com dados fictícios não encerra backup externo recorrente, retenção, alertas, recuperação de chaves reais ou testes autenticados/comerciais.
 
 ## Upload de fotos e escopo dos provedores de 2026-10-04
@@ -77,7 +77,7 @@ Não houve alteração de permissões ou restauração do banco durante esta aud
 | P0 antes de operação comercial | Backup externo recorrente, retenção e recuperação das chaves | Arquivo criptografado fora do banco, chaves recuperáveis com acesso restrito e restore isolado do ponto real de backup |
 | P1 | Ativação de Mercado Pago e e-mail pelo administrador | Conta/remetente conectados, pagamento em teste, webhook assinado, conciliação, entrega ao cliente e cópia administrativa |
 | P1 | Fluxos autenticados e escopo em produção | Login com MFA, contas por papel, recursos de clientes distintos, PDFs e upload em navegador autorizado |
-| P1 | Revisão visual mobile | Fluxos públicos e autenticados em viewport mobile, sem corte, com teclado e controles acessíveis |
+| P1 | Fluxos autenticados e dados reais em mobile | Revisão pública isolada concluída em Chromium; validar área interna e portal com dados reais e acesso autorizado |
 | P2 | Confirmar entrega de alertas | Checagem horária GitHub e monitor ChatGPT habilitados; validar notificação sem provocar indisponibilidade em produção |
 
 Não há evidência suficiente para declarar encerradas essas pendências. O ensaio de recuperação e os mocks de provedores não ativam contas externas nem comprovam entrega ou transação real.
@@ -105,3 +105,10 @@ Não há evidência suficiente para declarar encerradas essas pendências. O ens
 - [x] CI 36d2ab83 aprovado: testes de criptografia age e falhas, builds, ensaio de recuperação PostgreSQL 18 e smoke test. CodeQL aprovado. Banco e armazenamento desses testes são fictícios/isolados.
 - [x] Workflow de backup restrito a main e BACKUP_ENABLED=true em b2f3ecbb. Execuções sem ativação ou fora da branch principal apresentam aviso e resumo explícitos: nenhum ponto de recuperação criado. Falhas apresentam erro e não devem ser registradas como backup verificado. YAML e guardas validados localmente.
 - [ ] Executar o workflow externo configurado e comprovar arquivo real, retenção, custódia e restore isolado. Os controles preparados não ativam o armazenamento nem encerram P0.
+
+## Revisão mobile em Chromium — 2026-10-04
+
+- [x] Workflow Mobile browser checks com nove cenários em 320, 390 e 768 px: home, detalhes, login do cliente e administrador, mapas 2+1/2+2 com dois andares, bloqueios/ocupações, controles de pelo menos 44 px, Tab/Shift+Tab, confirmação, Escape e retorno do foco. API inteiramente simulada; nenhuma reserva ou pagamento enviado. Imagens/fontes/mapas externos não são requisitados pelo ensaio.
+- [x] O primeiro ensaio detectou corte do diálogo e das poltronas em 320/390 px. Corrigido o dimensionamento mínimo da grade e do diálogo em dbf3f036. Nove de nove cenários passaram no run 37200827073, com screenshots de evidência fictícia por sete dias.
+- [x] CI e CodeQL dbf3f036 aprovados. Frontend publicado no Railway, deployment 2c7788c5-1cb9-4f27-911b-e084d720a98e SUCCESS em 2026-10-04T12:06:53Z. Navegador de produção abriu home, detalhes de Maceió e mapa; estilos corrigidos confirmados, Escape e retorno ao botão verificados. Nenhuma solicitação foi enviada.
+- [ ] A verificação isolada não comprova MFA, permissões, uploads e demais operações na área autenticada de produção, nem pagamento/e-mail real ou uso em aparelhos físicos.
