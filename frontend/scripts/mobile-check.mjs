@@ -136,7 +136,11 @@ async function test(name, viewport, execute) {
     let status = 200
     if (url.pathname.endsWith('/client/login') && request.method() === 'POST') body = { accessToken: 'synthetic-client-token' }
     else if (url.pathname.endsWith('/client/portal') && request.method() === 'GET') body = portal
-    else if (url.pathname.endsWith('/auth/refresh')) body = { accessToken: `test.${Buffer.from(JSON.stringify({ role: 'ADMIN' })).toString('base64url')}.test` }
+    else if (url.pathname.endsWith('/auth/refresh')) body = {
+      status: 'authenticated',
+      accessToken: `test.${Buffer.from(JSON.stringify({ role: 'ADMIN' })).toString('base64url')}.test`,
+      user: { id: 'synthetic-admin', email: 'admin@example.invalid', role: 'ADMIN' },
+    }
     else if (url.pathname.endsWith('/admin/dashboard')) body = { metrics: { clients: 0, pendingReservations: 0, activeTrips: 0, confirmedReservations: 0 }, birthdays: [] }
     else if (url.pathname.endsWith('/admin/notifications')) body = { unreadCount: 0, items: [] }
     else if (['/admin/clients', '/admin/trips', '/admin/reservations', '/admin/trips/bus-templates'].some((path) => url.pathname.endsWith(path))) body = []
