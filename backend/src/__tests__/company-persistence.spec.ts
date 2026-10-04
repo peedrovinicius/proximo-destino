@@ -3,10 +3,12 @@ import { after, before, describe, it } from 'node:test'
 import { randomUUID } from 'node:crypto'
 import { PrismaService } from '../prisma/prisma.service'
 import { CompaniesService } from '../companies/companies.service'
+import { CompanyScopeService } from '../tenancy/company-scope.service'
 
 describe('company additive migration in isolated PostgreSQL', () => {
   const prisma = new PrismaService()
   const service = new CompaniesService(prisma)
+  const scope = new CompanyScopeService(prisma)
   const suffix = randomUUID()
   const creatorId = `creator-${suffix}`
   const adminId = `company-admin-${suffix}`
@@ -27,6 +29,7 @@ describe('company additive migration in isolated PostgreSQL', () => {
   after(async () => {
     if (!connected) return
     try {
+      await prisma.authSession.deleteMany({ where: { userId: { in: [creatorId, adminId] } } })
       await prisma.companyMembership.deleteMany({ where: { companyId: { in: ids } } })
       await prisma.company.deleteMany({ where: { createdById: creatorId } })
       await prisma.user.deleteMany({ where: { id: { in: [creatorId, adminId] } } })
@@ -52,5 +55,36 @@ describe('company additive migration in isolated PostgreSQL', () => {
     // Synthetic database fixture only; no API activation route exists.
     await prisma.company.update({ where: { id: ids[0] }, data: { status: 'ACTIVE' } })
     await assert.rejects(service.updateDraft(ids[0], fields), { status: 404 })
+  })
+  it('resolves persisted session company and denies another company or another user', async () => {
+    const other = await service.create(creatorId, { ...fields, slug: `second-${suffix}` }); ids.push(other.id)
+    await prisma.company.update({ where: { id: other.id }, data: { status: 'ACTIVE' } })
+    const session = await prisma.authSession.create({ data: {
+      userId: adminId, companyId: ids[0], refreshTokenHash: 'synthetic-unusable',
+      expiresAt: new Date(Date.now() + 60_000),
+    } })
+    assert.equal((await scope.resolveSession(adminId, session.id)).companyId, ids[0])
+    await assert.rejects(scope.resolveSession(creatorId, session.id), { status: 403 })
+    await prisma.authSession.update({ where: { id: session.id }, data: { companyId: other.id } })
+    await assert.rejects(scope.resolveSession(adminId, session.id), { status: 403 })
+    await prisma.authSession.update({ where: { id: session.id }, data: { companyId: ids[0] } })
+    await prisma.companyMembership.updateMany({ where: { companyId: ids[0], userId: adminId }, data: { isActive: false } })
+    await assert.rejects(scope.resolveSession(adminId, session.id), { status: 403 })
+    await prisma.companyMembership.updateMany({ where: { companyId: ids[0], userId: adminId }, data: { isActive: true } })
+    await prisma.authSession.update({ where: { id: session.id }, data: { revokedAt: new Date() } })
+    await assert.rejects(scope.resolveSession(adminId, session.id), { status: 403 })
+  })
+  it('denies expired sessions, suspended companies and role changes', async () => {
+    const session = await prisma.authSession.create({ data: {
+      userId: adminId, companyId: ids[0], refreshTokenHash: 'synthetic-unusable',
+      expiresAt: new Date(Date.now() - 60_000),
+    } })
+    await assert.rejects(scope.resolveSession(adminId, session.id), { status: 403 })
+    await prisma.authSession.update({ where: { id: session.id }, data: { expiresAt: new Date(Date.now() + 60_000) } })
+    await prisma.company.update({ where: { id: ids[0] }, data: { status: 'SUSPENDED' } })
+    await assert.rejects(scope.resolveSession(adminId, session.id), { status: 403 })
+    await prisma.company.update({ where: { id: ids[0] }, data: { status: 'ACTIVE' } })
+    await prisma.companyMembership.updateMany({ where: { companyId: ids[0], userId: adminId }, data: { role: 'AGENT' } })
+    await assert.rejects(scope.resolveSession(adminId, session.id), { status: 403 })
   })
 })

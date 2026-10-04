@@ -42,6 +42,7 @@ model Company {
   createdById          String
   createdBy            User @relation("CompanyCreator", fields: [createdById], references: [id], onDelete: Restrict)
   memberships          CompanyMembership[]
+  authSessions         AuthSession[]
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
@@ -205,6 +206,7 @@ model User {
 model AuthSession {
   id               String    @id @default(cuid())
   userId           String
+  companyId        String?
   refreshTokenHash String
   userAgentHash    String?
   ipHash           String?
@@ -214,8 +216,10 @@ model AuthSession {
   revokedAt        DateTime?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company? @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@index([userId, revokedAt])
+  @@index([companyId, userId])
   @@index([expiresAt])
 }
 

@@ -30,6 +30,14 @@ ao banco de produção nesta etapa.
 
 ## Próxima etapa obrigatória antes de ativar outra empresa
 
+O início desta etapa adiciona `AuthSession.companyId` opcional e um resolvedor
+server-only `CompanyScopeService`. Ele verifica sessão vigente e do usuário,
+empresa ativa, conta ativa e vínculo vigente compatível com o papel atual.
+Não recebe companyId do navegador e não atribui sessões antigas a uma empresa.
+Sessões antigas sem vínculo são recusadas pelo resolvedor. **O resolvedor ainda
+não está ligado às rotas operacionais**, pois suas consultas precisam ser
+escopadas primeiro; não representa isolamento operacional concluído.
+
 - Atribuir a operação atual a uma empresa inicial, com plano de conferência e
   reversão de dados; não preencher companyId indiscriminadamente por tentativa.
 - Escopar todas as entidades e consultas: clientes, acompanhantes, viagens,
