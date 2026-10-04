@@ -2778,6 +2778,10 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
   const [emailFromEmail, setEmailFromEmail] = useState('')
   const [emailReplyTo, setEmailReplyTo] = useState('')
   const [emailAdminCopy, setEmailAdminCopy] = useState('')
+  const [mercadoClientId, setMercadoClientId] = useState('')
+  const [mercadoClientSecret, setMercadoClientSecret] = useState('')
+  const [mercadoWebhookSecret, setMercadoWebhookSecret] = useState('')
+  const [showPaymentConfig, setShowPaymentConfig] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -3044,6 +3048,46 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
     }
   }, [accessToken])
 
+  async function saveMercadoPagoPlatform() {
+    if (
+      !mercadoClientId.trim() ||
+      !mercadoClientSecret.trim() ||
+      !mercadoWebhookSecret.trim()
+    ) {
+      setMessage('Informe Client ID, Client Secret e segredo do webhook.')
+      return
+    }
+
+    setWorking(true)
+    setMessage('')
+    try {
+      const next = await adminApi.configureMercadoPagoPlatform(
+        accessToken,
+        {
+          clientId: mercadoClientId.trim(),
+          clientSecret: mercadoClientSecret.trim(),
+          webhookSecret: mercadoWebhookSecret.trim(),
+        },
+      )
+      setStatus(next)
+      setMercadoClientId('')
+      setMercadoClientSecret('')
+      setMercadoWebhookSecret('')
+      setShowPaymentConfig(false)
+      setMessage(
+        'Configuração salva com segurança. Agora conecte sua conta Mercado Pago.',
+      )
+    } catch (cause) {
+      setMessage(
+        cause instanceof Error
+          ? cause.message
+          : 'Não foi possível salvar a configuração do Mercado Pago.',
+      )
+    } finally {
+      setWorking(false)
+    }
+  }
+
   async function connect() {
     setWorking(true)
     setMessage('')
@@ -3091,6 +3135,72 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
           </div>
         </div>
 
+        {!loading && (!status?.platformConfigured || showPaymentConfig) ? (
+          <>
+            <div className="email-connection-form">
+              <label>
+                <span>Client ID</span>
+                <input
+                  value={mercadoClientId}
+                  onChange={(event) => setMercadoClientId(event.target.value)}
+                  placeholder="Client ID da aplicação Mercado Pago"
+                  autoComplete="off"
+                />
+              </label>
+
+              <label>
+                <span>Client Secret</span>
+                <input
+                  type="password"
+                  value={mercadoClientSecret}
+                  onChange={(event) => setMercadoClientSecret(event.target.value)}
+                  placeholder="Client Secret"
+                  autoComplete="new-password"
+                />
+                <small>O valor é criptografado antes de ser persistido.</small>
+              </label>
+
+              <label>
+                <span>Segredo do webhook</span>
+                <input
+                  type="password"
+                  value={mercadoWebhookSecret}
+                  onChange={(event) => setMercadoWebhookSecret(event.target.value)}
+                  placeholder="Secret signature do webhook"
+                  autoComplete="new-password"
+                />
+                <small>Usado para validar cada notificação de pagamento.</small>
+              </label>
+            </div>
+
+            <div className="payment-connection-actions">
+              <button
+                type="button"
+                className="payment-primary-action"
+                onClick={() => void saveMercadoPagoPlatform()}
+                disabled={
+                  working ||
+                  !mercadoClientId.trim() ||
+                  !mercadoClientSecret.trim() ||
+                  !mercadoWebhookSecret.trim()
+                }
+              >
+                {working ? 'Salvando...' : 'Salvar configuração segura'}
+              </button>
+              {status?.platformConfigured ? (
+                <button
+                  type="button"
+                  className="payment-secondary-action"
+                  onClick={() => setShowPaymentConfig(false)}
+                  disabled={working}
+                >
+                  Cancelar
+                </button>
+              ) : null}
+            </div>
+          </>
+        ) : null}
+
         {loading ? (
           <div className="payment-connection-state">Verificando conexão...</div>
         ) : status?.connected ? (
@@ -3121,6 +3231,14 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
               </div>
             </div>
             <div className="payment-connection-actions">
+              <button
+                type="button"
+                className="payment-secondary-action"
+                onClick={() => setShowPaymentConfig(true)}
+                disabled={working}
+              >
+                Atualizar credenciais
+              </button>
               <button type="button" className="payment-secondary-action" onClick={() => void disconnect()} disabled={working}>
                 Desconectar
               </button>
@@ -3147,15 +3265,25 @@ function PaymentSettings({ accessToken }: { accessToken: string }) {
               <strong>
                 {status?.platformConfigured
                   ? 'Pronto para conectar'
-                  : 'Recurso sendo preparado pela plataforma'}
+                  : 'Configuração inicial necessária'}
               </strong>
               <span>
                 {status?.platformConfigured
-                  ? 'Você não precisa copiar chaves, tokens ou códigos. A autorização acontece diretamente no Mercado Pago.'
-                  : 'Nenhuma ação técnica é necessária nesta tela. Quando a integração central estiver habilitada, o botão será liberado automaticamente.'}
+                  ? 'As credenciais centrais já estão protegidas. Agora basta autorizar sua conta diretamente no Mercado Pago.'
+                  : 'Informe acima o Client ID, o Client Secret e o segredo do webhook da sua aplicação Mercado Pago. Os segredos ficam criptografados no banco.'}
               </span>
             </div>
             <div className="payment-connection-actions">
+              {status?.platformConfigured && !showPaymentConfig ? (
+                <button
+                  type="button"
+                  className="payment-secondary-action"
+                  onClick={() => setShowPaymentConfig(true)}
+                  disabled={working}
+                >
+                  Atualizar credenciais
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="payment-primary-action"
