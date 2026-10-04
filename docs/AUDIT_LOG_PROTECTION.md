@@ -40,6 +40,34 @@ prova integridade dos logs. Somente ativação e ensaio reais encerram esse item
 
 ## Aceite
 
+### Ensaio do papel runtime
+
+`backend/scripts/security/rehearse-runtime.sql` é exclusivamente um ensaio opt-in
+fora das migrations. Exige um papel NOLOGIN novo, sem propriedade, memberships,
+superuser, BYPASSRLS, criação de bancos/papéis ou replicação. Não cria credenciais.
+Concede SELECT/INSERT/UPDATE nas tabelas explicitamente listadas, DELETE apenas
+nas oito tabelas onde a API o usa hoje, e SELECT/INSERT na auditoria. Nega acesso
+à tabela de migrations, DELETE de User (inclusive para evitar alterar a auditoria
+pela FK), CREATE no schema e TRUNCATE/TRIGGER/REFERENCES. Concessões via PUBLIC que
+excedam essas verificações fazem rollback. Tabelas novas exigem revisão explícita.
+
+Cria políticas RLS apenas para esse papel nas doze tabelas já protegidas, mantendo
+RLS ativado e as políticas atuais. Essas políticas autorizam a API confiável a
+trabalhar com as linhas; não isolam clientes/empresas dentro da conexão. Os guards
+e filtros da API continuam indispensáveis. O ensaio não é uma implantação de
+isolamento multiempresa. Referência: https://www.postgresql.org/docs/current/ddl-rowsecurity.html.
+
+O CI usa banco local descartável, papéis aleatórios e transações revertidas para
+testar clientes/auditoria, bloqueio de outro papel, DDL, privilégios e recusa de
+papéis inadequados. O script não é idempotente: reaplicação das mesmas políticas
+falha e reverte. A limpeza do teste remove políticas/papéis criados.
+
+**Não aplicado em produção.** Ainda faltam ensaio completo dos fluxos operacionais
+com conexão real desse papel (autenticação, reservas, assentos e financeiro),
+revisão de privilégios públicos/defaults, separação da conexão de migrations e
+plano de troca/retorno. Só depois preparar LOGIN/credenciais por canal seguro e
+considerar a mudança da conexão runtime. Não alterar o papel proprietário atual.
+
 Na inicialização, a API consulta os privilégios efetivos da conexão e registra
 DATABASE_SECURITY_CHECK: somente booleanos sobre superuser, BYPASSRLS, vínculo
 ao proprietário e SELECT/INSERT/UPDATE/DELETE/TRUNCATE da auditoria. Não registra
