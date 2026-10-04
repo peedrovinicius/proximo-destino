@@ -94,7 +94,8 @@ try {
     tripId: trip.id, reservationId: reservation.id, passengerId: reservation.passengers[0].id, seatNumber: 1,
   } })
   const quote = await source.quote.create({ data: {
-    reservationId: reservation.id, revision: 1, title: 'Cotação fictícia', totalCents: 10000,
+    reservationId: reservation.id, revision: 1, title: 'Cotação fictícia',
+    subtotalCostCents: 6000, subtotalSaleCents: 10000, totalCents: 10000, marginCents: 4000,
   } })
   await source.financePlan.create({ data: {
     reservationId: reservation.id, quoteId: quote.id, totalCents: 10000, installmentCount: 2,
