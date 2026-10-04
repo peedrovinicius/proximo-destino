@@ -163,9 +163,9 @@ Executar com Node.js 22 ou superior:
 node scripts/check-production.mjs
 ```
 
-Também disponível em Actions → Production read-only checks → Run workflow. O workflow é manual, com permissão apenas de leitura do repositório, sem segredos. Não cria reservas ou pagamentos, nem acessa dados privados. Falha com código de saída 1 quando readiness, headers ou rejeição de acesso anônimo não atendem ao esperado. Respostas não são impressas nos logs.
+Também disponível em Actions → Production read-only checks → Run workflow. O workflow pode ser iniciado manualmente, executa a cada hora (minuto 17 UTC, sujeito à fila do GitHub) e roda em pushes que alterem a checagem. Usa permissão apenas de leitura do repositório, sem segredos. Não cria reservas ou pagamentos, nem acessa dados privados. Falha com código de saída 1 quando readiness, headers ou rejeição de acesso anônimo não atendem ao esperado. Respostas não são impressas nos logs.
 
-Se falhar, conferir o status dos serviços e o resultado individual antes de qualquer alteração. Não relaxar guards, CSP ou autenticação para fazer a checagem passar. Uma falha de rede também pode produzir resultado negativo. Esta checagem não comprova fluxos autenticados, entrega de e-mail, webhook ou backup. Agendamento, destino de alertas e retenção externa devem ser definidos pelo proprietário.
+Se falhar, conferir o status dos serviços e o resultado individual antes de qualquer alteração. Não relaxar guards, CSP ou autenticação para fazer a checagem passar. Uma falha de rede também pode produzir resultado negativo. Esta checagem não comprova fluxos autenticados, entrega de e-mail, webhook ou backup. Uma automação horária no ChatGPT acompanha os serviços e resultados atuais de CI/checagem, avisa incidentes e sua resolução, sem modificar produção. A automação está habilitada; a entrega de um alerta de falha ainda não foi comprovada. Retenção externa e backup real continuam pendentes.
 
 A correção do foco de assentos de 2026-10-04 preserva o botão de abertura antes da atualização assíncrona de disponibilidade. Pode ser revertida pelo commit correspondente ou rollback do frontend no Railway, sem migration ou alteração de dados.
 

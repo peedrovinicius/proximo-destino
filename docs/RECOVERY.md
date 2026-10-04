@@ -97,3 +97,5 @@ Um dump não contém as chaves mantidas nas variáveis da aplicação. Guardar, 
 Antes de promover uma recuperação real, testar descriptografia em ambiente isolado, preservar criptografia e permissões, revogar sessões conforme o incidente e confirmar os fluxos essenciais. Não ativar e-mails ou pagamentos reais no ensaio.
 
 Resultado observado em 2026-10-04: CI do commit 8d1d2d47, job Backend build and smoke test, concluiu o ensaio com sucesso: 27 migrations, 12 tabelas com RLS, schema e registros idênticos, campos criptografados legíveis e financeiro reconciliado. O smoke test posterior também respondeu ready/database=ok.
+
+Em 2026-10-04, a versão principal do PostgreSQL de produção foi confirmada como 18. O CI foi alinhado para postgres:18 no commit a549beb0; o ensaio sintético e o smoke test passaram nessa versão. Isso não comprova restauração de um backup real ou guarda das chaves reais.

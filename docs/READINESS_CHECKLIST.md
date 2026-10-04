@@ -49,8 +49,9 @@ Não houve alteração de permissões ou restauração do banco durante esta aud
 - [x] Site público desktop e detalhes de Maceió carregaram; compra online aparece desabilitada enquanto o provedor não está configurado.
 - [x] Modal de poltronas: foco inicial, ciclo de Tab, seleção, confirmação e Escape verificados no navegador de produção. Nenhuma solicitação de reserva foi enviada.
 - [x] Corrigida perda de foco causada pelo carregamento assíncrono antes da abertura: controle de origem preservado na página de viagem e no portal. Frontend 6e205d30 com deploy SUCCESS; build local passou. Retorno ao botão confirmado por Escape e confirmação na página pública. Portal autenticado ainda não verificado visualmente.
-- [x] Script scripts/check-production.mjs executado contra produção: seis verificações passaram (readiness com banco, frontend com headers e quatro rotas protegidas retornando 401). Workflow manual Production read-only checks disponível; a execução no runner do GitHub ainda não foi comprovada.
-- [ ] Agendamento contínuo, destinatário de alertas e backup externo recorrente ainda não configurados. A checagem manual não substitui esses controles.
+- [x] Script scripts/check-production.mjs executado contra produção: seis verificações passaram (readiness com banco, frontend com headers e quatro rotas protegidas retornando 401). Workflow Production read-only checks disponível. Execução no GitHub em 2026-10-04 no commit a549beb0 passou, além da execução local (seis verificações).
+- [x] Checagem pública horária configurada no GitHub e monitor horário habilitado para avisos ao proprietário no ChatGPT. A entrega de uma notificação de incidente ainda precisa ser comprovada.
+- [ ] Backup externo recorrente, retenção e guarda recuperável das chaves continuam pendentes. Monitoramento não substitui backup.
 
 ## Ensaio de recuperação e ajuste mobile de 2026-10-04
 
@@ -77,8 +78,10 @@ Não houve alteração de permissões ou restauração do banco durante esta aud
 | P1 | Ativação de Mercado Pago e e-mail pelo administrador | Conta/remetente conectados, pagamento em teste, webhook assinado, conciliação, entrega ao cliente e cópia administrativa |
 | P1 | Fluxos autenticados e escopo em produção | Login com MFA, contas por papel, recursos de clientes distintos, PDFs e upload em navegador autorizado |
 | P1 | Revisão visual mobile | Fluxos públicos e autenticados em viewport mobile, sem corte, com teclado e controles acessíveis |
-| P2 | Monitoramento contínuo e alertas | Agenda e destino definidos pelo proprietário e uma falha controlada notificada |
+| P2 | Confirmar entrega de alertas | Checagem horária GitHub e monitor ChatGPT habilitados; validar notificação sem provocar indisponibilidade em produção |
 
 Não há evidência suficiente para declarar encerradas essas pendências. O ensaio de recuperação e os mocks de provedores não ativam contas externas nem comprovam entrega ou transação real.
 
 - [x] API ad5ec077 publicada com deploy SUCCESS; pós-deploy executou seis verificações de produção com sucesso, incluindo readiness do banco, headers do frontend e negativas 401 nas quatro rotas protegidas verificadas.
+
+- [x] CI e CodeQL do commit a549beb0 passaram. Ensaio de dump/restore e smoke test passaram com PostgreSQL 18, alinhado à versão principal observada na produção.
