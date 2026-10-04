@@ -254,7 +254,9 @@ function App() {
   if (screen === 'home') {
     return (
       <HomePage
-        onClientAccess={() => navigate('client-login')}
+        onClientAccess={() =>
+          navigate(clientAccessToken ? 'client' : 'client-login')
+        }
         onAdminAccess={() => void enterAdmin()}
         onInstitutionalNavigate={(page) =>
           navigate('institutional', { institutionalPage: page })
@@ -356,6 +358,7 @@ function App() {
     return (
       <ClientPortal
         accessToken={clientAccessToken}
+        onExitToSite={() => navigate('home')}
         onLogout={() => {
           setClientAccessToken(null)
           navigate('home', { replace: true })
