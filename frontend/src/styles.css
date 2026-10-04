@@ -911,8 +911,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
 
   .client-nav-item,
   .admin-nav-item { padding-inline: 8px; }
-  .client-nav-item:nth-child(n+4),
-  .admin-nav-item:nth-child(n+4) { display: none; }
+  .client-nav-item:nth-child(n+4) { display: none; }
 
   .client-summary-grid,
   .admin-metrics { grid-template-columns: 1fr; }
@@ -15002,3 +15001,15 @@ button, input, select, textarea { font-family: inherit; }
 .pd-footer-brand > p { font-size: 15px; line-height: 1.65; }
 .pd-footer-social a { font-weight: 500; line-height: 1.4; }
 .pd-footer-bottom-inner { line-height: 1.65; }
+
+/* Internal navigation: keep every permitted section reachable on small screens. */
+.admin-nav { min-width: 0; }
+.admin-nav-item { flex-shrink: 0; min-height: 44px; height: auto; font-size: var(--text-sm); font-weight: 600; }
+.admin-nav-item:focus-visible { outline: 2px solid var(--accent, #285f89); outline-offset: -2px; }
+@media (max-width: 980px) {
+  .admin-topbar { grid-template-columns: minmax(0, 1fr) auto; padding-top: 8px; gap: 8px 12px; }
+  .admin-nav { order: 3; grid-column: 1 / -1; max-width: 100%; padding-bottom: 8px; scrollbar-width: thin; }
+  .admin-nav-item { display: inline-flex; align-items: center; justify-content: center; padding-inline: 14px; white-space: nowrap; }
+  .admin-actions { grid-column: 2; grid-row: 1; }
+  .admin-topbar .brand { min-width: 0; }
+}

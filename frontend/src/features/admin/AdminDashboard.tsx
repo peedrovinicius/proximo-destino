@@ -398,30 +398,30 @@ export function AdminDashboard({
         <Brand compact />
 
         <nav className="admin-nav" aria-label="Administração">
-          <button className={tab === 'overview' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('overview')} type="button">Visão geral</button>
+          <button aria-current={tab === 'overview' ? 'page' : undefined} className={tab === 'overview' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('overview')} type="button">Visão geral</button>
           {capabilities.viewClients ? (
-            <button className={tab === 'clients' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('clients')} type="button">Clientes</button>
+            <button aria-current={tab === 'clients' ? 'page' : undefined} className={tab === 'clients' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('clients')} type="button">Clientes</button>
           ) : null}
           {capabilities.viewTrips ? (
-            <button className={tab === 'trips' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('trips')} type="button">Viagens</button>
+            <button aria-current={tab === 'trips' ? 'page' : undefined} className={tab === 'trips' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('trips')} type="button">Viagens</button>
           ) : null}
           {capabilities.viewReservations ? (
-            <button className={tab === 'reservations' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('reservations')} type="button">Reservas</button>
+            <button aria-current={tab === 'reservations' ? 'page' : undefined} className={tab === 'reservations' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('reservations')} type="button">Reservas</button>
           ) : null}
           {capabilities.viewQuotes ? (
-            <button className={tab === 'quotes' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('quotes')} type="button">Cotações</button>
+            <button aria-current={tab === 'quotes' ? 'page' : undefined} className={tab === 'quotes' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('quotes')} type="button">Cotações</button>
           ) : null}
           {capabilities.viewPayments ? (
-            <button className={tab === 'payments' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('payments')} type="button">Pagamentos</button>
+            <button aria-current={tab === 'payments' ? 'page' : undefined} className={tab === 'payments' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('payments')} type="button">Pagamentos</button>
           ) : null}
           {capabilities.viewFinance ? (
-            <button className={tab === 'finance' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('finance')} type="button">Financeiro</button>
+            <button aria-current={tab === 'finance' ? 'page' : undefined} className={tab === 'finance' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('finance')} type="button">Financeiro</button>
           ) : null}
           {capabilities.viewAudit ? (
-            <button className={tab === 'audit' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('audit')} type="button">Auditoria</button>
+            <button aria-current={tab === 'audit' ? 'page' : undefined} className={tab === 'audit' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('audit')} type="button">Auditoria</button>
           ) : null}
           {capabilities.viewSettings ? (
-            <button className={tab === 'settings' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('settings')} type="button">Configurações</button>
+            <button aria-current={tab === 'settings' ? 'page' : undefined} className={tab === 'settings' ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => navigateTab('settings')} type="button">Configurações</button>
           ) : null}
         </nav>
 
