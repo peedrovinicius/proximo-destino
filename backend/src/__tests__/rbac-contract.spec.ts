@@ -9,16 +9,28 @@ import { PaymentConnectionAdminController } from '../payments/payment-connection
 import { PrivacyController } from '../privacy/privacy.controller'
 import { AdminTripsController } from '../trips/admin-trips.controller'
 
-function rolesFor(
-  controller: { prototype: Record<string, unknown> },
-  method: string,
-) {
-  const handler = controller.prototype[method]
-  return Reflect.getMetadata(ROLES_KEY, handler) as UserRole[] | undefined
+type ControllerClass = {
+  prototype: object
 }
 
-function classRoles(controller: { prototype: Record<string, unknown> }) {
-  return Reflect.getMetadata(ROLES_KEY, controller) as UserRole[] | undefined
+function rolesFor(
+  controller: ControllerClass,
+  method: string,
+) {
+  const handler = (
+    controller.prototype as Record<string, unknown>
+  )[method]
+  return Reflect.getMetadata(
+    ROLES_KEY,
+    handler,
+  ) as UserRole[] | undefined
+}
+
+function classRoles(controller: ControllerClass) {
+  return Reflect.getMetadata(
+    ROLES_KEY,
+    controller,
+  ) as UserRole[] | undefined
 }
 
 describe('contrato RBAC das rotas administrativas', () => {
