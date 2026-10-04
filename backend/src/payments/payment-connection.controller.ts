@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   Post,
@@ -24,6 +25,19 @@ export class PaymentConnectionAdminController {
   @Get('mercado-pago')
   status() {
     return this.payments.status()
+  }
+
+  @Post('mercado-pago/platform')
+  configurePlatform(
+    @Body()
+    input: {
+      clientId: string
+      clientSecret: string
+      webhookSecret: string
+    },
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.payments.configurePlatform(input, request.user.id)
   }
 
   @Post('mercado-pago/connect')
