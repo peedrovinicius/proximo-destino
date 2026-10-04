@@ -9,9 +9,18 @@ concurrency:
   group: encrypted-external-backup
   cancel-in-progress: false
 jobs:
+  activation-status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Explain skipped backup
+        if: vars.BACKUP_ENABLED != 'true' || github.ref != 'refs/heads/main'
+        run: |
+          echo '::warning::Backup not executed: requires BACKUP_ENABLED=true and the main branch. No recovery point was created.'
+          echo 'Backup not executed. Configure storage and key custody, then enable BACKUP_ENABLED and run from main. This run is not evidence of a backup.' >> "$GITHUB_STEP_SUMMARY"
   backup:
     # Owner opt-in: no DB/cloud access until configuration and key custody are ready.
-    if: vars.BACKUP_ENABLED == 'true'
+    if: vars.BACKUP_ENABLED == 'true' && github.ref == 'refs/heads/main'
     environment: external-backup
     runs-on: ubuntu-latest
     container: postgres:18
@@ -31,3 +40,8 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
         run: python3 scripts/backup-external.py
+      - name: Report backup failure
+        if: failure()
+        run: |
+          echo '::error::Backup failed. Do not treat this run as a verified recovery point.'
+          echo 'Backup failed. Check configuration and storage availability, retry, and verify the stored archive before recording a recovery point.' >> "$GITHUB_STEP_SUMMARY"
