@@ -158,9 +158,10 @@ Não há evidência suficiente para declarar encerradas essas pendências. O ens
   parcelas, edição de passageiros, abertura/fechamento do pedido de cancelamento
   e saída. Escritas comerciais não são permitidas pelo mock.
 - [x] Build local TypeScript/Vite e verificação de sintaxe do script passaram.
-- [ ] Executar os quatro cenários e a regressão existente em Chromium. Instalação
-  local do navegador falhou; não registrar os testes preparados como aprovados.
+- [x] Chromium no CI: 18/18 cenários aprovados, incluindo portal em 320/390/768/1440 px. Execução 37219641355; dados inteiramente fictícios.
 - [x] Envio, CI e publicação autorizados diretamente pelo proprietário em 2026-10-04.
-- [ ] Concluir CI/CodeQL, cenários Chromium e publicação; registrar evidências após aprovação.
+- [x] PR #31 integrada no commit 341a7dcf5ea602112132466b7db4e047a0cda7e1. CI 37219641377 e CodeQL 37219641416 aprovados. Railway deployment 6af2a42b-2b78-48cb-a396-d951afe9b3e4 SUCCESS em 2026-10-04T17:15:19Z; CSS /assets/index-BWP9mI10.css confirmado em HTTPS.
+- [x] Checagem pública após publicação: 6/6 aprovadas (readiness/banco, frontend/headers e quatro negativas 401).
+- [ ] Dependency review 37219641382 bloqueado: Dependency graph desativado. Nenhuma dependência alterada; auditorias npm do CI aprovadas. Não registrar esse check como aprovado.
 - [ ] Conferir o portal com contas reais autorizadas após publicação. Dados fictícios
   não validam autenticação, configuração de produção ou operação comercial.
