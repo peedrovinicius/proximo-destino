@@ -31,6 +31,9 @@ describe('Mercado Pago: webhook e reconciliação', () => {
   const cardClientId = `mp-card-client-${suffix}`
   const cardTripId = `mp-card-trip-${suffix}`
   const cardReservationId = `mp-card-reservation-${suffix}`
+  const expiredClientId = `mp-expired-client-${suffix}`
+  const expiredTripId = `mp-expired-trip-${suffix}`
+  const expiredReservationId = `mp-expired-reservation-${suffix}`
 
   const config = new ConfigService({
     JWT_ACCESS_SECRET: 'mp-finance-test-secret',
@@ -83,6 +86,11 @@ describe('Mercado Pago: webhook e reconciliação', () => {
           fullName: 'Cliente Cartão',
           email: `mp-card-${suffix}@example.com`,
         },
+        {
+          id: expiredClientId,
+          fullName: 'Cliente Pagamento Expirado',
+          email: `mp-expired-${suffix}@example.com`,
+        },
       ],
     })
 
@@ -108,6 +116,16 @@ describe('Mercado Pago: webhook e reconciliação', () => {
           capacity: 10,
           priceCents: 30_000,
         },
+        {
+          id: expiredTripId,
+          title: 'Viagem Pagamento Expirado',
+          origin: 'Fortaleza',
+          destination: 'João Pessoa',
+          departureDate: new Date(Date.now() + 17 * 86_400_000),
+          status: TripStatus.SCHEDULED,
+          capacity: 10,
+          priceCents: 28_000,
+        },
       ],
     })
 
@@ -124,6 +142,13 @@ describe('Mercado Pago: webhook e reconciliação', () => {
           id: cardReservationId,
           clientId: cardClientId,
           tripId: cardTripId,
+          status: ReservationStatus.PENDING,
+          passengerCount: 1,
+        },
+        {
+          id: expiredReservationId,
+          clientId: expiredClientId,
+          tripId: expiredTripId,
           status: ReservationStatus.PENDING,
           passengerCount: 1,
         },
@@ -152,6 +177,16 @@ describe('Mercado Pago: webhook e reconciliação', () => {
           totalCents: 30_000,
           providerOrderId: `mp-order-${suffix}`,
         },
+        {
+          id: `mp-expired-order-${suffix}`,
+          reservationId: expiredReservationId,
+          status: PurchaseStatus.PENDING_PAYMENT,
+          paymentMethod: PurchasePaymentMethod.CARD,
+          unitPriceCents: 28_000,
+          passengerCount: 1,
+          totalCents: 28_000,
+          providerOrderId: `mp-expired-order-provider-${suffix}`,
+        },
       ],
     })
 
@@ -166,6 +201,11 @@ describe('Mercado Pago: webhook e reconciliação', () => {
           tripId: cardTripId,
           reservationId: cardReservationId,
           seatNumber: 2,
+        },
+        {
+          tripId: expiredTripId,
+          reservationId: expiredReservationId,
+          seatNumber: 3,
         },
       ],
     })
@@ -183,19 +223,19 @@ describe('Mercado Pago: webhook e reconciliação', () => {
       where: { userId: actorId },
     })
     await prisma.purchaseOrder.deleteMany({
-      where: { reservationId: { in: [pixReservationId, cardReservationId] } },
+      where: { reservationId: { in: [pixReservationId, cardReservationId, expiredReservationId] } },
     })
     await prisma.seatAssignment.deleteMany({
-      where: { reservationId: { in: [pixReservationId, cardReservationId] } },
+      where: { reservationId: { in: [pixReservationId, cardReservationId, expiredReservationId] } },
     })
     await prisma.reservation.deleteMany({
-      where: { id: { in: [pixReservationId, cardReservationId] } },
+      where: { id: { in: [pixReservationId, cardReservationId, expiredReservationId] } },
     })
     await prisma.trip.deleteMany({
-      where: { id: { in: [pixTripId, cardTripId] } },
+      where: { id: { in: [pixTripId, cardTripId, expiredTripId] } },
     })
     await prisma.client.deleteMany({
-      where: { id: { in: [pixClientId, cardClientId] } },
+      where: { id: { in: [pixClientId, cardClientId, expiredClientId] } },
     })
     await prisma.user.deleteMany({ where: { id: actorId } })
     await prisma.$disconnect()
@@ -249,6 +289,78 @@ describe('Mercado Pago: webhook e reconciliação', () => {
       where: { reservationId: pixReservationId },
     })
     assert.equal(order.status, PurchaseStatus.PENDING_PAYMENT)
+  })
+
+  it('mantém reserva e poltrona quando PIX é recusado para permitir nova tentativa', async () => {
+    Payment.prototype.get = (async () => ({
+      id: `mp-payment-${suffix}`,
+      external_reference: `mp-pix-order-${suffix}`,
+      transaction_amount: 250,
+      status: 'rejected',
+    })) as unknown as typeof Payment.prototype.get
+
+    const result = await portal.handlePaymentWebhook({
+      type: 'payment',
+      dataId: `mp-payment-${suffix}`,
+      xSignature: 'valid',
+      xRequestId: 'request-rejected',
+    })
+
+    if (!('updated' in result) || result.updated !== true) {
+      assert.fail('Webhook deveria atualizar o estado do provedor')
+    }
+    assert.equal(result.status, PurchaseStatus.PENDING_PAYMENT)
+
+    const order = await prisma.purchaseOrder.findUniqueOrThrow({
+      where: { reservationId: pixReservationId },
+    })
+    assert.equal(order.status, PurchaseStatus.PENDING_PAYMENT)
+    assert.equal(order.providerStatus, 'rejected')
+
+    const reservation = await prisma.reservation.findUniqueOrThrow({
+      where: { id: pixReservationId },
+    })
+    assert.equal(reservation.status, ReservationStatus.PENDING)
+    assert.equal(
+      await prisma.seatAssignment.count({
+        where: { reservationId: pixReservationId },
+      }),
+      1,
+    )
+  })
+
+  it('mantém reserva de cartão quando checkout falha para permitir nova tentativa', async () => {
+    Order.prototype.get = (async () => ({
+      id: `mp-order-${suffix}`,
+      external_reference: `mp-card-order-${suffix}`,
+      total_amount: '300.00',
+      status: 'failed',
+      status_detail: 'rejected_by_bank',
+      transactions: { payments: [], refunds: [] },
+    })) as unknown as typeof Order.prototype.get
+
+    const result = await portal.handlePaymentWebhook({
+      type: 'order',
+      dataId: `mp-order-${suffix}`,
+      xSignature: 'valid',
+      xRequestId: 'request-card-failed',
+    })
+
+    if (!('updated' in result) || result.updated !== true) {
+      assert.fail('Webhook deveria atualizar o estado do provedor')
+    }
+    assert.equal(result.status, PurchaseStatus.PENDING_PAYMENT)
+
+    const reservation = await prisma.reservation.findUniqueOrThrow({
+      where: { id: cardReservationId },
+    })
+    assert.equal(reservation.status, ReservationStatus.PENDING)
+    assert.equal(
+      await prisma.seatAssignment.count({
+        where: { reservationId: cardReservationId },
+      }),
+      1,
+    )
   })
 
   it('confirma PIX aprovado e mantém a poltrona', async () => {
@@ -328,6 +440,45 @@ describe('Mercado Pago: webhook e reconciliação', () => {
       where: { id: cardReservationId },
     })
     assert.equal(reservation.status, ReservationStatus.CONFIRMED)
+  })
+
+  it('expira checkout vencido, cancela a reserva e libera a poltrona', async () => {
+    Order.prototype.get = (async () => ({
+      id: `mp-expired-order-provider-${suffix}`,
+      external_reference: `mp-expired-order-${suffix}`,
+      total_amount: '280.00',
+      status: 'expired',
+      status_detail: 'expired',
+      transactions: { payments: [], refunds: [] },
+    })) as unknown as typeof Order.prototype.get
+
+    const result = await portal.handlePaymentWebhook({
+      type: 'order',
+      dataId: `mp-expired-order-provider-${suffix}`,
+      xSignature: 'valid',
+      xRequestId: 'request-card-expired',
+    })
+
+    if (!('updated' in result) || result.updated !== true) {
+      assert.fail('Webhook deveria atualizar a compra expirada')
+    }
+    assert.equal(result.status, PurchaseStatus.EXPIRED)
+
+    const order = await prisma.purchaseOrder.findUniqueOrThrow({
+      where: { reservationId: expiredReservationId },
+    })
+    assert.equal(order.status, PurchaseStatus.EXPIRED)
+
+    const reservation = await prisma.reservation.findUniqueOrThrow({
+      where: { id: expiredReservationId },
+    })
+    assert.equal(reservation.status, ReservationStatus.CANCELLED)
+    assert.equal(
+      await prisma.seatAssignment.count({
+        where: { reservationId: expiredReservationId },
+      }),
+      0,
+    )
   })
 
   it('reconcilia estorno parcial sem cancelar a viagem', async () => {
