@@ -104,8 +104,15 @@ try {
         const dialog = page.getByRole('dialog')
         await dialog.waitFor()
         await fit(page, 'seat modal')
-        const overflow = await dialog.evaluate((element) => element.scrollWidth > element.clientWidth + 1)
-        assert.equal(overflow, false, 'Dialog content must fit')
+        const dimensions = await dialog.evaluate((element) => {
+          const bounds = element.getBoundingClientRect()
+          return { left: bounds.left, right: bounds.right, width: innerWidth,
+            content: element.scrollWidth, available: element.clientWidth }
+        })
+        assert(dimensions.left >= -1 && dimensions.right <= dimensions.width + 1,
+          `Dialog must stay inside viewport: ${JSON.stringify(dimensions)}`)
+        assert(dimensions.content <= dimensions.available + 1,
+          `Dialog content must fit: ${JSON.stringify(dimensions)}`)
         const seat = page.getByRole('button', { name: 'Assento 1, disponível', exact: true })
         const bounds = await seat.boundingBox()
         assert(bounds.width >= 43.9 && bounds.height >= 43.9, 'Seat touch target must be at least 44 px')

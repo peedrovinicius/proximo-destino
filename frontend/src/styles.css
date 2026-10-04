@@ -6088,6 +6088,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
   inset: 0;
   z-index: 200;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   place-items: center;
   padding: 18px;
   background: rgba(0, 0, 0, .34);
@@ -6097,6 +6098,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
 
 .seat-selector-dialog {
   display: grid;
+  min-width: 0;
   width: min(690px, 100%);
   max-height: calc(100dvh - 36px);
   grid-template-rows: auto minmax(0, 1fr) auto auto;
@@ -6112,6 +6114,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
 
 .seat-selector-header {
   position: relative;
+  min-width: 0;
   display: flex;
   min-height: 100px;
   align-items: center;
@@ -6167,6 +6170,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
 }
 
 .seat-selector-scroll {
+  min-width: 0;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
