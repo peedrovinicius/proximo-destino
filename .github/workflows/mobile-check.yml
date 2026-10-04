@@ -30,6 +30,8 @@ jobs:
         run: npm run build
       - name: Check mobile layouts, seat maps and keyboard navigation
         run: node scripts/mobile-check.mjs
+      - name: Check isolated creator onboarding at mobile and desktop widths
+        run: node scripts/creator-check.mjs
       - name: Save synthetic browser evidence
         if: always()
         uses: actions/upload-artifact@v4

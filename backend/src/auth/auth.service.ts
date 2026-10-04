@@ -34,6 +34,17 @@ export class AuthService {
   ) {}
 
   async loginAdmin(email: string, password: string, context: RequestContext) {
+    return this.loginStaff(email, password, context, [UserRole.ADMIN, UserRole.AGENT, UserRole.FINANCE])
+  }
+
+  async loginCreator(email: string, password: string, context: RequestContext) {
+    if (this.config.get<string>('COMPANY_FOUNDATION_ENABLED') !== 'true') {
+      throw new ForbiddenException('Cadastro de empresas ainda não habilitado')
+    }
+    return this.loginStaff(email, password, context, [UserRole.CREATOR])
+  }
+
+  private async loginStaff(email: string, password: string, context: RequestContext, allowedRoles: UserRole[]) {
     const normalizedEmail = email.trim().toLowerCase()
     const user = await this.prisma.user.findUnique({
       where: { email: normalizedEmail },
@@ -53,11 +64,6 @@ export class AuthService {
       throw new UnauthorizedException('Credenciais inválidas')
     }
 
-    const allowedRoles: UserRole[] = [
-      UserRole.ADMIN,
-      UserRole.AGENT,
-      UserRole.FINANCE,
-    ]
     if (!allowedRoles.includes(user.role)) {
       await this.audit.record('LOGIN_ROLE_DENIED', {
         userId: user.id,
@@ -119,7 +125,7 @@ export class AuthService {
       throw new UnauthorizedException('Credenciais inválidas')
     }
 
-    if (user.role === UserRole.ADMIN && !user.mfaEnabled) {
+    if ((user.role === UserRole.ADMIN || user.role === UserRole.CREATOR) && !user.mfaEnabled) {
       const challengeToken = await this.signMfaChallenge(user.id, 'setup')
       await this.audit.record('MFA_SETUP_REQUIRED', {
         userId: user.id,
@@ -149,7 +155,7 @@ export class AuthService {
       select: { id: true, email: true, isActive: true, role: true },
     })
 
-    if (!user?.isActive || user.role !== UserRole.ADMIN) {
+    if (!user?.isActive || (user.role !== UserRole.ADMIN && user.role !== UserRole.CREATOR)) {
       throw new UnauthorizedException('Desafio inválido')
     }
 

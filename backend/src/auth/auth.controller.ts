@@ -48,6 +48,19 @@ export class AuthController {
     return this.respondWithAuth(result, response)
   }
 
+  @Post('creator/login')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @HttpCode(200)
+  async loginCreator(
+    @Body() body: LoginDto,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    return this.respondWithAuth(await this.auth.loginCreator(
+      body.email, body.password, this.context(request),
+    ), response)
+  }
+
   @Post('mfa/setup')
   @Throttle({ default: { limit: 6, ttl: 60_000 } })
   @HttpCode(200)

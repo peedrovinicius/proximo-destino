@@ -3,7 +3,7 @@ const API_BASE = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '')
 type AdminUser = {
   id: string
   email: string
-  role: 'ADMIN' | 'AGENT' | 'FINANCE'
+  role: 'ADMIN' | 'AGENT' | 'FINANCE' | 'CREATOR'
 }
 
 export type AuthenticatedResult = {
@@ -45,6 +45,15 @@ export async function loginAdmin(email: string, password: string): Promise<Admin
     body: JSON.stringify({ email, password }),
   })
 
+  if (!response.ok) throw new Error(await parseError(response))
+  return response.json() as Promise<AdminLoginResult>
+}
+
+export async function loginCreator(email: string, password: string): Promise<AdminLoginResult> {
+  const response = await fetch(`${API_BASE}/auth/creator/login`, {
+    method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  })
   if (!response.ok) throw new Error(await parseError(response))
   return response.json() as Promise<AdminLoginResult>
 }

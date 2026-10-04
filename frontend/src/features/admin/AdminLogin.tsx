@@ -3,6 +3,7 @@ import { ArrowRight, KeyRound, ShieldCheck } from 'lucide-react'
 import { Brand } from '../../components/Brand'
 import {
   loginAdmin,
+  loginCreator,
   setupMfa,
   verifyMfa,
   verifyMfaSetup,
@@ -10,13 +11,14 @@ import {
 } from '../../lib/adminAuth'
 
 type AdminLoginProps = {
+  audience?: 'company' | 'creator'
   onSubmit: (accessToken: string) => void
   onBack: () => void
 }
 
 type Stage = 'credentials' | 'mfa' | 'setup' | 'recovery'
 
-export function AdminLogin({ onSubmit, onBack }: AdminLoginProps) {
+export function AdminLogin({ onSubmit, onBack, audience = 'company' }: AdminLoginProps) {
   const [stage, setStage] = useState<Stage>('credentials')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -34,7 +36,7 @@ export function AdminLogin({ onSubmit, onBack }: AdminLoginProps) {
     setSubmitting(true)
 
     try {
-      const result = await loginAdmin(email, password)
+      const result = await (audience === 'creator' ? loginCreator : loginAdmin)(email, password)
 
       if (result.status === 'authenticated') {
         onSubmit(result.accessToken)
@@ -90,15 +92,15 @@ export function AdminLogin({ onSubmit, onBack }: AdminLoginProps) {
         </div>
 
         <div className="admin-login-copy">
-          <span className="eyebrow">Acesso administrativo</span>
+          <span className="eyebrow">{audience === 'creator' ? 'Gestão da plataforma' : 'Acesso administrativo'}</span>
           <h1>
-            {stage === 'credentials' && 'Área restrita da agência'}
+            {stage === 'credentials' && (audience === 'creator' ? 'Área exclusiva do Criador' : 'Área restrita da agência')}
             {stage === 'mfa' && 'Confirme sua identidade'}
             {stage === 'setup' && 'Ative a autenticação em duas etapas'}
             {stage === 'recovery' && 'Guarde seus códigos de recuperação'}
           </h1>
           <p>
-            {stage === 'credentials' && 'Clientes, reservas, pagamentos e dados operacionais ficam disponíveis somente para perfis autorizados.'}
+            {stage === 'credentials' && (audience === 'creator' ? 'Cadastre as empresas que usarão o sistema. Este acesso não inclui os dados operacionais das empresas.' : 'Clientes, reservas, pagamentos e dados operacionais ficam disponíveis somente para perfis autorizados.')}
             {stage === 'mfa' && 'Digite o código do aplicativo autenticador ou um código de recuperação ainda não utilizado.'}
             {stage === 'setup' && 'Escaneie o QR Code no seu aplicativo autenticador e confirme o código de 6 dígitos.'}
             {stage === 'recovery' && 'Estes códigos aparecem apenas agora. Guarde-os em um local seguro e separado da sua senha.'}
