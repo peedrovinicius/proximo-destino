@@ -33,8 +33,14 @@ export class AdminDocumentsController {
   constructor(private readonly documents: DocumentsService) {}
 
   @Get('reservation/:reservationId')
-  list(@Param('reservationId') reservationId: string) {
-    return this.documents.listByReservation(reservationId)
+  list(
+    @Param('reservationId') reservationId: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.documents.listByReservation(
+      reservationId,
+      request.user.role,
+    )
   }
 
   @Post('reservation/:reservationId/travel-voucher')
@@ -68,9 +74,13 @@ export class AdminDocumentsController {
   @Get(':id/pdf')
   async pdf(
     @Param('id') id: string,
+    @Req() request: AuthenticatedRequest,
     @Res() response: Response,
   ) {
-    const result = await this.documents.renderAdminPdf(id)
+    const result = await this.documents.renderAdminPdf(
+      id,
+      request.user.role,
+    )
     response.setHeader('Content-Type', 'application/pdf')
     response.setHeader(
       'Content-Disposition',
