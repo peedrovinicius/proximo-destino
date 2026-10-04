@@ -154,3 +154,17 @@ Para documentos incorretos:
 2. corrigir os dados operacionais;
 3. emitir nova versão;
 4. manter as versões anteriores para rastreabilidade.
+
+## Checagem pública repetível
+
+Executar com Node.js 22 ou superior:
+
+```sh
+node scripts/check-production.mjs
+```
+
+Também disponível em Actions → Production read-only checks → Run workflow. O workflow é manual, com permissão apenas de leitura do repositório, sem segredos. Não cria reservas ou pagamentos, nem acessa dados privados. Falha com código de saída 1 quando readiness, headers ou rejeição de acesso anônimo não atendem ao esperado. Respostas não são impressas nos logs.
+
+Se falhar, conferir o status dos serviços e o resultado individual antes de qualquer alteração. Não relaxar guards, CSP ou autenticação para fazer a checagem passar. Uma falha de rede também pode produzir resultado negativo. Esta checagem não comprova fluxos autenticados, entrega de e-mail, webhook ou backup. Agendamento, destino de alertas e retenção externa devem ser definidos pelo proprietário.
+
+A correção do foco de assentos de 2026-10-04 preserva o botão de abertura antes da atualização assíncrona de disponibilidade. Pode ser revertida pelo commit correspondente ou rollback do frontend no Railway, sem migration ou alteração de dados.

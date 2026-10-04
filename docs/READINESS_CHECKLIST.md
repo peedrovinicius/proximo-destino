@@ -35,11 +35,19 @@ Mercado Pago e e-mail serão configurados pelo administrador da página, conform
 
 - [x] Seletor descarta poltronas ocupadas, bloqueadas, duplicadas ou fora da capacidade antes de habilitar e enviar a confirmação; isso não substitui a checagem transacional de disponibilidade no backend.
 - [x] Diálogo recebe foco inicial, mantém o ciclo de Tab, fecha por Escape e devolve foco ao controle anterior. Quantidade selecionada anunciada por região de status; andares usam botões com estado pressionado.
-- [x] Teste de comportamento em DOM simulado: seleção desatualizada, nova seleção, confirmação, ciclo de foco, Escape e restauração de rolagem passaram. Build passou. A revisão visual em navegador continua pendente: o runtime não tinha Chromium e seu download falhou.
-- [x] Três novos testes HTTP isolados do portal passaram localmente: PDF de outro cliente, PDF de outra reserva e rejeição de tipo de token incorreto ou sem reserva. Total local do bloco HTTP: 12 testes; persistência simulada.
+- [x] Teste de comportamento em DOM simulado: seleção desatualizada, nova seleção, confirmação, ciclo de foco, Escape e restauração de rolagem passaram. Build passou. Revisão visual desktop do site público e mapa concluída no navegador em produção. Mobile e área autenticada continuam pendentes.
+- [x] Três novos testes HTTP isolados do portal passaram localmente: PDF de outro cliente, PDF de outra reserva e rejeição de tipo de token incorreto ou sem reserva. Total do bloco HTTP: 12 testes com persistência simulada. CI do commit 450ac20de: 89 testes em 27 suítes, zero falhas ou testes ignorados; CodeQL passou.
 
 ## Limites da validação de dados
 
 As tabelas Client, Reservation, PurchaseOrder e TravelDocument têm zero registros tanto na produção atual quanto na original preservada. As consultas de integridade não encontraram duplicidade de assentos nem divergência entre total do plano financeiro e soma das parcelas, mas a ausência de registros não comprova comportamento sob carga real.
 
 Não houve alteração de permissões ou restauração do banco durante esta auditoria. Não remover BYPASSRLS nem ativar FORCE RLS com as políticas atuais sem preparar papel de execução e políticas compatíveis em ambiente isolado.
+
+## Verificação pública e operacional de 2026-10-04
+
+- [x] Site público desktop e detalhes de Maceió carregaram; compra online aparece desabilitada enquanto o provedor não está configurado.
+- [x] Modal de poltronas: foco inicial, ciclo de Tab, seleção, confirmação e Escape verificados no navegador de produção. Nenhuma solicitação de reserva foi enviada.
+- [x] Corrigida perda de foco causada pelo carregamento assíncrono antes da abertura: controle de origem preservado na página de viagem e no portal. Frontend 6e205d30 com deploy SUCCESS; build local passou. Retorno ao botão confirmado por Escape e confirmação na página pública. Portal autenticado ainda não verificado visualmente.
+- [x] Script scripts/check-production.mjs executado contra produção: seis verificações passaram (readiness com banco, frontend com headers e quatro rotas protegidas retornando 401). Workflow manual Production read-only checks disponível; a execução no runner do GitHub ainda não foi comprovada.
+- [ ] Agendamento contínuo, destinatário de alertas e backup externo recorrente ainda não configurados. A checagem manual não substitui esses controles.
