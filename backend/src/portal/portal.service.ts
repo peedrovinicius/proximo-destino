@@ -724,7 +724,7 @@ export class PortalService {
           ? PurchaseStatus.PAID
           : payment.status === 'refunded'
             ? PurchaseStatus.REFUNDED
-            : ['cancelled', 'rejected', 'charged_back'].includes(
+            : ['cancelled', 'charged_back'].includes(
                   payment.status ?? '',
                 )
               ? PurchaseStatus.CANCELLED
@@ -762,7 +762,7 @@ export class PortalService {
             ? PurchaseStatus.EXPIRED
             : order.status === 'refunded'
               ? PurchaseStatus.REFUNDED
-              : ['canceled', 'failed'].includes(order.status ?? '')
+              : order.status === 'canceled'
                 ? PurchaseStatus.CANCELLED
                 : PurchaseStatus.PENDING_PAYMENT
 
