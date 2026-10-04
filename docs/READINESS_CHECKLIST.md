@@ -4,7 +4,7 @@ Auditoria de 2026-10-04. Não equivale a aprovação integral para operação co
 
 ## Verificado
 
-- [x] API publicada no commit 40fb1ff, incluindo escopo de documentos por papel e remoção da instrumentação temporária.
+- [x] API publicada no commit 6b474867, incluindo escopo de documentos por papel, negativa por padrão e remoção da instrumentação temporária.
 - [x] Readiness de produção HTTP 200 e banco disponível.
 - [x] CI da correção 7221f063: 77 testes, 26 suítes, zero falhas ou testes ignorados; frontend e backend compilados; smoke test passou; CodeQL passou.
 - [x] GET sem autenticação em reservas, clientes, pagamentos, documentos, integridade, notificações e portal do cliente retorna 401.
@@ -30,6 +30,13 @@ Mercado Pago e e-mail serão configurados pelo administrador da página, conform
 - [ ] Validar permissões autenticadas com contas e dados de produção e acesso a recursos de outro cliente. Os testes isolados não comprovam configuração ou comportamento do banco de produção.
 - [ ] Validar os fluxos móveis, upload, modelos de ônibus e acessibilidade em navegador autenticado.
 - [ ] Definir política recorrente de backup e alertas com destino do proprietário. O estado observado tem janela de recuperação de 6 horas e um snapshot manual, sem garantia de backup externo recorrente.
+
+## Blocos de seletor e portal de 2026-10-04
+
+- [x] Seletor descarta poltronas ocupadas, bloqueadas, duplicadas ou fora da capacidade antes de habilitar e enviar a confirmação; isso não substitui a checagem transacional de disponibilidade no backend.
+- [x] Diálogo recebe foco inicial, mantém o ciclo de Tab, fecha por Escape e devolve foco ao controle anterior. Quantidade selecionada anunciada por região de status; andares usam botões com estado pressionado.
+- [x] Teste de comportamento em DOM simulado: seleção desatualizada, nova seleção, confirmação, ciclo de foco, Escape e restauração de rolagem passaram. Build passou. A revisão visual em navegador continua pendente: o runtime não tinha Chromium e seu download falhou.
+- [x] Três novos testes HTTP isolados do portal passaram localmente: PDF de outro cliente, PDF de outra reserva e rejeição de tipo de token incorreto ou sem reserva. Total local do bloco HTTP: 12 testes; persistência simulada.
 
 ## Limites da validação de dados
 
