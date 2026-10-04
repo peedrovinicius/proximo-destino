@@ -34,6 +34,7 @@ export class AdminCommercialController {
   constructor(private readonly commercial: CommercialService) {}
 
   @Get('quotes')
+  @Roles(...OPERATIONS_ROLES)
   listQuotes(@Query('reservationId') reservationId?: string) {
     return this.commercial.listQuotes(reservationId)
   }
@@ -90,6 +91,7 @@ export class AdminCommercialController {
   }
 
   @Get('services')
+  @Roles(...OPERATIONS_ROLES)
   listServices(@Query('reservationId') reservationId?: string) {
     return this.commercial.listServices(reservationId)
   }
