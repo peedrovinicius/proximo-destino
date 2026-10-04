@@ -69,20 +69,32 @@ export class AuthService {
 
     const passwordOk = await argon2.verify(user.passwordHash, password)
     if (!passwordOk) {
-      const attempts = user.failedLoginAttempts + 1
-      const lockedUntil =
-        attempts >= MAX_FAILED_ATTEMPTS
-          ? new Date(Date.now() + LOCK_MINUTES * 60_000)
-          : null
-
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: {
-          failedLoginAttempts: lockedUntil ? 0 : attempts,
-          lockedUntil,
-        },
-      })
-      await this.audit.record(lockedUntil ? 'LOGIN_LOCKED' : 'LOGIN_FAILED', {
+      // PostgreSQL serializes updates to the same row and rechecks the WHERE
+      // condition after waiting. Count and lock must change in one statement.
+      const now = new Date()
+      const lockedUntil = new Date(now.getTime() + LOCK_MINUTES * 60_000)
+      const updated = await this.prisma.$queryRaw<Array<{ lockedUntil: Date | null }>>`
+        UPDATE "User"
+        SET
+          "failedLoginAttempts" = CASE
+            WHEN "failedLoginAttempts" + 1 >= ${MAX_FAILED_ATTEMPTS} THEN 0
+            ELSE "failedLoginAttempts" + 1
+          END,
+          "lockedUntil" = CASE
+            WHEN "failedLoginAttempts" + 1 >= ${MAX_FAILED_ATTEMPTS} THEN ${lockedUntil}
+            ELSE NULL
+          END,
+          "updatedAt" = ${now}
+        WHERE "id" = ${user.id}
+          AND "isActive" = true
+          AND "passwordHash" = ${user.passwordHash}
+          AND "role" = ${user.role}::"UserRole"
+          AND ("lockedUntil" IS NULL OR "lockedUntil" <= ${now})
+        RETURNING "lockedUntil"
+      `
+      const event = !updated.length ? 'LOGIN_BLOCKED'
+        : updated[0].lockedUntil ? 'LOGIN_LOCKED' : 'LOGIN_FAILED'
+      await this.audit.record(event, {
         userId: user.id,
         email: normalizedEmail,
         context,
@@ -90,10 +102,22 @@ export class AuthService {
       throw new UnauthorizedException('Credenciais inválidas')
     }
 
-    await this.prisma.user.update({
-      where: { id: user.id },
+    const reset = await this.prisma.user.updateMany({
+      where: {
+        id: user.id,
+        isActive: true,
+        passwordHash: user.passwordHash,
+        role: user.role,
+        OR: [{ lockedUntil: null }, { lockedUntil: { lte: new Date() } }],
+      },
       data: { failedLoginAttempts: 0, lockedUntil: null },
     })
+    if (reset.count !== 1) {
+      await this.audit.record('LOGIN_BLOCKED', {
+        userId: user.id, email: normalizedEmail, context,
+      })
+      throw new UnauthorizedException('Credenciais inválidas')
+    }
 
     if (user.role === UserRole.ADMIN && !user.mfaEnabled) {
       const challengeToken = await this.signMfaChallenge(user.id, 'setup')

@@ -35,7 +35,7 @@ Esta matriz distingue evidência de código de comprovação operacional. “Có
 | 27 | Logs protegidos contra alteração | Pendente | AuthAuditEvent gravado no banco; não foi comprovada retenção imutável externa nem papel sem UPDATE/DELETE. Hash de identificadores não torna log imutável. |
 | 28 | Alertas de anomalia | Pendente | Monitor de disponibilidade não comprova alertas de abuso/autenticação. Definir destino e testar entrega com evento fictício. |
 | 29 | Rate limiting nas APIs | Parcial | SecurityModule registra ThrottlerGuard global (120/min), limites específicos no login/portal; armazenamento padrão em memória não é compartilhado entre réplicas/restarts. |
-| 30 | Limite de login consecutivo | Parcial | Cinco falhas/15 min; incremento calculado a partir de leitura prévia pode perder tentativas concorrentes. Corrigir atomicamente e ensaiar em PostgreSQL. |
+| 30 | Limite de login consecutivo | Parcial | Cinco falhas/15 min; atualização atômica preparada neste bloco. Quatro cenários em PostgreSQL isolado verificam concorrência, preservação do bloqueio, expiração e troca de senha. Aprovação do CI pendente; produção ainda não comprovada. |
 | 31 | Bloquear/desafiar suspeitos | Parcial | Bloqueio e MFA presentes; não há evidência de detecção adaptativa ou bloqueio distribuído por conta. |
 | 32 | CAPTCHA quando necessário | Pendente de avaliação | Sem CAPTCHA localizado. Decisão depende de abuso observado e controles existentes; ausência isolada não significa falha obrigatória. |
 | 33 | Endpoints críticos contra automação | Parcial | Throttle em login/MFA/portal e verificação de sessão; comprovar concorrência, múltiplos IPs e limites em ambiente isolado. |
@@ -43,7 +43,7 @@ Esta matriz distingue evidência de código de comprovação operacional. “Có
 ## Ordem de correção
 
 1. Limitar challengeToken MFA e verificar rejeição antes do serviço (alteração local neste bloco).
-2. Tornar a contagem de login atômica, com teste concorrente em PostgreSQL e bloqueio por conta; não executar tentativa de ataque em produção.
+2. Validar no CI a contagem atômica de login e o bloqueio por conta, com doze leituras concorrentes do mesmo estado inicial; não executar tentativa de ataque em produção.
 3. Preparar papel de banco sem bypass, políticas compatíveis e retenção de auditoria em ambiente isolado antes de qualquer mudança operacional.
 4. Definir retenção protegida, eventos de abuso e alertas; testar sem provocar indisponibilidade ou enviar mensagens a terceiros sem autorização.
 5. Validar MFA e isolamento com contas autorizadas; ativação de pagamentos/e-mail e backup externo continuam dependentes do administrador.
