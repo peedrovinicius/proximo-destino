@@ -14,6 +14,10 @@ Auditoria de 2026-10-04. Não equivale a aprovação integral para operação co
 - [x] Snapshot manual disponível, branch original preservada e prévia com expiração. Ver RECOVERY.md para a restauração finalizada observada.
 - [x] Configuração de headers do frontend corrigida em 7221f063, build e resposta local validados.
 
+## Ativação pelo administrador
+
+Mercado Pago e e-mail serão configurados pelo administrador da página, conforme decisão do proprietário em 2026-10-04. Não cadastrar contas, remetentes ou credenciais em seu nome. A conexão e os testes reais são etapas de ativação e não bloqueiam o desenvolvimento técnico.
+
 ## Dependências para encerrar os testes comerciais
 
 - [x] Headers confirmados na resposta HTTPS de produção após deploy bem-sucedido de 7221f063, em 2026-10-04T09:50:51Z. CSP de enquadramento/objetos/base aplicada; política mais restritiva de recursos em Report-Only.
@@ -22,7 +26,8 @@ Auditoria de 2026-10-04. Não equivale a aprovação integral para operação co
 - [ ] Validar sessão administrativa e portal em navegador, com MFA fornecido pelo proprietário; não contornar MFA.
 - [ ] Executar compra em modo de teste do provedor, incluindo webhook assinado, conciliação e PDFs; depois confirmar ativação comercial pelo proprietário.
 - [ ] Confirmar entrega de e-mail a cliente e agência; não inferir entrega pela presença de variáveis.
-- [ ] Testar permissões por HTTP autenticado com ADMIN, AGENT, FINANCE e CLIENT e recursos de outro cliente.
+- [x] Oito testes HTTP isolados passaram com os guards, verificação JWT e serviços reais de autenticação e documentos, usando persistência simulada: ADMIN/AGENT/FINANCE, CLIENT negado, PDFs fora do escopo, token inválido/refresh, sessão revogada, usuário inexistente e papel atual prevalecendo sobre o JWT.
+- [ ] Validar permissões autenticadas com contas e dados de produção e acesso a recursos de outro cliente. Os testes isolados não comprovam configuração ou comportamento do banco de produção.
 - [ ] Validar os fluxos móveis, upload, modelos de ônibus e acessibilidade em navegador autenticado.
 - [ ] Definir política recorrente de backup e alertas com destino do proprietário. O estado observado tem janela de recuperação de 6 horas e um snapshot manual, sem garantia de backup externo recorrente.
 
