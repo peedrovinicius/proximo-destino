@@ -152,7 +152,10 @@ describe('cancelamento com comunicação transacional', () => {
         },
       })
     assert.equal(requestMessage.recipientEmail, clientEmail)
-    assert.ok(requestMessage.adminCopyEmails.includes(adminEmail))
+    const requestCopies = Array.isArray(requestMessage.adminCopyEmails)
+      ? requestMessage.adminCopyEmails
+      : []
+    assert.ok(requestCopies.includes(adminEmail))
 
     const result = await admin.cancelReservation(
       reservationId,
@@ -173,7 +176,10 @@ describe('cancelamento com comunicação transacional', () => {
         },
       })
     assert.equal(cancelledMessage.recipientEmail, clientEmail)
-    assert.ok(cancelledMessage.adminCopyEmails.includes(adminEmail))
+    const cancelledCopies = Array.isArray(cancelledMessage.adminCopyEmails)
+      ? cancelledMessage.adminCopyEmails
+      : []
+    assert.ok(cancelledCopies.includes(adminEmail))
     assert.ok(cancelledMessage.textBody.includes('320,00'))
 
     const reservation = await prisma.reservation.findUniqueOrThrow({
