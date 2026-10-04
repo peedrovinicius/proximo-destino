@@ -63,8 +63,8 @@ export class AdminController {
   }
 
   @Get('reservations')
-  reservations() {
-    return this.admin.listReservations()
+  reservations(@Req() request: AuthenticatedRequest) {
+    return this.admin.listReservations(request.user.role)
   }
 
   @Get('payments/orders')
