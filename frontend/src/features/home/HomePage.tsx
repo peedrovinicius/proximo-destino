@@ -350,8 +350,34 @@ export function HomePage({
             </button>
           </div>
 
-          {error ? <div className="admin-error" role="alert">{error}</div> : null}
+          {error ? (
+            <div className="public-state-card public-state-card--error" role="alert">
+              <CircleAlert size={22} />
+              <div>
+                <strong>Não foi possível atualizar as viagens</strong>
+                <span>{error}</span>
+              </div>
+              <button type="button" onClick={() => window.location.reload()}>
+                Tentar novamente
+              </button>
+            </div>
+          ) : null}
 
+          {loading && results.length === 0 ? (
+            <div className="public-destination-grid public-destination-grid--loading" aria-label="Carregando viagens">
+              {[0, 1, 2].map((item) => (
+                <article className="public-destination-card public-destination-skeleton" key={item} aria-hidden="true">
+                  <div className="public-skeleton-image" />
+                  <div className="public-skeleton-content">
+                    <span />
+                    <strong />
+                    <i />
+                    <b />
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
           <div className="public-destination-grid" id="viagens">
             {results.map((trip) => {
               const imageUrl = publicTripImageUrl(trip)
@@ -416,12 +442,22 @@ export function HomePage({
               )
             })}
           </div>
+          )}
 
-          {!loading && results.length === 0 && (
-            <div className="empty-trips">
-              <Sparkles size={23} />
-              <h3>Nenhuma viagem disponível para essa combinação.</h3>
-              <p>Quando a agência publicar uma viagem ativa ou programada, ela aparecerá aqui automaticamente.</p>
+          {!loading && !error && results.length === 0 && (
+            <div className="public-state-card public-state-card--empty">
+              <Sparkles size={24} />
+              <div>
+                <strong>Nenhuma viagem encontrada</strong>
+                <span>
+                  {searched
+                    ? 'Tente remover algum filtro para ampliar a busca.'
+                    : 'Novas viagens aparecerão aqui assim que forem publicadas pela agência.'}
+                </span>
+              </div>
+              {searched ? (
+                <button type="button" onClick={showAll}>Limpar filtros</button>
+              ) : null}
             </div>
           )}
         </section>
