@@ -6,6 +6,9 @@ import {
   MapPin,
   MessageCircle,
   Bus,
+  CheckCircle2,
+  CircleAlert,
+  Clock3,
   Search,
   ShieldCheck,
   Sparkles,
@@ -50,6 +53,21 @@ export function HomePage({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null)
+  const [paymentReturn, setPaymentReturn] = useState<
+    'success' | 'pending' | 'failure' | null
+  >(() => {
+    const value = new URLSearchParams(window.location.search).get('payment')
+    return value === 'success' || value === 'pending' || value === 'failure'
+      ? value
+      : null
+  })
+
+  useEffect(() => {
+    if (!paymentReturn) return
+    const url = new URL(window.location.href)
+    url.searchParams.delete('payment')
+    window.history.replaceState(window.history.state, '', url)
+  }, [paymentReturn])
 
   useEffect(() => {
     let active = true
@@ -187,6 +205,51 @@ export function HomePage({
       </header>
 
       <main>
+        {paymentReturn ? (
+          <section
+            className={`payment-return-banner payment-return-banner--${paymentReturn}`}
+            role="status"
+            aria-live="polite"
+          >
+            <span className="payment-return-icon" aria-hidden="true">
+              {paymentReturn === 'success' ? (
+                <CheckCircle2 size={20} />
+              ) : paymentReturn === 'pending' ? (
+                <Clock3 size={20} />
+              ) : (
+                <CircleAlert size={20} />
+              )}
+            </span>
+            <div>
+              <strong>
+                {paymentReturn === 'success'
+                  ? 'Pagamento recebido pelo Mercado Pago'
+                  : paymentReturn === 'pending'
+                    ? 'Pagamento em processamento'
+                    : 'Pagamento não concluído'}
+              </strong>
+              <span>
+                {paymentReturn === 'success'
+                  ? 'A confirmação da reserva será atualizada assim que o pagamento for validado.'
+                  : paymentReturn === 'pending'
+                    ? 'Acompanhe a atualização da sua reserva em Minha viagem.'
+                    : 'Sua reserva continua disponível para uma nova tentativa de pagamento.'}
+              </span>
+            </div>
+            <button type="button" onClick={onClientAccess}>
+              Minha viagem
+            </button>
+            <button
+              type="button"
+              className="payment-return-dismiss"
+              aria-label="Fechar aviso de pagamento"
+              onClick={() => setPaymentReturn(null)}
+            >
+              ×
+            </button>
+          </section>
+        ) : null}
+
         <section className="public-hero">
           <div className="public-hero-shade" />
           <div className="public-hero-copy">
