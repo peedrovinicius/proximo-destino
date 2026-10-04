@@ -38,6 +38,17 @@ Sessões antigas sem vínculo são recusadas pelo resolvedor. **O resolvedor ain
 não está ligado às rotas operacionais**, pois suas consultas precisam ser
 escopadas primeiro; não representa isolamento operacional concluído.
 
+O bloco seguinte adiciona `companyId` opcional em Client, Trip e Reservation,
+sem atribuir registros existentes automaticamente. `CompanyDataService` faz
+leituras de lista e detalhe com o escopo resolvido novamente a cada chamada.
+Reservas também verificam o escopo dos seus pais, com projeções limitadas e
+identidade reduzida para FINANCE. IDs de outra empresa retornam 404.
+Constraints adiáveis, null-safe e com bloqueio de leitura dos pais impedem
+referências inconsistentes e permitem um futuro backfill transacional revisado.
+**Esses leitores ainda não substituem as APIs legadas. Não cadastrar dados de
+empresas operacionais nem ativar contas antes de escopar todas as APIs legadas,
+rotas públicas, portal, gravações, entidades derivadas e integrações.**
+
 - Atribuir a operação atual a uma empresa inicial, com plano de conferência e
   reversão de dados; não preencher companyId indiscriminadamente por tentativa.
 - Escopar todas as entidades e consultas: clientes, acompanhantes, viagens,
