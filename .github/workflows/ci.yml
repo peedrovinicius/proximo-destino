@@ -77,6 +77,11 @@ jobs:
       - name: Unit tests
         run: npm run test:unit
 
+      - name: Rehearse backup and restore with synthetic data
+        env:
+          RECOVERY_DRILL_CONTAINER: ${{ job.services.postgres.id }}
+        run: node scripts/recovery-drill.mjs
+
       - name: Smoke test health and readiness
         shell: bash
         run: |

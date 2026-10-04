@@ -7035,11 +7035,11 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outl
   }
 
   .seat-row--two-by-two {
-    grid-template-columns: repeat(2, minmax(50px, 58px)) minmax(22px, 1fr) repeat(2, minmax(50px, 58px));
+    grid-template-columns: repeat(2, minmax(44px, 58px)) minmax(18px, 1fr) repeat(2, minmax(44px, 58px));
   }
 
   .seat-row--two-by-one {
-    grid-template-columns: repeat(2, minmax(50px, 58px)) minmax(28px, 1fr) minmax(50px, 58px);
+    grid-template-columns: repeat(2, minmax(44px, 58px)) minmax(28px, 1fr) minmax(44px, 58px);
   }
 
   .seat-selector-legend {
