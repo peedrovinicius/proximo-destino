@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { after, before, describe, it } from 'node:test'
 import { BadRequestException } from '@nestjs/common'
 import { TripStatus } from '@prisma/client'
+import sharp from 'sharp'
 import { PrismaService } from '../prisma/prisma.service'
 import { TripsService } from '../trips/trips.service'
 
@@ -32,7 +33,9 @@ describe('imagens administráveis de viagem', () => {
   })
 
   it('salva imagem enviada e disponibiliza a mesma imagem publicamente', async () => {
-    const source = Buffer.from('imagem-de-teste')
+    const source = await sharp({
+      create: { width: 2, height: 2, channels: 3, background: '#123456' },
+    }).webp().toBuffer()
 
     const updated = await trips.uploadTripImage(tripId, {
       buffer: source,
@@ -46,7 +49,10 @@ describe('imagens administráveis de viagem', () => {
 
     const publicImage = await trips.publicTripImage(tripId)
     assert.equal(publicImage.mimeType, 'image/webp')
-    assert.deepEqual(Buffer.from(publicImage.data), source)
+    const metadata = await sharp(Buffer.from(publicImage.data)).metadata()
+    assert.equal(metadata.format, 'webp')
+    assert.equal(metadata.width, 2)
+    assert.equal(metadata.height, 2)
 
     const publicTrip = await trips.findPublicById(tripId)
     assert.equal(publicTrip.hasUploadedImage, true)

@@ -11,6 +11,7 @@ import {
   TripStatus,
 } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
+import { prepareTripImage } from './trip-image'
 import {
   AssignSeatClientDto,
   CreateTripDto,
@@ -1504,15 +1505,7 @@ export class TripsService {
     file?: StoredTripImageFile,
     actorUserId?: string,
   ) {
-    if (!file) throw new BadRequestException('Selecione uma imagem para enviar')
-
-    const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp']
-    if (!allowedMimeTypes.includes(file.mimetype)) {
-      throw new BadRequestException('Envie uma imagem JPG, PNG ou WebP')
-    }
-    if (file.size < 1 || file.size > 2_500_000) {
-      throw new BadRequestException('A imagem deve ter no máximo 2,5 MB')
-    }
+    const image = await prepareTripImage(file)
 
     const exists = await this.prisma.trip.findUnique({
       where: { id },
@@ -1524,8 +1517,8 @@ export class TripsService {
       await tx.trip.update({
         where: { id },
         data: {
-          imageData: Uint8Array.from(file.buffer),
-          imageMimeType: file.mimetype,
+          imageData: Uint8Array.from(image.buffer),
+          imageMimeType: image.mimetype,
           imageUpdatedAt: new Date(),
           imageUrl: null,
         },
@@ -1539,8 +1532,8 @@ export class TripsService {
             metadata: {
               tripId: id,
               imageSource: 'UPLOAD',
-              mimeType: file.mimetype,
-              sizeBytes: file.size,
+              mimeType: image.mimetype,
+              sizeBytes: image.size,
             },
           },
         })

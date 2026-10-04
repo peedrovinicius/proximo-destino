@@ -17,10 +17,14 @@ import { PrismaService } from '../prisma/prisma.service'
 import { ClientPortalGuard } from '../portal/client-portal.guard'
 import { PortalController } from '../portal/portal.controller'
 import { PortalService } from '../portal/portal.service'
+import { PaymentConnectionAdminController } from '../payments/payment-connection.controller'
+import { PaymentConnectionService } from '../payments/payment-connection.service'
+import { EmailAutomationController } from '../notifications/email-automation.controller'
+import { EmailAutomationService } from '../notifications/email-automation.service'
 
 // Exercises real HTTP routing, JWT verification, session checks and role filters.
 // Only persistence is simulated; it does not establish production DB behavior.
-describe('autorização HTTP dos documentos administrativos', () => {
+describe('autorização HTTP dos documentos e configurações de provedores', () => {
   let app: INestApplication
   let base: string
   const jwt = new JwtService()
@@ -33,6 +37,12 @@ describe('autorização HTTP dos documentos administrativos', () => {
     client: UserRole.CLIENT,
   }
   const revoked = new Set<string>()
+  const providerCalls: string[] = []
+  const providerMock = {
+    status: () => { providerCalls.push('status'); return { configured: false } },
+    begin: (actor: string) => { providerCalls.push(actor); return { testOnly: true } },
+    beginOAuth: (actor: string) => { providerCalls.push(actor); return { testOnly: true } },
+  }
   const documents = [
     { id: 'voucher', reservationId: 'reservation', type: TravelDocumentType.TRAVEL_VOUCHER },
     { id: 'receipt', reservationId: 'reservation', type: TravelDocumentType.PURCHASE_RECEIPT },
@@ -74,13 +84,15 @@ describe('autorização HTTP dos documentos administrativos', () => {
       new SessionService(prisma, config), {} as AuditService,
     )
     const module = await Test.createTestingModule({
-      controllers: [AdminDocumentsController, PortalController],
+      controllers: [AdminDocumentsController, PortalController, PaymentConnectionAdminController, EmailAutomationController],
       providers: [
         JwtAuthGuard, RolesGuard,
         ClientPortalGuard,
         { provide: JwtService, useValue: jwt },
         { provide: ConfigService, useValue: config },
         { provide: PortalService, useValue: {} },
+        { provide: PaymentConnectionService, useValue: providerMock },
+        { provide: EmailAutomationService, useValue: providerMock },
         { provide: AuthService, useValue: auth },
         { provide: DocumentsService, useValue: new DocumentsService(prisma, config) },
       ],
@@ -104,6 +116,51 @@ describe('autorização HTTP dos documentos administrativos', () => {
       headers: accessToken ? { Authorization: 'Bearer ' + accessToken } : {},
     })
   }
+
+  it('nega leitura e alteração de provedores sem ADMIN, inclusive JWT com papel forjado', async () => {
+    const routes = [
+      ['GET', 'admin/payments/mercado-pago'],
+      ['POST', 'admin/payments/mercado-pago/platform'],
+      ['POST', 'admin/payments/mercado-pago/connect'],
+      ['POST', 'admin/payments/mercado-pago/disconnect'],
+      ['GET', 'admin/notifications/email/status'],
+      ['POST', 'admin/notifications/email/oauth/connect'],
+      ['POST', 'admin/notifications/email/connection'],
+      ['DELETE', 'admin/notifications/email/connection'],
+      ['PATCH', 'admin/notifications/email/connection/settings'],
+      ['PATCH', 'admin/notifications/email/automation'],
+      ['POST', 'admin/notifications/email/test'],
+    ]
+    const initialCalls = providerCalls.length
+    for (const user of [null, 'agent', 'finance', 'client']) {
+      const accessToken = user ? await token(user, { role: UserRole.ADMIN }) : null
+      for (const [method, path] of routes) {
+        const response = await fetch(base + '/api/v1/' + path, {
+          method,
+          headers: accessToken ? { Authorization: 'Bearer ' + accessToken } : {},
+        })
+        assert.equal(response.status, user ? 403 : 401, `${user}: ${method} ${path}`)
+      }
+    }
+    assert.equal(providerCalls.length, initialCalls, 'Denied calls must not reach providers')
+  })
+
+  it('permite ADMIN consultar e iniciar conexão com o ator autenticado sem chamar provedores reais', async () => {
+    const accessToken = await token('admin')
+    const initialCalls = providerCalls.length
+    for (const [method, path] of [
+      ['GET', 'admin/payments/mercado-pago'],
+      ['GET', 'admin/notifications/email/status'],
+      ['POST', 'admin/payments/mercado-pago/connect'],
+      ['POST', 'admin/notifications/email/oauth/connect'],
+    ]) {
+      const response = await fetch(base + '/api/v1/' + path, {
+        method, headers: { Authorization: 'Bearer ' + accessToken },
+      })
+      assert.equal(response.status, method === 'POST' ? 201 : 200)
+    }
+    assert.deepEqual(providerCalls.slice(initialCalls), ['status', 'status', 'admin', 'admin'])
+  })
 
   it('recusa token ausente, inválido e token de refresh', async () => {
     assert.equal((await request('reservation/reservation')).status, 401)
