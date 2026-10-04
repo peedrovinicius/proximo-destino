@@ -230,7 +230,7 @@ describe('Mercado Pago: webhook e reconciliação', () => {
       external_reference: `mp-pix-order-${suffix}`,
       transaction_amount: 249.99,
       status: 'approved',
-    })) as typeof Payment.prototype.get
+    })) as unknown as typeof Payment.prototype.get
 
     const result = await portal.handlePaymentWebhook({
       type: 'payment',
@@ -256,7 +256,7 @@ describe('Mercado Pago: webhook e reconciliação', () => {
       external_reference: `mp-pix-order-${suffix}`,
       transaction_amount: 250,
       status: 'approved',
-    })) as typeof Payment.prototype.get
+    })) as unknown as typeof Payment.prototype.get
 
     const result = await portal.handlePaymentWebhook({
       type: 'payment',
@@ -265,7 +265,9 @@ describe('Mercado Pago: webhook e reconciliação', () => {
       xRequestId: 'request-approved',
     })
 
-    assert.equal(result.updated, true)
+    if (!('updated' in result) || result.updated !== true) {
+      assert.fail('Webhook deveria atualizar a compra')
+    }
     assert.equal(result.status, PurchaseStatus.PAID)
 
     const order = await prisma.purchaseOrder.findUniqueOrThrow({
@@ -300,7 +302,7 @@ describe('Mercado Pago: webhook e reconciliação', () => {
         payments: [{ id: `mp-card-payment-${suffix}` }],
         refunds: [],
       },
-    })) as typeof Order.prototype.get
+    })) as unknown as typeof Order.prototype.get
 
     const result = await portal.handlePaymentWebhook({
       type: 'order',
@@ -309,7 +311,9 @@ describe('Mercado Pago: webhook e reconciliação', () => {
       xRequestId: 'request-card-approved',
     })
 
-    assert.equal(result.updated, true)
+    if (!('updated' in result) || result.updated !== true) {
+      assert.fail('Webhook deveria atualizar a compra')
+    }
     assert.equal(result.status, PurchaseStatus.PAID)
 
     const order = await prisma.purchaseOrder.findUniqueOrThrow({
@@ -330,11 +334,11 @@ describe('Mercado Pago: webhook e reconciliação', () => {
       id: `mp-payment-${suffix}`,
       status: 'approved',
       date_approved: new Date().toISOString(),
-    })) as typeof Payment.prototype.get
+    })) as unknown as typeof Payment.prototype.get
 
     PaymentRefund.prototype.list = (async () => [
       { id: `refund-partial-${suffix}`, amount: 100 },
-    ]) as typeof PaymentRefund.prototype.list
+    ]) as unknown as typeof PaymentRefund.prototype.list
 
     const result = await admin.reconcileReservationPayment(
       pixReservationId,
@@ -363,11 +367,11 @@ describe('Mercado Pago: webhook e reconciliação', () => {
       id: `mp-payment-${suffix}`,
       status: 'refunded',
       date_approved: new Date().toISOString(),
-    })) as typeof Payment.prototype.get
+    })) as unknown as typeof Payment.prototype.get
 
     PaymentRefund.prototype.list = (async () => [
       { id: `refund-total-${suffix}`, amount: 250 },
-    ]) as typeof PaymentRefund.prototype.list
+    ]) as unknown as typeof PaymentRefund.prototype.list
 
     const result = await admin.reconcileReservationPayment(
       pixReservationId,
