@@ -112,3 +112,11 @@ Não há evidência suficiente para declarar encerradas essas pendências. O ens
 - [x] O primeiro ensaio detectou corte do diálogo e das poltronas em 320/390 px. Corrigido o dimensionamento mínimo da grade e do diálogo em dbf3f036. Nove de nove cenários passaram no run 37200827073, com screenshots de evidência fictícia por sete dias.
 - [x] CI e CodeQL dbf3f036 aprovados. Frontend publicado no Railway, deployment 2c7788c5-1cb9-4f27-911b-e084d720a98e SUCCESS em 2026-10-04T12:06:53Z. Navegador de produção abriu home, detalhes de Maceió e mapa; estilos corrigidos confirmados, Escape e retorno ao botão verificados. Nenhuma solicitação foi enviada.
 - [ ] A verificação isolada não comprova MFA, permissões, uploads e demais operações na área autenticada de produção, nem pagamento/e-mail real ou uso em aparelhos físicos.
+
+## Recuperação MFA sob concorrência — 2026-10-04
+
+- [x] Corrigido consumo de código de recuperação: atualização atômica exige ID, usuário e usedAt=null; somente a solicitação que altera um registro autentica. Impede duas verificações concorrentes de aceitarem o mesmo código previamente lido.
+- [x] Dois testes com Argon2 e AES-GCM reais e persistência simulada: ambas as solicitações leem o mesmo código disponível, apenas uma vence; reutilização é negada; tentativas inválidas não consomem o código. Não é teste de carga no banco de produção.
+- [x] CI 4a6b5d581 aprovado: 97 testes em 29 suítes, zero falhas; builds, smoke test, criptografia de backup e ensaio de recuperação passaram. CodeQL aprovado.
+- [x] API publicada no deployment f5b5f7a0-fac1-4330-809f-72c4e01b9ba5, SHA 4a6b5d581, SUCCESS em 2026-10-04T12:15:19Z. Checagem pública pós-deploy: seis de seis verificações passaram, incluindo readiness/banco, headers e negativas 401.
+- [ ] Login/MFA com contas reais e escopo autenticado em produção continuam pendentes. Nenhum código de recuperação, conta ou credencial de produção foi utilizado pelos testes deste bloco.
