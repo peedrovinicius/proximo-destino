@@ -115,6 +115,16 @@ describe('autorização HTTP dos documentos administrativos', () => {
     assert.equal((await request('reservation/reservation', await token('client'))).status, 403)
   })
 
+  it('nega CLIENT no serviço mesmo fora do controlador HTTP', async () => {
+    const service = new DocumentsService(prisma, config)
+    assert.deepEqual(await service.listByReservation('reservation', UserRole.CLIENT), [])
+    await assert.rejects(
+      () => service.renderAdminPdf('voucher', UserRole.CLIENT),
+      (error: unknown) => error instanceof Error && 'getStatus' in error &&
+        (error as { getStatus: () => number }).getStatus() === 404,
+    )
+  })
+
   it('recusa PDF fora do escopo de AGENT e FINANCE', async () => {
     assert.equal((await request('receipt/pdf', await token('agent'))).status, 404)
     assert.equal((await request('voucher/pdf', await token('finance'))).status, 404)

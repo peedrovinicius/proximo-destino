@@ -535,7 +535,7 @@ export class DocumentsService {
 
   listByReservation(
     reservationId: string,
-    role: UserRole = UserRole.ADMIN,
+    role: UserRole,
   ) {
     return this.prisma.travelDocument.findMany({
       where: {
@@ -576,7 +576,7 @@ export class DocumentsService {
 
   async renderAdminPdf(
     documentId: string,
-    role: UserRole = UserRole.ADMIN,
+    role: UserRole,
   ) {
     const document = await this.requireDocument(documentId, role)
     return {
@@ -659,10 +659,13 @@ export class DocumentsService {
     if (role === UserRole.FINANCE) {
       return [TravelDocumentType.PURCHASE_RECEIPT]
     }
-    return [
-      TravelDocumentType.TRAVEL_VOUCHER,
-      TravelDocumentType.PURCHASE_RECEIPT,
-    ]
+    if (role === UserRole.ADMIN) {
+      return [
+        TravelDocumentType.TRAVEL_VOUCHER,
+        TravelDocumentType.PURCHASE_RECEIPT,
+      ]
+    }
+    return []
   }
 
   private async requireDocument(

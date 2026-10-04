@@ -362,8 +362,8 @@ describe('E2E do ciclo completo da viagem', () => {
     assert.equal(receiptSnapshot.finance?.outstandingCents, 0)
 
     const [receiptPdf, voucherPdf] = await Promise.all([
-      documents.renderAdminPdf(receipt.id),
-      documents.renderAdminPdf(voucher.id),
+      documents.renderAdminPdf(receipt.id, UserRole.ADMIN),
+      documents.renderAdminPdf(voucher.id, UserRole.ADMIN),
     ])
     assert.ok(receiptPdf.buffer.length > 1_000)
     assert.ok(voucherPdf.buffer.length > 1_000)
