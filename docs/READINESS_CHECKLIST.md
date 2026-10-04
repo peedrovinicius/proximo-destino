@@ -16,7 +16,7 @@ Auditoria de 2026-10-04. Não equivale a aprovação integral para operação co
 
 ## Dependências para encerrar os testes comerciais
 
-- [ ] Confirmar headers na resposta do frontend após deploy de 7221f063.
+- [x] Headers confirmados na resposta HTTPS de produção após deploy bem-sucedido de 7221f063, em 2026-10-04T09:50:51Z. CSP de enquadramento/objetos/base aplicada; política mais restritiva de recursos em Report-Only.
 - [ ] Conectar Mercado Pago no Admin: produção retorna configured=false e não há configuração de plataforma ou conta conectada no banco. PIX, cartão, boleto e transferência online estão desativados.
 - [ ] Verificar e-mail por login autorizado no Admin. Não há conexão persistida de provedor; há variáveis de ambiente de e-mail com valores ocultos. A entrega por fallback não foi comprovada. Configurar remetente e destinatário da cópia administrativa com dados do proprietário.
 - [ ] Validar sessão administrativa e portal em navegador, com MFA fornecido pelo proprietário; não contornar MFA.
