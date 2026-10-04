@@ -32,8 +32,8 @@ Esta matriz distingue evidência de código de comprovação operacional. “Có
 | 24 | Eventos importantes | Código | AuditService e eventos operacionais nos serviços; retenção/totalidade pendentes. |
 | 25 | Login falhado monitorado | Parcial | LOGIN_FAILED/LOGIN_LOCKED/LOGIN_BLOCKED registrados; entrega de alerta ainda não comprovada. |
 | 26 | Atividades suspeitas registradas | Parcial | LOGIN_ROLE_DENIED e MFA_FAILED; ampliar evidência para negativas RBAC/portal e respostas 429. |
-| 27 | Logs protegidos contra alteração | Pendente | AuthAuditEvent gravado no banco; não foi comprovada retenção imutável externa nem papel sem UPDATE/DELETE. Hash de identificadores não torna log imutável. |
-| 28 | Alertas de anomalia | Pendente | Monitor de disponibilidade não comprova alertas de abuso/autenticação. Definir destino e testar entrega com evento fictício. |
+| 27 | Logs protegidos contra alteração | Pendente | Procedimento opt-in preparado, com ensaio no PostgreSQL do CI pendente para permitir SELECT/INSERT e negar UPDATE/DELETE/TRUNCATE a papel runtime. Não aplicado em produção; retenção externa imutável pendente. Hash de identificadores não torna log imutável. |
+| 28 | Alertas de anomalia | Parcial | Alertas internos persistentes preparados para ADMIN por falhas/bloqueios/MFA/perfil; testes de limiares e integração no CI. Aceite com sessão real e canal externo ainda pendentes. |
 | 29 | Rate limiting nas APIs | Parcial | SecurityModule registra ThrottlerGuard global (120/min), limites específicos no login/portal; armazenamento padrão em memória não é compartilhado entre réplicas/restarts. |
 | 30 | Limite de login consecutivo | Parcial | Cinco falhas/15 min; atualização atômica preparada neste bloco. Quatro cenários em PostgreSQL isolado verificam concorrência, preservação do bloqueio, expiração e troca de senha. Aprovação do CI pendente; produção ainda não comprovada. |
 | 31 | Bloquear/desafiar suspeitos | Parcial | Bloqueio e MFA presentes; não há evidência de detecção adaptativa ou bloqueio distribuído por conta. |
