@@ -22,7 +22,7 @@ function rolesFor(
   )[method]
   return Reflect.getMetadata(
     ROLES_KEY,
-    handler,
+    handler as object,
   ) as UserRole[] | undefined
 }
 
