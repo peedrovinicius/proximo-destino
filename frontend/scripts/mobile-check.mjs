@@ -35,6 +35,21 @@ let failures = 0
 async function fit(page, label) {
   const dimensions = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth }))
   assert(dimensions.scroll <= dimensions.width + 1, `${label}: horizontal overflow ${JSON.stringify(dimensions)}`)
+  const tinyText = await page.evaluate(() => [...document.querySelectorAll('body *')]
+    .filter((element) => !element.closest('svg, [aria-hidden="true"]') &&
+      [...element.childNodes].some((node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim()) &&
+      element.getBoundingClientRect().width > 0 && element.getBoundingClientRect().height > 0 &&
+      getComputedStyle(element).visibility !== 'hidden')
+    .map((element) => ({ label: element.textContent.trim().slice(0, 55), size: parseFloat(getComputedStyle(element).fontSize) }))
+    .filter((item) => item.size < 11.9))
+  assert.deepEqual(tinyText, [], `${label}: no text below 12 px`)
+  const titles = await page.locator('h1').evaluateAll((elements) =>
+    elements.map((element) => parseFloat(getComputedStyle(element).fontSize)))
+  for (const size of titles) assert(size >= 24 && size <= 64.1, `${label}: balanced main title ${size}px`)
+  const fields = await page.locator('input:not([type="checkbox"]):not([type="radio"]), select, textarea').evaluateAll((elements) =>
+    elements.filter((element) => element.getBoundingClientRect().width > 0)
+      .map((element) => parseFloat(getComputedStyle(element).fontSize)))
+  for (const size of fields) assert(size >= 15.9, `${label}: readable form field ${size}px`)
 }
 async function checkFooter(page, width) {
   const footer = page.getByRole('contentinfo', { name: 'Rodapé da Próximo Destino' })
