@@ -12,6 +12,7 @@ import {
   QuoteStatus,
   ReservationStatus,
   TravelDocumentType,
+  UserRole,
 } from '@prisma/client'
 import { randomBytes } from 'node:crypto'
 import PDFDocument from 'pdfkit'
@@ -532,9 +533,15 @@ export class DocumentsService {
     return document
   }
 
-  listByReservation(reservationId: string) {
+  listByReservation(
+    reservationId: string,
+    role: UserRole = UserRole.ADMIN,
+  ) {
     return this.prisma.travelDocument.findMany({
-      where: { reservationId },
+      where: {
+        reservationId,
+        type: { in: this.allowedDocumentTypes(role) },
+      },
       select: {
         id: true,
         type: true,
@@ -553,11 +560,25 @@ export class DocumentsService {
       select: { id: true },
     })
     if (!reservation) throw new NotFoundException('Reserva não encontrada')
-    return this.listByReservation(reservationId)
+    return this.prisma.travelDocument.findMany({
+      where: { reservationId },
+      select: {
+        id: true,
+        type: true,
+        version: true,
+        documentNumber: true,
+        verificationCode: true,
+        issuedAt: true,
+      },
+      orderBy: { issuedAt: 'desc' },
+    })
   }
 
-  async renderAdminPdf(documentId: string) {
-    const document = await this.requireDocument(documentId)
+  async renderAdminPdf(
+    documentId: string,
+    role: UserRole = UserRole.ADMIN,
+  ) {
+    const document = await this.requireDocument(documentId, role)
     return {
       filename: this.filename(document.type, document.documentNumber),
       buffer: await this.renderPdf(document.snapshot as unknown as DocumentSnapshot),
@@ -631,9 +652,28 @@ export class DocumentsService {
     }
   }
 
-  private async requireDocument(documentId: string) {
-    const document = await this.prisma.travelDocument.findUnique({
-      where: { id: documentId },
+  private allowedDocumentTypes(role: UserRole) {
+    if (role === UserRole.AGENT) {
+      return [TravelDocumentType.TRAVEL_VOUCHER]
+    }
+    if (role === UserRole.FINANCE) {
+      return [TravelDocumentType.PURCHASE_RECEIPT]
+    }
+    return [
+      TravelDocumentType.TRAVEL_VOUCHER,
+      TravelDocumentType.PURCHASE_RECEIPT,
+    ]
+  }
+
+  private async requireDocument(
+    documentId: string,
+    role: UserRole,
+  ) {
+    const document = await this.prisma.travelDocument.findFirst({
+      where: {
+        id: documentId,
+        type: { in: this.allowedDocumentTypes(role) },
+      },
       select: {
         type: true,
         documentNumber: true,
