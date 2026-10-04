@@ -16,16 +16,16 @@ describe('permissoes das rotas comerciais', () => {
     const quoteRoles = rolesFor('listQuotes')
     const serviceRoles = rolesFor('listServices')
 
+    assert.equal(new Set<UserRole>(quoteRoles).has(UserRole.FINANCE), false)
+    assert.equal(new Set<UserRole>(serviceRoles).has(UserRole.FINANCE), false)
     assert.deepEqual(quoteRoles, [UserRole.ADMIN, UserRole.AGENT])
     assert.deepEqual(serviceRoles, [UserRole.ADMIN, UserRole.AGENT])
-    assert.equal(quoteRoles.includes(UserRole.FINANCE), false)
-    assert.equal(serviceRoles.includes(UserRole.FINANCE), false)
   })
 
   it('mantem planos financeiros restritos a admin e financeiro', () => {
     const roles = rolesFor('listFinancePlans')
 
+    assert.equal(new Set<UserRole>(roles).has(UserRole.AGENT), false)
     assert.deepEqual(roles, [UserRole.ADMIN, UserRole.FINANCE])
-    assert.equal(roles.includes(UserRole.AGENT), false)
   })
 })
