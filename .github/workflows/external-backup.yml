@@ -17,7 +17,7 @@ jobs:
     container: postgres:18
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Install encryption and storage tools
         run: apt-get update -qq && apt-get install -y --no-install-recommends age awscli python3
       - name: Dump, encrypt, upload and verify stored bytes
