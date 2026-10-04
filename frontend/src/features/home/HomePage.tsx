@@ -262,7 +262,7 @@ export function HomePage({
                 className="public-hero-primary"
                 onClick={() => {
                   document
-                    .getElementById('viagens')
+                    .getElementById('destinos')
                     ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
                 }}
               >
