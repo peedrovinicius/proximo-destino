@@ -1,0 +1,40 @@
+name: Mobile browser checks
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['frontend/**', '.github/workflows/mobile-check.yml']
+  pull_request:
+    paths: ['frontend/**', '.github/workflows/mobile-check.yml']
+permissions:
+  contents: read
+jobs:
+  mobile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install app and browser test tools
+        run: npm install --no-audit --no-fund && npm install --no-save --no-audit --no-fund playwright@1.62.1
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Build isolated frontend
+        env:
+          VITE_API_URL: /api/v1
+        run: npm run build
+      - name: Check mobile layouts, seat maps and keyboard navigation
+        run: node scripts/mobile-check.mjs
+      - name: Save synthetic browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: synthetic-mobile-browser-evidence
+          path: frontend/mobile-check-results/
+          retention-days: 7
+          if-no-files-found: ignore
