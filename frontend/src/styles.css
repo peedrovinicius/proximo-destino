@@ -15529,3 +15529,680 @@ button, input, select, textarea { font-family: inherit; }
     margin-top: 48px;
   }
 }
+
+
+/* Final delivery visual pass: trip, traveler, finance and admin */
+
+/* 1. Detalhes da viagem e compra */
+.trip-details-page {
+  background: #f5f5f7;
+}
+
+.trip-details-page > .public-header {
+  position: sticky;
+  top: 0;
+  z-index: 80;
+  border-bottom-color: rgba(0, 0, 0, .07);
+  background: rgba(255, 255, 255, .88);
+  backdrop-filter: saturate(180%) blur(18px);
+}
+
+.trip-details-shell {
+  max-width: 1280px;
+  padding-top: 22px;
+}
+
+.trip-details-hero {
+  min-height: clamp(360px, 45vw, 520px);
+  border-radius: 30px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .10);
+}
+
+.trip-details-hero > div {
+  max-width: 760px;
+}
+
+.trip-details-hero .public-kicker {
+  display: inline-flex;
+  width: fit-content;
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 999px;
+  padding: 7px 11px;
+  color: rgba(255,255,255,.9);
+  background: rgba(0,0,0,.18);
+  backdrop-filter: blur(12px);
+}
+
+.trip-details-grid {
+  grid-template-columns: minmax(0, 1fr) 410px;
+  gap: 20px;
+}
+
+.trip-details-info,
+.trip-reservation-card {
+  border-color: rgba(0, 0, 0, .075);
+  background: #fff;
+  box-shadow: 0 14px 44px rgba(0, 0, 0, .045);
+}
+
+.trip-details-info {
+  padding: 32px;
+}
+
+.trip-route-large {
+  position: relative;
+}
+
+.trip-route-large::after {
+  position: absolute;
+  right: 48%;
+  bottom: -1px;
+  left: 48%;
+  height: 2px;
+  border-radius: 999px;
+  content: "";
+  background: #0071e3;
+}
+
+.trip-detail-facts span {
+  min-height: 92px;
+  align-content: center;
+  border-color: rgba(0, 0, 0, .055);
+  background: #fafafa;
+}
+
+.trip-details-price {
+  border-color: rgba(0, 113, 227, .11);
+  background: linear-gradient(145deg, #f2f8ff, #fbfdff);
+}
+
+.trip-seat-showcase {
+  border-color: rgba(0, 0, 0, .07);
+  border-radius: 20px;
+  background: #fafafa;
+}
+
+.trip-seat-showcase--selected {
+  border-color: rgba(0, 113, 227, .18);
+  background: #f4f9ff;
+}
+
+.trip-seat-showcase-button {
+  min-height: 42px;
+  border-radius: 999px;
+}
+
+.trip-details-info > .availability-note {
+  border-top: 1px solid rgba(0, 0, 0, .06);
+}
+
+.trip-reservation-card {
+  top: 88px;
+  overflow: hidden;
+  padding: 30px;
+  border-radius: 26px;
+}
+
+.purchase-mode-switch {
+  padding: 4px;
+  border: 1px solid rgba(0, 0, 0, .07);
+  border-radius: 999px;
+  background: #f2f2f4;
+}
+
+.purchase-mode-switch button {
+  min-height: 38px;
+  border-radius: 999px;
+}
+
+.trip-reservation-card label {
+  color: #3a3a3c;
+}
+
+.trip-reservation-card input,
+.trip-reservation-card select {
+  height: 50px;
+  border-radius: 14px;
+  background: #fbfbfc;
+}
+
+.trip-reservation-card input:focus,
+.trip-reservation-card select:focus {
+  background: #fff;
+}
+
+.public-passenger-fields,
+.reservation-seat-field,
+.purchase-payment-methods,
+.purchase-total {
+  border-radius: 17px;
+}
+
+.reservation-seat-field {
+  padding: 14px;
+  border: 1px solid rgba(0, 0, 0, .07);
+  background: #fafafa;
+}
+
+.reservation-seat-picker {
+  min-height: 38px;
+  border-radius: 999px;
+}
+
+.purchase-payment-methods {
+  gap: 8px;
+  padding: 14px;
+  border-color: rgba(0, 0, 0, .07);
+  background: #fafafa;
+}
+
+.purchase-payment-methods label {
+  min-height: 58px;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.purchase-payment-methods label.active {
+  border-color: rgba(0, 113, 227, .32);
+  background: #f4f9ff;
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, .05);
+}
+
+.purchase-total {
+  padding: 16px;
+  border: 1px solid rgba(0, 113, 227, .10);
+  background: #f4f9ff;
+}
+
+.purchase-total > strong {
+  font-size: 22px;
+  letter-spacing: -.03em;
+}
+
+.trip-reservation-card form > button.purchase-submit,
+.trip-reservation-card form > button[type="submit"] {
+  min-height: 50px;
+  height: auto;
+  border-radius: 999px;
+  font-size: var(--text-sm);
+}
+
+.purchase-payment-note {
+  text-align: center;
+}
+
+/* 2. Portal do viajante */
+.client-shell {
+  background: #f5f5f7;
+}
+
+.client-shell .client-main {
+  padding-bottom: 84px;
+}
+
+.client-shell .client-hero {
+  border: 1px solid rgba(0, 0, 0, .07);
+  border-radius: 26px;
+  background:
+    radial-gradient(circle at 92% 0%, rgba(0,113,227,.09), transparent 34%),
+    #fff;
+  box-shadow: 0 16px 45px rgba(0,0,0,.045);
+}
+
+.client-shell .client-summary-grid {
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.client-shell .client-summary-card {
+  min-height: 132px;
+  border-color: rgba(0, 0, 0, .07);
+  border-radius: 20px;
+  padding: 20px;
+  box-shadow: none;
+}
+
+.client-shell .summary-icon {
+  border-radius: 12px;
+  color: #0066cc;
+  background: #eef6ff;
+}
+
+.client-shell .client-summary-card > strong {
+  color: #1d1d1f;
+  font-size: 17px;
+  letter-spacing: -.02em;
+}
+
+.client-shell .client-content-grid {
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.client-shell .light-panel,
+.client-shell .client-quote-panel,
+.client-shell .client-commercial-section {
+  border-color: rgba(0,0,0,.07);
+  border-radius: 22px;
+  box-shadow: none;
+}
+
+.client-shell .light-panel-heading h2,
+.client-shell .client-quote-heading h2,
+.client-shell .client-commercial-section h2 {
+  color: #1d1d1f;
+}
+
+.client-shell .client-document-row,
+.client-shell .client-service-row,
+.client-shell .installment-row {
+  border-color: rgba(0,0,0,.065);
+}
+
+/* 3. Admin: hierarquia e formulários */
+.admin-main {
+  max-width: 1360px;
+}
+
+.admin-heading {
+  padding: 18px 0 10px;
+}
+
+.admin-heading h1 {
+  color: #1d1d1f;
+  font-size: clamp(30px, 3vw, 40px);
+  font-weight: 700;
+}
+
+.security-pill {
+  border-color: rgba(0,0,0,.07);
+  color: #4c5964;
+  background: #fff;
+}
+
+.admin-metrics {
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.admin-metric {
+  min-height: 112px;
+  border-color: rgba(0,0,0,.07);
+  border-radius: 20px;
+  padding: 20px;
+  box-shadow: none;
+}
+
+.admin-metric-icon {
+  border-radius: 12px;
+  color: #0066cc;
+  background: #eef6ff;
+}
+
+.admin-metric strong {
+  color: #1d1d1f;
+  font-size: 18px;
+  letter-spacing: -.02em;
+}
+
+.admin-workspace {
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.admin-form-panel,
+.admin-data-panel,
+.admin-panel {
+  border-color: rgba(0,0,0,.07);
+  border-radius: 20px;
+  box-shadow: none;
+}
+
+.admin-form-panel,
+.admin-data-panel {
+  padding: 22px;
+}
+
+.admin-form-panel input,
+.admin-form-panel select,
+.admin-form-panel textarea,
+.admin-table-row select {
+  min-height: 46px;
+  border-color: rgba(0,0,0,.10);
+  border-radius: 12px;
+  background: #fbfbfc;
+  font-size: var(--text-sm);
+  outline: none;
+}
+
+.admin-form-panel input:focus,
+.admin-form-panel select:focus,
+.admin-form-panel textarea:focus,
+.admin-table-row select:focus {
+  border-color: rgba(0,113,227,.45);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(0,113,227,.07);
+}
+
+.admin-form-panel button {
+  min-height: 46px;
+  height: auto;
+  border-radius: 12px;
+  font-size: var(--text-sm);
+}
+
+.admin-table-row {
+  min-height: 76px;
+  border-color: rgba(0,0,0,.065);
+}
+
+.admin-table-row strong {
+  color: #2b2b2f;
+  font-size: var(--text-sm);
+}
+
+/* 4. Financeiro */
+.admin-payments-workspace {
+  gap: 20px;
+}
+
+.admin-payments-heading {
+  padding-bottom: 18px;
+  border-color: rgba(0,0,0,.07);
+}
+
+.admin-payments-heading h2 {
+  color: #1d1d1f;
+  font-size: 26px;
+  letter-spacing: -.035em;
+}
+
+.admin-payment-metrics {
+  gap: 14px;
+}
+
+.admin-payment-metrics article {
+  min-height: 116px;
+  align-content: center;
+  border-color: rgba(0,0,0,.07);
+  border-radius: 20px;
+  padding: 20px;
+  box-shadow: none;
+}
+
+.admin-payment-metrics strong {
+  color: #1d1d1f;
+  font-size: clamp(24px, 2.4vw, 32px);
+}
+
+.admin-payment-filters {
+  padding: 16px;
+  border: 1px solid rgba(0,0,0,.07);
+  border-radius: 18px;
+  background: #fff;
+}
+
+.admin-payment-filters input,
+.admin-payment-filters select {
+  height: 46px;
+  border-color: rgba(0,0,0,.10);
+  border-radius: 12px;
+  background: #fbfbfc;
+  font-size: var(--text-sm);
+}
+
+.admin-payment-list {
+  border-color: rgba(0,0,0,.07);
+  border-radius: 20px;
+}
+
+.admin-payment-list-head {
+  min-height: 44px;
+  padding-inline: 18px;
+  background: #fafafa;
+}
+
+.admin-payment-row {
+  min-height: 78px;
+  padding: 16px 18px;
+  border-color: rgba(0,0,0,.06);
+}
+
+.admin-payment-main > strong,
+.admin-payment-row strong {
+  font-size: var(--text-sm);
+}
+
+.admin-payment-status {
+  padding: 7px 11px;
+  font-size: var(--text-xs);
+}
+
+/* 5. Mobile: sem tabelas largas nem cartões espremidos */
+@media (max-width: 900px) {
+  .trip-details-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .trip-reservation-card {
+    position: static;
+    width: 100%;
+  }
+
+  .trip-details-info {
+    padding: 26px;
+  }
+}
+
+@media (max-width: 700px) {
+  .trip-details-shell {
+    padding: 14px 14px 64px;
+  }
+
+  .trip-details-page > .public-header {
+    min-height: 60px;
+  }
+
+  .trip-details-page > .public-header .trip-details-back {
+    display: none;
+  }
+
+  .trip-details-hero {
+    min-height: 340px;
+    margin-top: 12px;
+    padding: 26px 20px;
+    border-radius: 24px;
+  }
+
+  .trip-details-hero h1 {
+    font-size: clamp(34px, 11vw, 48px);
+  }
+
+  .trip-details-hero p {
+    font-size: var(--text-sm);
+  }
+
+  .trip-details-info,
+  .trip-reservation-card {
+    border-radius: 22px;
+  }
+
+  .trip-details-info,
+  .trip-reservation-card {
+    padding: 20px;
+  }
+
+  .trip-route-large {
+    grid-template-columns: minmax(0,1fr) auto minmax(0,1fr);
+    gap: 10px;
+  }
+
+  .trip-route-large strong {
+    font-size: 17px;
+    overflow-wrap: anywhere;
+  }
+
+  .trip-detail-facts {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .trip-detail-facts span {
+    min-height: 96px;
+    padding: 13px;
+  }
+
+  .trip-details-price {
+    padding: 18px;
+  }
+
+  .trip-details-price strong {
+    font-size: 29px;
+  }
+
+  .trip-seat-showcase {
+    grid-template-columns: auto minmax(0,1fr);
+  }
+
+  .trip-seat-showcase-button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .reservation-seat-field {
+    align-items: stretch;
+  }
+
+  .reservation-seat-picker {
+    width: 100%;
+  }
+
+  .client-shell .client-main {
+    padding-inline: 12px;
+  }
+
+  .client-shell .client-hero {
+    border-radius: 22px;
+    padding: 20px;
+  }
+
+  .client-shell .client-summary-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .client-shell .client-summary-card {
+    min-height: 122px;
+    padding: 16px;
+    border-radius: 17px;
+  }
+
+  .client-shell .light-panel,
+  .client-shell .client-quote-panel,
+  .client-shell .client-commercial-section {
+    padding: 18px;
+    border-radius: 19px;
+  }
+
+  .admin-heading {
+    display: grid;
+    align-items: start;
+  }
+
+  .admin-heading .security-pill {
+    justify-self: start;
+  }
+
+  .admin-metrics {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .admin-metric {
+    min-height: 108px;
+    padding: 16px;
+    border-radius: 17px;
+  }
+
+  .admin-form-panel,
+  .admin-data-panel {
+    padding: 18px;
+    border-radius: 18px;
+  }
+
+  .admin-payment-metrics {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .admin-payment-metrics article {
+    min-height: 106px;
+    padding: 16px;
+    border-radius: 17px;
+  }
+
+  .admin-payment-filters {
+    padding: 14px;
+    border-radius: 17px;
+  }
+
+  .admin-payment-list {
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .admin-payment-list-head {
+    display: none;
+  }
+
+  .admin-payment-row {
+    min-width: 0;
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+    margin-bottom: 10px;
+    border: 1px solid rgba(0,0,0,.07);
+    border-radius: 17px;
+    padding: 16px;
+    background: #fff;
+  }
+
+  .admin-payment-row > div {
+    grid-column: 1 / -1;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(0,0,0,.055);
+  }
+
+  .admin-payment-row > div:last-child {
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
+
+  .admin-payment-value {
+    text-align: left;
+  }
+
+  .admin-payment-status {
+    justify-self: start;
+  }
+}
+
+@media (max-width: 430px) {
+  .trip-detail-facts,
+  .client-shell .client-summary-grid,
+  .admin-metrics,
+  .admin-payment-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .trip-detail-facts span {
+    min-height: 78px;
+  }
+
+  .client-shell .client-summary-card,
+  .admin-metric,
+  .admin-payment-metrics article {
+    min-height: 100px;
+  }
+}
