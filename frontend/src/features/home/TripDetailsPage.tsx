@@ -10,7 +10,7 @@ import {
   ShieldCheck,
   Users,
 } from 'lucide-react'
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Brand } from '../../components/Brand'
 import { SeatSelector } from '../../components/SeatSelector'
 import {
@@ -66,6 +66,7 @@ export function TripDetailsPage({
   const [seatMap, setSeatMap] = useState<PublicSeatMap | null>(null)
   const [seatMapLoading, setSeatMapLoading] = useState(true)
   const [seatSelectorOpen, setSeatSelectorOpen] = useState(false)
+  const seatTriggerRef = useRef<HTMLElement | null>(null)
   const [selectedSeats, setSelectedSeats] = useState<number[]>([])
   const [flowMode, setFlowMode] = useState<'PURCHASE' | 'RESERVATION'>('RESERVATION')
   const [paymentMethod, setPaymentMethod] = useState<PurchasePaymentMethod>('PIX')
@@ -164,6 +165,8 @@ export function TripDetailsPage({
   }
 
   async function openSeatSelector() {
+    seatTriggerRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement : null
     setError('')
     const latest = await refreshSeatMap(true)
     if (latest?.enabled) setSeatSelectorOpen(true)
@@ -785,6 +788,7 @@ export function TripDetailsPage({
           occupiedSeats={seatMap.occupiedSeats}
           passengerCount={passengerCount}
           selectedSeats={selectedSeats}
+          returnFocusTo={seatTriggerRef.current}
           onConfirm={setSelectedSeats}
           onClose={() => setSeatSelectorOpen(false)}
         />

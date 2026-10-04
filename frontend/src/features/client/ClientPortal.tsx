@@ -16,7 +16,7 @@ import {
   Armchair,
   Ban,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Brand } from '../../components/Brand'
 import { SeatSelector } from '../../components/SeatSelector'
 import { WhatsAppButton } from '../../components/WhatsAppButton'
@@ -95,6 +95,7 @@ export function ClientPortal({
   const [paymentResult, setPaymentResult] = useState<ClientPaymentStartResult | null>(null)
   const [pixCopied, setPixCopied] = useState(false)
   const [seatSelectorOpen, setSeatSelectorOpen] = useState(false)
+  const seatTriggerRef = useRef<HTMLElement | null>(null)
   const [seatSaving, setSeatSaving] = useState(false)
   const [cancellationOpen, setCancellationOpen] = useState(false)
   const [cancellationReason, setCancellationReason] = useState('')
@@ -177,6 +178,8 @@ export function ClientPortal({
   }
 
   async function openSeatChange() {
+    seatTriggerRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement : null
     setError('')
     try {
       const latest = await fetchClientPortal(accessToken)
@@ -867,6 +870,7 @@ export function ClientPortal({
           occupiedSeats={data.seatMap.occupiedSeats}
           passengerCount={data.passengerCount}
           selectedSeats={data.seatAssignments.map((seat) => seat.seatNumber)}
+          returnFocusTo={seatTriggerRef.current}
           onConfirm={(seats) => {
             void saveSeats(seats)
           }}

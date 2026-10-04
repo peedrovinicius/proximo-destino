@@ -17,6 +17,7 @@ type SeatSelectorProps = {
   occupiedSeats: number[]
   passengerCount: number
   selectedSeats: number[]
+  returnFocusTo?: HTMLElement | null
   onConfirm: (seats: number[]) => void
   onClose: () => void
 }
@@ -99,6 +100,7 @@ export function SeatSelector({
   occupiedSeats,
   passengerCount,
   selectedSeats,
+  returnFocusTo,
   onConfirm,
   onClose,
 }: SeatSelectorProps) {
@@ -119,9 +121,9 @@ export function SeatSelector({
     .slice(0, passengerCount)
 
   useEffect(() => {
-    const previousFocus = document.activeElement instanceof HTMLElement
+    const previousFocus = returnFocusTo ?? (document.activeElement instanceof HTMLElement
       ? document.activeElement
-      : null
+      : null)
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     const dialog = dialogRef.current
