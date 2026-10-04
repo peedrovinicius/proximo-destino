@@ -98,11 +98,11 @@ export class MfaService {
 
     for (const candidate of candidates) {
       if (await argon2.verify(candidate.codeHash, code)) {
-        await this.prisma.mfaRecoveryCode.update({
-          where: { id: candidate.id },
+        const consumed = await this.prisma.mfaRecoveryCode.updateMany({
+          where: { id: candidate.id, userId, usedAt: null },
           data: { usedAt: new Date() },
         })
-        return true
+        return consumed.count === 1
       }
     }
 
