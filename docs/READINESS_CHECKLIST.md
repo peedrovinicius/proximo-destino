@@ -4,7 +4,7 @@ Auditoria de 2026-10-04. Não equivale a aprovação integral para operação co
 
 ## Verificado
 
-- [x] API publicada no commit 6b474867, incluindo escopo de documentos por papel, negativa por padrão e remoção da instrumentação temporária.
+- [x] API publicada no commit ad5ec077, incluindo escopo de documentos por papel, negativa por padrão, remoção da instrumentação temporária e validação/normalização dos uploads de fotos.
 - [x] Readiness de produção HTTP 200 e banco disponível.
 - [x] CI da correção 7221f063: 77 testes, 26 suítes, zero falhas ou testes ignorados; frontend e backend compilados; smoke test passou; CodeQL passou.
 - [x] GET sem autenticação em reservas, clientes, pagamentos, documentos, integridade, notificações e portal do cliente retorna 401.
@@ -51,3 +51,34 @@ Não houve alteração de permissões ou restauração do banco durante esta aud
 - [x] Corrigida perda de foco causada pelo carregamento assíncrono antes da abertura: controle de origem preservado na página de viagem e no portal. Frontend 6e205d30 com deploy SUCCESS; build local passou. Retorno ao botão confirmado por Escape e confirmação na página pública. Portal autenticado ainda não verificado visualmente.
 - [x] Script scripts/check-production.mjs executado contra produção: seis verificações passaram (readiness com banco, frontend com headers e quatro rotas protegidas retornando 401). Workflow manual Production read-only checks disponível; a execução no runner do GitHub ainda não foi comprovada.
 - [ ] Agendamento contínuo, destinatário de alertas e backup externo recorrente ainda não configurados. A checagem manual não substitui esses controles.
+
+## Ensaio de recuperação e ajuste mobile de 2026-10-04
+
+- [x] CI do commit 8d1d2d47 passou, incluindo o novo ensaio de pg_dump/pg_restore com dados fictícios em dois bancos descartáveis. CodeQL passou.
+- [x] Ensaio preservou as 27 migrations, schema, contagens e digests de todas as tabelas, constraints, índices e as 12 tabelas com RLS/políticas. Campos de documento de cliente, acompanhante e passageiro descriptografados com a chave correta; chave errada rejeitada; parcelas reconciliadas.
+- [x] Script recusa execução fora do CI antes de acessar banco; não aceita conexão de produção, não sobrescreve bancos existentes e não publica dump como artifact. Ver RECOVERY.md.
+- [x] Grade mobile de assentos ajustada para manter largura mínima de 44 px e caber no espaço de uma tela de 320 px, considerando corredor, bordas e paddings. Build local e no CI passaram. Frontend 8d1d2d47 com deploy SUCCESS; CSS corrigido confirmado em HTTPS de produção no asset index-Cg16D8wV.css.
+- [ ] Validação visual em viewport mobile continua pendente: o navegador disponível não oferece controle de viewport. A inspeção do CSS e o build não substituem essa validação.
+- [ ] Ensaio com dados fictícios não encerra backup externo recorrente, retenção, alertas, recuperação de chaves reais ou testes autenticados/comerciais.
+
+## Upload de fotos e escopo dos provedores de 2026-10-04
+
+- [x] Corrigido upload que aceitava texto comum apenas por declarar image/webp: o backend agora confere assinatura e formato, decodifica e regrava a imagem em WebP estático sem metadados. Limites de 2,5 MB, 16 megapixels e lado máximo de saída de 2400 px. Nenhuma migration necessária.
+- [x] Testes cobrem JPG/PNG/WebP reais, remoção de EXIF, MIME forjado, formato divergente, truncamento, arquivo vazio, tamanho falso e excesso de bytes/pixels.
+- [x] Testes HTTP com JWT, sessão e guards reais negaram 11 rotas de leitura/alteração de configurações de Mercado Pago/e-mail para anônimos e AGENT/FINANCE/CLIENT, inclusive JWT declarando ADMIN. Serviços de provedores simulados não foram chamados nas negativas. ADMIN permitido em consultas e início de conexão, com ID autenticado como ator. Nenhuma conta externa foi conectada.
+- [x] CI do commit ad5ec077: 95 testes em 28 suítes, zero falhas e zero ignorados; CodeQL e ensaio de recuperação passaram. Auditoria local de dependências de produção: zero vulnerabilidades reportadas.
+- [x] Consulta somente leitura em produção: zero fotos armazenadas como upload. Isso não valida os fluxos de upload em navegador autenticado nem os links externos de fotos.
+
+## Prioridades restantes
+
+| Prioridade | Pendência | Evidência para concluir |
+| --- | --- | --- |
+| P0 antes de operação comercial | Backup externo recorrente, retenção e recuperação das chaves | Arquivo criptografado fora do banco, chaves recuperáveis com acesso restrito e restore isolado do ponto real de backup |
+| P1 | Ativação de Mercado Pago e e-mail pelo administrador | Conta/remetente conectados, pagamento em teste, webhook assinado, conciliação, entrega ao cliente e cópia administrativa |
+| P1 | Fluxos autenticados e escopo em produção | Login com MFA, contas por papel, recursos de clientes distintos, PDFs e upload em navegador autorizado |
+| P1 | Revisão visual mobile | Fluxos públicos e autenticados em viewport mobile, sem corte, com teclado e controles acessíveis |
+| P2 | Monitoramento contínuo e alertas | Agenda e destino definidos pelo proprietário e uma falha controlada notificada |
+
+Não há evidência suficiente para declarar encerradas essas pendências. O ensaio de recuperação e os mocks de provedores não ativam contas externas nem comprovam entrega ou transação real.
+
+- [x] API ad5ec077 publicada com deploy SUCCESS; pós-deploy executou seis verificações de produção com sucesso, incluindo readiness do banco, headers do frontend e negativas 401 nas quatro rotas protegidas verificadas.

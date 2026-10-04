@@ -81,3 +81,19 @@ Portanto, o estado atual inclui uma restauração finalizada, além da prévia. 
 RLS está habilitada nas 12 tabelas sensíveis, mas o proprietário `neondb_owner` possui `BYPASSRLS`. As políticas existentes protegem papéis sem bypass e sem propriedade; não garantem isolamento por usuário nas consultas da API. Não ativar FORCE RLS ou remover BYPASSRLS sem preparar um papel de execução, políticas compatíveis e validação em ambiente isolado: as políticas atuais negam todas as linhas aos papéis sujeitos a RLS.
 
 Os campos legados de documento não continham valores nas tabelas Client, Companion e ReservationPassenger. Como não havia clientes nem reservas, isso não equivale a um teste de criptografia de cadastros reais.
+
+## Ensaio de dump e restore no CI
+
+O CI executa `node scripts/recovery-drill.mjs` dentro do diretório backend. O script exige GitHub Actions, NODE_ENV=test e o ID do PostgreSQL descartável do job. Usa exclusivamente localhost, ignora DATABASE_URL e recusa sobrescrever bancos existentes.
+
+O ensaio aplica as migrations em recovery_drill_source, insere dados fictícios de cliente, acompanhante, viagem, passageiro, reserva, assento, pedido, cotação, plano financeiro, parcelas e documento. Em seguida executa pg_dump em formato custom e pg_restore, com transação única e parada em erro, em recovery_drill_restored. Compara todas as tabelas por contagem e digest, além de colunas, constraints, índices, RLS e políticas. Confere migrations concluídas, parcelas e descriptografia nas três tabelas de documentos pessoais. A chave errada deve falhar.
+
+Não exporta dados de produção nem publica dumps como artifacts. Os dois bancos e o dump são descartados com o container ao fim do job. O teste não comprova backup recorrente, retenção externa, tempo de recuperação em escala real, restauração de contas ou funcionamento de provedores externos. A restauração deliberadamente não copia proprietários e grants: esses controles exigem validação separada antes de recuperar um ambiente real.
+
+### Chaves e recuperação real
+
+Um dump não contém as chaves mantidas nas variáveis da aplicação. Guardar, separadamente do dump e com acesso restrito, as chaves de PII, MFA, tokens de provedores e auditoria usadas na data do backup. Registrar quais versões correspondem ao ponto de recuperação; não registrar os valores neste documento ou nos logs. Sem as chaves correspondentes, os dados podem voltar ao banco e permanecer ilegíveis.
+
+Antes de promover uma recuperação real, testar descriptografia em ambiente isolado, preservar criptografia e permissões, revogar sessões conforme o incidente e confirmar os fluxos essenciais. Não ativar e-mails ou pagamentos reais no ensaio.
+
+Resultado observado em 2026-10-04: CI do commit 8d1d2d47, job Backend build and smoke test, concluiu o ensaio com sucesso: 27 migrations, 12 tabelas com RLS, schema e registros idênticos, campos criptografados legíveis e financeiro reconciliado. O smoke test posterior também respondeu ready/database=ok.

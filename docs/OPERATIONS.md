@@ -168,3 +168,9 @@ Também disponível em Actions → Production read-only checks → Run workflow.
 Se falhar, conferir o status dos serviços e o resultado individual antes de qualquer alteração. Não relaxar guards, CSP ou autenticação para fazer a checagem passar. Uma falha de rede também pode produzir resultado negativo. Esta checagem não comprova fluxos autenticados, entrega de e-mail, webhook ou backup. Agendamento, destino de alertas e retenção externa devem ser definidos pelo proprietário.
 
 A correção do foco de assentos de 2026-10-04 preserva o botão de abertura antes da atualização assíncrona de disponibilidade. Pode ser revertida pelo commit correspondente ou rollback do frontend no Railway, sem migration ou alteração de dados.
+
+## Fotos enviadas pelo administrador
+
+Uploads JPG, PNG ou WebP estáticos têm limite de 2,5 MB e 16 megapixels. O servidor confere os bytes, decodifica o arquivo e regrava WebP sem metadados, com lado máximo de 2400 px. O MIME e tamanho gravados na auditoria correspondem à saída normalizada. Fotos inválidas, truncadas, animadas ou acima dos limites recebem erro 400 antes de gravar dados. O frontend já otimiza fotos antes do envio; a verificação no servidor protege acessos diretos à API.
+
+A correção de upload de ad5ec077 é reversível por rollback da API. Não altera o schema nem exige reprocessar fotos anteriores; os bytes normalizados permanecem compatíveis com o endpoint público de imagens. Manter a validação ao fazer correções posteriores.

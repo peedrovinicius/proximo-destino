@@ -23,7 +23,7 @@ import { EmailAutomationController } from '../notifications/email-automation.con
 import { EmailAutomationService } from '../notifications/email-automation.service'
 
 // Exercises real HTTP routing, JWT verification, session checks and role filters.
-// Only persistence is simulated; it does not establish production DB behavior.
+// Persistence and external providers are simulated; this does not establish production behavior.
 describe('autorização HTTP dos documentos e configurações de provedores', () => {
   let app: INestApplication
   let base: string
