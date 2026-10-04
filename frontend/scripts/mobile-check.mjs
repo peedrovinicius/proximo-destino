@@ -28,6 +28,34 @@ const trip = {
   summary: 'Viagem fictícia para conferir o layout em telas pequenas.',
   imageUrl: null, hasUploadedImage: false, imageUpdatedAt: null, status: 'ACTIVE',
 }
+const portal = {
+  id: 'synthetic-reservation', status: 'PENDING', passengerCount: 1,
+  createdAt: '2026-10-01T12:00:00Z', canEditPassengers: true,
+  canRequestCancellation: true, cancellationRequestStatus: null,
+  cancellationRequestReason: null, cancellationFinancial: { paidCents: 0, reviewableCents: 0 },
+  canChangeSeats: false, seatChangeCutoffAt: '2027-01-14T12:00:00Z',
+  seatMap: { enabled: false, capacity: null }, seatAssignments: [],
+  client: { id: 'synthetic-client', fullName: 'Viajante Fictício com Nome Completo Extenso',
+    email: 'viajante.com.email.extenso@exemplo.invalid', phone: '(85) 99999-0000' },
+  trip, bonus: { balanceCents: 0, transactions: [] }, purchaseOrder: null,
+  passengers: [{ id: 'synthetic-passenger', sequence: 1,
+    fullName: 'Viajante Fictício com Nome Completo Extenso', document: null,
+    birthDate: null, isPrimary: true, seatAssignment: null }],
+  quotes: [{ id: 'synthetic-quote', revision: 1, status: 'SENT',
+    title: 'Proposta de viagem com hospedagem e transfer', totalCents: 125000,
+    subtotalSaleCents: 125000, discountCents: 0, validUntil: null, notes: null,
+    items: [{ id: 'synthetic-item', category: 'HOTEL',
+      description: 'Hospedagem com café da manhã e transfer compartilhado',
+      supplier: 'Fornecedor fictício', quantity: 1, unitSaleCents: 125000, totalSaleCents: 125000 }] }],
+  documents: [{ id: 'synthetic-voucher', type: 'TRAVEL_VOUCHER', version: 1,
+    documentNumber: 'VOUCHER-2027-EXEMPLO-EXTENSO', issuedAt: '2026-10-01T12:00:00Z' }],
+  services: [{ id: 'synthetic-service', category: 'HOTEL',
+    description: 'Hospedagem com café da manhã e transfer compartilhado',
+    supplier: 'Fornecedor fictício', amountCents: 125000, status: 'PENDING' }],
+  financePlan: { id: 'synthetic-plan', totalCents: 125000, downPaymentCents: 25000,
+    installmentCount: 2, installments: [{ id: 'synthetic-installment', sequence: 1,
+      dueDate: '2027-01-01T12:00:00Z', amountCents: 50000, status: 'OPEN', paidAt: null, paymentMethod: null }] },
+}
 let browser
 let checks = 0
 let failures = 0
@@ -106,7 +134,9 @@ async function test(name, viewport, execute) {
     if (!url.pathname.startsWith('/api/')) { await route.continue(); return }
     let body
     let status = 200
-    if (url.pathname.endsWith('/auth/refresh')) body = { accessToken: `test.${Buffer.from(JSON.stringify({ role: 'ADMIN' })).toString('base64url')}.test` }
+    if (url.pathname.endsWith('/client/login') && request.method() === 'POST') body = { accessToken: 'synthetic-client-token' }
+    else if (url.pathname.endsWith('/client/portal') && request.method() === 'GET') body = portal
+    else if (url.pathname.endsWith('/auth/refresh')) body = { accessToken: `test.${Buffer.from(JSON.stringify({ role: 'ADMIN' })).toString('base64url')}.test` }
     else if (url.pathname.endsWith('/admin/dashboard')) body = { metrics: { clients: 0, pendingReservations: 0, activeTrips: 0, confirmedReservations: 0 }, birthdays: [] }
     else if (url.pathname.endsWith('/admin/notifications')) body = { unreadCount: 0, items: [] }
     else if (['/admin/clients', '/admin/trips', '/admin/reservations', '/admin/trips/bus-templates'].some((path) => url.pathname.endsWith(path))) body = []
@@ -225,6 +255,37 @@ try {
         assert.equal(await control.getAttribute('aria-current'), 'page')
         await fit(page, `admin ${tab}`)
       }
+    })
+  }
+  for (const width of [320, 390, 768, 1440]) {
+    await test(`client-portal-${width}`, { width, height: 900 }, async (page) => {
+      await page.goto(`${base}/?screen=client`)
+      await page.getByLabel('E-mail', { exact: true }).fill('viajante@exemplo.invalid')
+      await page.getByLabel('Código da reserva', { exact: true }).fill('TESTE-PORTAL')
+      await page.getByRole('button', { name: 'Ver minha viagem', exact: true }).click()
+      await page.getByRole('heading', { name: 'Dados de quem vai viajar', exact: true }).waitFor()
+      await fit(page, 'filled client portal')
+      const clipped = await page.locator('.client-main section, .client-topbar button, .client-document-row')
+        .evaluateAll((elements) => elements.map((element) => {
+          const box = element.getBoundingClientRect()
+          return { label: element.textContent.trim().slice(0, 60), left: box.left,
+            right: box.right, scroll: element.scrollWidth, available: element.clientWidth }
+        }).filter((box) => box.left < -1 || box.right > innerWidth + 1 || box.scroll > box.available + 1))
+      assert.deepEqual(clipped, [], 'Portal sections and controls must fit without clipping')
+      const actions = await page.locator('.client-shell button').evaluateAll((elements) =>
+        elements.filter((element) => element.getBoundingClientRect().width > 0)
+          .map((element) => ({ name: element.textContent.trim(), height: element.getBoundingClientRect().height })))
+      for (const action of actions) assert(action.height >= 43.9, `${action.name}: touch target at least 44px`)
+      await page.getByRole('button', { name: 'Corrigir dados', exact: true }).click()
+      await page.getByLabel('Nome completo', { exact: true }).waitFor()
+      await fit(page, 'passenger edit form')
+      await page.getByRole('button', { name: 'Cancelar', exact: true }).click()
+      await page.getByRole('button', { name: 'Solicitar cancelamento', exact: true }).click()
+      await page.getByLabel('Motivo do cancelamento', { exact: true }).waitFor()
+      await fit(page, 'cancellation form')
+      await page.getByRole('button', { name: 'Voltar', exact: true }).click()
+      await page.getByRole('button', { name: 'Sair', exact: true }).click()
+      await page.getByRole('button', { name: 'Abrir viagem', exact: true }).waitFor()
     })
   }
   console.log(`${checks - failures}/${checks} isolated mobile browser checks passed`)

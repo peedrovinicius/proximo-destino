@@ -147,3 +147,20 @@ Não há evidência suficiente para declarar encerradas essas pendências. O ens
 - [ ] Dependency review da PR #29 não executou a análise: Dependency graph desativado no repositório. Nenhuma dependência alterada neste bloco; auditorias npm de produção e desenvolvimento do CI passaram. Não registrar esse check como aprovado.
 
 - [x] Checagem pública após implantação: 6/6 passaram (readiness/banco, frontend/headers e quatro negativas 401). Não comprova uso autenticado em produção.
+
+## Portal preenchido e hierarquia visual — preparação local de 2026-10-04
+
+- [x] Ajustes locais limitados ao portal: títulos de 32–56 px, resumo em 16 px,
+  status do contador em 16 px e informações comerciais de 13–14 px. Cabeçalho
+  mobile em duas linhas, ações com alvo mínimo de 44 px e foco visível.
+- [x] Preparados quatro novos cenários de Chromium em 320/390/768/1440 px,
+  com login e reserva inteiramente fictícios: textos longos, cotação, documentos,
+  parcelas, edição de passageiros, abertura/fechamento do pedido de cancelamento
+  e saída. Escritas comerciais não são permitidas pelo mock.
+- [x] Build local TypeScript/Vite e verificação de sintaxe do script passaram.
+- [ ] Executar os quatro cenários e a regressão existente em Chromium. Instalação
+  local do navegador falhou; não registrar os testes preparados como aprovados.
+- [x] Envio, CI e publicação autorizados diretamente pelo proprietário em 2026-10-04.
+- [ ] Concluir CI/CodeQL, cenários Chromium e publicação; registrar evidências após aprovação.
+- [ ] Conferir o portal com contas reais autorizadas após publicação. Dados fictícios
+  não validam autenticação, configuração de produção ou operação comercial.
