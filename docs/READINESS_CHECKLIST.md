@@ -99,3 +99,9 @@ Não há evidência suficiente para declarar encerradas essas pendências. O ens
 - [ ] Responsável configurar bucket privado, retenção, credenciais e custódia das
   chaves; ativar, verificar primeiro objeto real e restaurá-lo em banco isolado.
   A rotina preparada não encerra a prioridade P0 de backup operacional.
+
+## Validação da rotina externa e controles de execução
+
+- [x] CI 36d2ab83 aprovado: testes de criptografia age e falhas, builds, ensaio de recuperação PostgreSQL 18 e smoke test. CodeQL aprovado. Banco e armazenamento desses testes são fictícios/isolados.
+- [x] Workflow de backup restrito a main e BACKUP_ENABLED=true em b2f3ecbb. Execuções sem ativação ou fora da branch principal apresentam aviso e resumo explícitos: nenhum ponto de recuperação criado. Falhas apresentam erro e não devem ser registradas como backup verificado. YAML e guardas validados localmente.
+- [ ] Executar o workflow externo configurado e comprovar arquivo real, retenção, custódia e restore isolado. Os controles preparados não ativam o armazenamento nem encerram P0.
