@@ -15483,3 +15483,49 @@ button, input, select, textarea { font-family: inherit; }
     animation: none;
   }
 }
+
+
+/* Admin state polish */
+.admin-empty {
+  display: flex;
+  min-height: 72px;
+  align-items: center;
+  margin: 12px 0 0;
+  border: 1px dashed rgba(0, 0, 0, .11);
+  border-radius: 14px;
+  padding: 16px;
+  color: #6e6e73;
+  background: #fafafa;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+.admin-error {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  border-radius: 14px;
+  padding: 13px 15px;
+  line-height: 1.45;
+  box-shadow: none;
+}
+
+.trip-details-state-shell {
+  min-height: calc(100vh - 90px);
+  padding-top: 30px;
+}
+
+.trip-details-state-shell .public-state-card {
+  margin-top: clamp(70px, 12vh, 130px);
+}
+
+@media (max-width: 700px) {
+  .admin-empty {
+    min-height: 64px;
+    padding: 14px;
+  }
+
+  .trip-details-state-shell .public-state-card {
+    margin-top: 48px;
+  }
+}
