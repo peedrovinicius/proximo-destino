@@ -1,4 +1,4 @@
-import { BadGatewayException, Injectable, ServiceUnavailableException } from '@nestjs/common'
+import { BadGatewayException, BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto'
 import { PrismaService } from '../prisma/prisma.service'
@@ -17,10 +17,52 @@ type OAuthTokenResponse = {
 export class PaymentConnectionService {
   constructor(private readonly prisma: PrismaService, private readonly config: ConfigService) {}
 
+  private async platformConfig() {
+    const stored =
+      await this.prisma.paymentPlatformConfig.findUnique({
+        where: { provider: 'MERCADO_PAGO' },
+      })
+
+    if (stored) {
+      return {
+        source: 'DATABASE' as const,
+        clientId: stored.clientId.trim(),
+        clientSecret: this.decrypt(stored.clientSecretEncrypted),
+        webhookSecret: this.decrypt(stored.webhookSecretEncrypted),
+        configuredAt: stored.configuredAt,
+      }
+    }
+
+    const clientId =
+      this.config.get<string>('MERCADO_PAGO_CLIENT_ID')?.trim() ?? ''
+    const clientSecret =
+      this.config.get<string>('MERCADO_PAGO_CLIENT_SECRET')?.trim() ?? ''
+    const webhookSecret =
+      this.config.get<string>('MERCADO_PAGO_WEBHOOK_SECRET')?.trim() ?? ''
+
+    return {
+      source:
+        clientId || clientSecret || webhookSecret
+          ? ('ENVIRONMENT' as const)
+          : ('NONE' as const),
+      clientId,
+      clientSecret,
+      webhookSecret,
+      configuredAt: null,
+    }
+  }
+
   async status() {
-    const connection = await this.prisma.paymentProviderConnection.findUnique({ where: { provider: 'MERCADO_PAGO' } })
-    const platformConfigured = this.platformConfigured()
-    const webhookConfigured = this.webhookConfigured()
+    const [connection, platform] = await Promise.all([
+      this.prisma.paymentProviderConnection.findUnique({
+        where: { provider: 'MERCADO_PAGO' },
+      }),
+      this.platformConfig(),
+    ])
+    const platformConfigured = Boolean(
+      platform.clientId && platform.clientSecret,
+    )
+    const webhookConfigured = Boolean(platform.webhookSecret)
     const connected = Boolean(connection)
 
     return {
@@ -32,6 +74,8 @@ export class PaymentConnectionService {
         platformConfigured &&
         webhookConfigured &&
         connected,
+      configurationSource: platform.source,
+      configuredAt: platform.configuredAt,
       externalUserId: connection?.externalUserId ?? null,
       liveMode: connection?.liveMode ?? null,
       connectedAt: connection?.connectedAt ?? null,
@@ -39,8 +83,76 @@ export class PaymentConnectionService {
     }
   }
 
+  async configurePlatform(
+    input: {
+      clientId: string
+      clientSecret: string
+      webhookSecret: string
+    },
+    actorUserId: string,
+  ) {
+    const clientId = input.clientId.trim()
+    const clientSecret = input.clientSecret.trim()
+    const webhookSecret = input.webhookSecret.trim()
+
+    if (!clientId) {
+      throw new BadRequestException('Informe o Client ID do Mercado Pago')
+    }
+    if (clientSecret.length < 8) {
+      throw new BadRequestException('Client Secret do Mercado Pago inválido')
+    }
+    if (webhookSecret.length < 8) {
+      throw new BadRequestException('Segredo do webhook do Mercado Pago inválido')
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.paymentPlatformConfig.upsert({
+        where: { provider: 'MERCADO_PAGO' },
+        create: {
+          provider: 'MERCADO_PAGO',
+          clientId,
+          clientSecretEncrypted: this.encrypt(clientSecret),
+          webhookSecretEncrypted: this.encrypt(webhookSecret),
+          configuredByUserId: actorUserId,
+        },
+        update: {
+          clientId,
+          clientSecretEncrypted: this.encrypt(clientSecret),
+          webhookSecretEncrypted: this.encrypt(webhookSecret),
+          configuredByUserId: actorUserId,
+          configuredAt: new Date(),
+        },
+      }),
+      this.prisma.paymentProviderConnection.deleteMany({
+        where: { provider: 'MERCADO_PAGO' },
+      }),
+      this.prisma.paymentOAuthState.deleteMany({
+        where: { provider: 'MERCADO_PAGO' },
+      }),
+      this.prisma.authAuditEvent.create({
+        data: {
+          userId: actorUserId,
+          eventType: 'OPS_MERCADO_PAGO_PLATFORM_CONFIGURED',
+          metadata: {
+            provider: 'MERCADO_PAGO',
+            clientIdLast4: clientId.slice(-4),
+            webhookConfigured: true,
+          },
+        },
+      }),
+    ])
+
+    return this.status()
+  }
+
+  async getWebhookSecret() {
+    const platform = await this.platformConfig()
+    return platform.webhookSecret || null
+  }
+
   async begin(userId: string) {
-    if (!this.platformConfigured()) {
+    const platform = await this.platformConfig()
+    if (!platform.clientId || !platform.clientSecret) {
       throw new ServiceUnavailableException('Mercado Pago ainda não está habilitado na plataforma')
     }
     const state = randomBytes(32).toString('base64url')
@@ -53,7 +165,7 @@ export class PaymentConnectionService {
       },
     })
     const url = new URL('https://auth.mercadopago.com/authorization')
-    url.searchParams.set('client_id', this.clientId())
+    url.searchParams.set('client_id', platform.clientId)
     url.searchParams.set('response_type', 'code')
     url.searchParams.set('platform_id', 'mp')
     url.searchParams.set('state', state)
@@ -62,6 +174,13 @@ export class PaymentConnectionService {
   }
 
   async complete(code: string, state: string) {
+    const platform = await this.platformConfig()
+    if (!platform.clientId || !platform.clientSecret) {
+      throw new ServiceUnavailableException(
+        'Configuração central do Mercado Pago ausente',
+      )
+    }
+
     const stateHash = this.hash(state)
     const pending = await this.prisma.paymentOAuthState.findUnique({ where: { stateHash } })
     if (!pending || pending.usedAt || pending.expiresAt < new Date()) {
@@ -72,8 +191,8 @@ export class PaymentConnectionService {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        client_id: this.clientId(),
-        client_secret: this.clientSecret(),
+        client_id: platform.clientId,
+        client_secret: platform.clientSecret,
         code,
         grant_type: 'authorization_code',
         redirect_uri: this.redirectUri(),
@@ -156,12 +275,19 @@ export class PaymentConnectionService {
     }
     if (!connection.refreshTokenEncrypted) throw new ServiceUnavailableException('Reconecte o Mercado Pago')
 
+    const platform = await this.platformConfig()
+    if (!platform.clientId || !platform.clientSecret) {
+      throw new ServiceUnavailableException(
+        'Configuração central do Mercado Pago ausente',
+      )
+    }
+
     const response = await fetch('https://api.mercadopago.com/oauth/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        client_id: this.clientId(),
-        client_secret: this.clientSecret(),
+        client_id: platform.clientId,
+        client_secret: platform.clientSecret,
         grant_type: 'refresh_token',
         refresh_token: this.decrypt(connection.refreshTokenEncrypted),
       }),
@@ -180,26 +306,11 @@ export class PaymentConnectionService {
     return token.access_token
   }
 
-  platformConfigured() {
-    return Boolean(
-      this.config.get<string>('MERCADO_PAGO_CLIENT_ID')?.trim() &&
-      this.config.get<string>('MERCADO_PAGO_CLIENT_SECRET')?.trim(),
-    )
-  }
-
-  webhookConfigured() {
-    return Boolean(
-      this.config.get<string>('MERCADO_PAGO_WEBHOOK_SECRET')?.trim(),
-    )
-  }
-
   frontendResultUrl(status: 'success' | 'error') {
     const origin = this.config.getOrThrow<string>('FRONTEND_ORIGIN').replace(/\/$/, '')
     return `${origin}/?paymentConnection=${status}`
   }
 
-  private clientId() { return this.config.getOrThrow<string>('MERCADO_PAGO_CLIENT_ID') }
-  private clientSecret() { return this.config.getOrThrow<string>('MERCADO_PAGO_CLIENT_SECRET') }
   private redirectUri() {
     const override = this.config.get<string>('MERCADO_PAGO_OAUTH_REDIRECT_URI')?.trim()
     if (override) return override
