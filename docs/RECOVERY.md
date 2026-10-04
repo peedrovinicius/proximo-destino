@@ -65,3 +65,19 @@ No plano Free do Neon:
 - proteção da branch de produção não está disponível neste projeto.
 
 Enquanto o projeto permanecer no Free, criar um novo snapshot manual antes de mudanças de alto risco e manter este procedimento como referência de recuperação.
+
+## Auditoria do estado observado em 2026-10-04
+
+A consulta somente leitura ao Neon confirmou:
+
+- produção atual: `br-green-frost-b5rcfrn1`, com `restore_status: finalized`;
+- original preservada: `br-cool-tree-b5d55f02`;
+- prévia separada: `br-aged-mud-b5066se1`, com expiração em 2026-10-05T01:20:12Z;
+- 27 migrations concluídas, sem migrations pendentes na produção;
+- clientes, reservas, pedidos de compra e documentos: zero registros tanto na produção quanto na original preservada.
+
+Portanto, o estado atual inclui uma restauração finalizada, além da prévia. A documentação anterior do teste de prévia não descrevia essa finalização. Estas evidências não estabelecem quem autorizou a finalização, nem permitem inferir perda de registros nas quatro tabelas comparadas.
+
+RLS está habilitada nas 12 tabelas sensíveis, mas o proprietário `neondb_owner` possui `BYPASSRLS`. As políticas existentes protegem papéis sem bypass e sem propriedade; não garantem isolamento por usuário nas consultas da API. Não ativar FORCE RLS ou remover BYPASSRLS sem preparar um papel de execução, políticas compatíveis e validação em ambiente isolado: as políticas atuais negam todas as linhas aos papéis sujeitos a RLS.
+
+Os campos legados de documento não continham valores nas tabelas Client, Companion e ReservationPassenger. Como não havia clientes nem reservas, isso não equivale a um teste de criptografia de cadastros reais.
