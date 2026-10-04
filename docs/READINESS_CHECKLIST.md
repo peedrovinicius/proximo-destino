@@ -140,6 +140,10 @@ Não há evidência suficiente para declarar encerradas essas pendências. O ens
 - [x] Cabeçalho até 980 px reorganizado em duas linhas: marca/ações e navegação. Abas com alvo mínimo de 44 px, fonte de 14 px, foco visível e indicação aria-current da seção ativa.
 - [x] Build local TypeScript/Vite passou; revisão do componente preserva as permissões existentes. Nenhuma conta, reserva ou integração real foi alterada.
 - [x] Preparados quatro cenários Chromium em 320/390/768/1440 px para visibilidade das nove abas, alcance por teclado, tamanho de controles e navegação entre Visão geral, Clientes e Reservas. Sessão e API são fictícias.
-- [ ] Executar os quatro novos cenários e os dez cenários públicos existentes. Chromium indisponível localmente: download falhou. Não considerar testes de navegador aprovados.
-- [ ] Envio ao GitHub, CI e implantação pendentes: revisão automática bloqueou publicação da branch refine/internal-delivery. Solicitar autorização explícita antes de publicar.
+- [x] Chromium no CI: 14/14 cenários passaram no run 37207557441, incluindo os quatro cenários do Admin. Corrigida também rolagem de foco para trazer a aba inteira à área visível. Sessão e respostas da API fictícias; nenhum acesso real com MFA.
+- [x] Publicação autorizada pelo proprietário em 2026-10-04. PR #29 integrado no commit c159141; CI 37207557436 e CodeQL 37207557451 aprovados. Railway deployment 4390cd62-5a24-4c8d-b4f8-5a67e62cc825 SUCCESS em 2026-10-04T14:02:13Z; CSS e handler de foco confirmados nos assets HTTPS.
 - [ ] Validar o painel publicado com MFA e contas autorizadas; o ensaio simulado não comprova autenticação ou permissões em produção.
+
+- [ ] Dependency review da PR #29 não executou a análise: Dependency graph desativado no repositório. Nenhuma dependência alterada neste bloco; auditorias npm de produção e desenvolvimento do CI passaram. Não registrar esse check como aprovado.
+
+- [x] Checagem pública após implantação: 6/6 passaram (readiness/banco, frontend/headers e quatro negativas 401). Não comprova uso autenticado em produção.
