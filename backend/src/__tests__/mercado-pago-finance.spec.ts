@@ -40,6 +40,7 @@ describe('Mercado Pago: webhook e reconciliação', () => {
   const paymentConnection = {
     status: async () => ({ readyForPayments: true }),
     getAccessToken: async () => 'fake-access-token',
+    getWebhookSecret: async () => 'mp-webhook-test-secret',
   }
 
   const portal = new PortalService(
