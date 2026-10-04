@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, describe, it } from 'node:test'
 import {
+  ClientCreditTransactionType,
   ReservationStatus,
   TripStatus,
   UserRole,
@@ -55,6 +56,18 @@ describe('escopo de dados por papel administrativo', () => {
         clientId,
         tripId,
         status: ReservationStatus.CONFIRMED,
+        cancellationRequestReason: 'Motivo privado do passageiro',
+        cancellationRequestResolutionNote: 'Nota interna da operação',
+      },
+    })
+
+    await prisma.clientCreditTransaction.create({
+      data: {
+        clientId,
+        reservationId,
+        type: ClientCreditTransactionType.CANCELLATION_CREDIT,
+        amountCents: 12_345,
+        sourceKey: `role-credit-${suffix}`,
       },
     })
   })
@@ -74,6 +87,40 @@ describe('escopo de dados por papel administrativo', () => {
     assert.ok(
       agent.birthdays.some((item) => item.id === clientId),
       'Agente deve continuar recebendo aniversários para relacionamento',
+    )
+  })
+
+  it('minimiza dados pessoais e de relacionamento na reserva do financeiro', async () => {
+    const financeReservations =
+      await admin.listReservations(UserRole.FINANCE)
+    const financeReservation = financeReservations.find(
+      (item) => item.id === reservationId,
+    )
+
+    assert.ok(financeReservation)
+    assert.equal(financeReservation.client.fullName, `Cliente Escopo ${suffix}`)
+    assert.equal(financeReservation.client.email, null)
+    assert.equal(financeReservation.client.phone, null)
+    assert.equal(financeReservation.client.bonusBalanceCents, 0)
+    assert.equal(financeReservation.cancellationRequestReason, null)
+    assert.equal(
+      financeReservation.cancellationRequestResolutionNote,
+      null,
+    )
+
+    const agentReservations =
+      await admin.listReservations(UserRole.AGENT)
+    const agentReservation = agentReservations.find(
+      (item) => item.id === reservationId,
+    )
+
+    assert.ok(agentReservation)
+    assert.equal(agentReservation.client.email, `scope-${suffix}@example.com`)
+    assert.equal(agentReservation.client.phone, '85999990000')
+    assert.equal(agentReservation.client.bonusBalanceCents, 12_345)
+    assert.equal(
+      agentReservation.cancellationRequestReason,
+      'Motivo privado do passageiro',
     )
   })
 
