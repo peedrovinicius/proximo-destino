@@ -120,3 +120,9 @@ Não há evidência suficiente para declarar encerradas essas pendências. O ens
 - [x] CI 4a6b5d581 aprovado: 97 testes em 29 suítes, zero falhas; builds, smoke test, criptografia de backup e ensaio de recuperação passaram. CodeQL aprovado.
 - [x] API publicada no deployment f5b5f7a0-fac1-4330-809f-72c4e01b9ba5, SHA 4a6b5d581, SUCCESS em 2026-10-04T12:15:19Z. Checagem pública pós-deploy: seis de seis verificações passaram, incluindo readiness/banco, headers e negativas 401.
 - [ ] Login/MFA com contas reais e escopo autenticado em produção continuam pendentes. Nenhum código de recuperação, conta ou credencial de produção foi utilizado pelos testes deste bloco.
+
+## Refinamento do rodapé — 2026-10-04
+
+- [x] Rodapé compartilhado da home e páginas institucionais reorganizado em Empresa, Sua viagem e Políticas e compromissos; todos os 15 destinos institucionais preservados. Marca e nome alinhados, texto/contraste/espaçamento ampliados, canais sociais e acesso administrativo na faixa inferior.
+- [x] Chromium: dez de dez cenários passaram em 320, 390, 768 e 1440 px, incluindo os 19 controles do rodapé com altura mínima de 44 px, limites horizontais e navegação para privacidade. API simulada, sem reservas ou transações reais. CI e CodeQL 6653315b aprovados.
+- [x] Frontend 6653315b publicado no deployment d2ad4acb-9d8e-4b6c-9542-b56d689bcb79, SUCCESS em 2026-10-04T12:32:41Z. Rodapé conferido visualmente e link de privacidade aberto no navegador de produção; screenshot registrado. Pendências comerciais e autenticadas continuam abertas.
