@@ -43,6 +43,18 @@ async function fit(page, label) {
     .map((element) => ({ label: element.textContent.trim().slice(0, 55), size: parseFloat(getComputedStyle(element).fontSize) }))
     .filter((item) => item.size < 11.9))
   assert.deepEqual(tinyText, [], `${label}: no text below 12 px`)
+  const typography = await page.evaluate(() => [...document.querySelectorAll('body *')]
+    .filter((element) => !element.closest('svg, [aria-hidden="true"]') &&
+      [...element.childNodes].some((node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim()) &&
+      element.getBoundingClientRect().width > 0 && element.getBoundingClientRect().height > 0)
+    .map((element) => ({ label: element.textContent.trim().slice(0, 55),
+      family: getComputedStyle(element).fontFamily }))
+    .filter((item) => !item.family.includes('Segoe UI') && !item.family.includes('monospace')))
+  assert.deepEqual(typography, [], `${label}: consistent UI font family`)
+  const publicActions = await page.locator('.public-price button, .travel-search-submit, .pd-footer-nav button')
+    .evaluateAll((elements) => elements.filter((element) => element.getBoundingClientRect().width > 0)
+      .map((element) => parseFloat(getComputedStyle(element).fontSize)))
+  for (const size of publicActions) assert(size >= 13.9, `${label}: readable public action ${size}px`)
   const titles = await page.locator('h1').evaluateAll((elements) =>
     elements.map((element) => parseFloat(getComputedStyle(element).fontSize)))
   for (const size of titles) assert(size >= 24 && size <= 64.1, `${label}: balanced main title ${size}px`)
