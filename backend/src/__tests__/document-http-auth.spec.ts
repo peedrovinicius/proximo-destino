@@ -1,0 +1,139 @@
+import assert from 'node:assert/strict'
+import { after, before, describe, it } from 'node:test'
+import type { INestApplication } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
+import { JwtService } from '@nestjs/jwt'
+import { Test } from '@nestjs/testing'
+import { TravelDocumentType, UserRole } from '@prisma/client'
+import { AuthService } from '../auth/auth.service'
+import { AuditService } from '../auth/audit.service'
+import { JwtAuthGuard } from '../auth/jwt-auth.guard'
+import { MfaService } from '../auth/mfa.service'
+import { RolesGuard } from '../auth/roles.guard'
+import { SessionService } from '../auth/session.service'
+import { AdminDocumentsController } from '../documents/documents.controller'
+import { DocumentsService } from '../documents/documents.service'
+import { PrismaService } from '../prisma/prisma.service'
+
+// Exercises real HTTP routing, JWT verification, session checks and role filters.
+// Only persistence is simulated; it does not establish production DB behavior.
+describe('autorização HTTP dos documentos administrativos', () => {
+  let app: INestApplication
+  let base: string
+  const jwt = new JwtService()
+  const secret = 'isolated-http-auth-test-secret'
+  const config = new ConfigService({ JWT_ACCESS_SECRET: secret })
+  const roles: Record<string, UserRole> = {
+    admin: UserRole.ADMIN,
+    agent: UserRole.AGENT,
+    finance: UserRole.FINANCE,
+    client: UserRole.CLIENT,
+  }
+  const revoked = new Set<string>()
+  const documents = [
+    { id: 'voucher', reservationId: 'reservation', type: TravelDocumentType.TRAVEL_VOUCHER },
+    { id: 'receipt', reservationId: 'reservation', type: TravelDocumentType.PURCHASE_RECEIPT },
+  ]
+  type DocumentQuery = {
+    where: { id?: string; reservationId?: string; type: { in: TravelDocumentType[] } }
+  }
+  const matches = (query: DocumentQuery) => documents.filter((document) =>
+    (!query.where.id || document.id === query.where.id) &&
+    (!query.where.reservationId || document.reservationId === query.where.reservationId) &&
+    query.where.type.in.includes(document.type),
+  )
+  const prisma = {
+    user: {
+      findUnique: async ({ where }: { where: { id: string } }) =>
+        roles[where.id]
+          ? { id: where.id, email: where.id + '@example.com', role: roles[where.id], isActive: true }
+          : null,
+    },
+    authSession: {
+      count: async ({ where }: { where: { id: string; userId: string } }) =>
+        where.id === 'session-' + where.userId && !revoked.has(where.id) ? 1 : 0,
+    },
+    travelDocument: {
+      findMany: async (query: DocumentQuery) => matches(query),
+      findFirst: async (query: DocumentQuery) => matches(query)[0] ?? null,
+    },
+  } as unknown as PrismaService
+
+  before(async () => {
+    const auth = new AuthService(
+      prisma, jwt, config, {} as MfaService,
+      new SessionService(prisma, config), {} as AuditService,
+    )
+    const module = await Test.createTestingModule({
+      controllers: [AdminDocumentsController],
+      providers: [
+        JwtAuthGuard, RolesGuard,
+        { provide: AuthService, useValue: auth },
+        { provide: DocumentsService, useValue: new DocumentsService(prisma, config) },
+      ],
+    }).compile()
+    app = module.createNestApplication()
+    app.setGlobalPrefix('api/v1')
+    await app.listen(0, '127.0.0.1')
+    base = await app.getUrl()
+  })
+
+  after(async () => { await app?.close() })
+
+  const token = (user: string, overrides: Record<string, unknown> = {}) =>
+    jwt.signAsync({
+      sub: user, email: user + '@example.com', role: roles[user],
+      sid: 'session-' + user, type: 'access', ...overrides,
+    }, { secret, expiresIn: '1m' })
+
+  async function request(path: string, accessToken?: string) {
+    return fetch(base + '/api/v1/admin/documents/' + path, {
+      headers: accessToken ? { Authorization: 'Bearer ' + accessToken } : {},
+    })
+  }
+
+  it('recusa token ausente, inválido e token de refresh', async () => {
+    assert.equal((await request('reservation/reservation')).status, 401)
+    assert.equal((await request('reservation/reservation', 'invalid')).status, 401)
+    assert.equal((await request('reservation/reservation', await token('admin', { type: 'refresh' }))).status, 401)
+  })
+
+  for (const [user, expected] of [
+    ['admin', ['receipt', 'voucher']],
+    ['agent', ['voucher']],
+    ['finance', ['receipt']],
+  ] as const) {
+    it('filtra a listagem HTTP para ' + user, async () => {
+      const response = await request('reservation/reservation', await token(user))
+      assert.equal(response.status, 200)
+      const result = await response.json() as Array<{ id: string }>
+      assert.deepEqual(result.map((item) => item.id).sort(), [...expected].sort())
+    })
+  }
+
+  it('recusa CLIENT mesmo com JWT válido', async () => {
+    assert.equal((await request('reservation/reservation', await token('client'))).status, 403)
+  })
+
+  it('recusa PDF fora do escopo de AGENT e FINANCE', async () => {
+    assert.equal((await request('receipt/pdf', await token('agent'))).status, 404)
+    assert.equal((await request('voucher/pdf', await token('finance'))).status, 404)
+  })
+
+  it('usa o papel atual do cadastro em vez do papel informado no JWT', async () => {
+    const response = await request('reservation/reservation', await token('agent', { role: UserRole.ADMIN }))
+    assert.equal(response.status, 200)
+    const result = await response.json() as Array<{ id: string }>
+    assert.deepEqual(result.map((item) => item.id), ['voucher'])
+  })
+
+  it('recusa sessão revogada e usuário inexistente', async () => {
+    revoked.add('session-admin')
+    try {
+      assert.equal((await request('reservation/reservation', await token('admin'))).status, 401)
+    } finally {
+      revoked.delete('session-admin')
+    }
+    assert.equal((await request('reservation/reservation', await token('missing'))).status, 401)
+  })
+})
