@@ -15120,3 +15120,84 @@ button, input, select, textarea { font-family: inherit; }
     grid-row: 1;
   }
 }
+
+/* Portal do viajante: leitura e controles proporcionais com dados preenchidos. */
+.client-shell .client-topbar { gap: 16px; }
+.client-shell .client-nav-item,
+.client-shell .client-top-actions .text-button {
+  min-height: 44px;
+  font-size: .875rem;
+  font-weight: 600;
+}
+.client-shell .client-top-actions .text-button { padding: 0 10px; }
+.client-shell button:focus-visible {
+  outline: 2px solid #174d84;
+  outline-offset: 3px;
+}
+.client-shell .client-main { max-width: 1280px; }
+.client-shell .client-hero-content,
+.client-shell .client-hero-badge,
+.client-shell .client-hero-badge > div { min-width: 0; }
+.client-shell .client-hero h1 {
+  font-size: clamp(2rem, 4vw, 3.5rem);
+  line-height: 1.1;
+  letter-spacing: -.035em;
+  overflow-wrap: anywhere;
+}
+.client-shell .client-hero p { font-size: 1rem; line-height: 1.65; }
+.client-shell .trip-countdown { flex-wrap: wrap; }
+.client-shell .trip-countdown > div:last-child { text-align: left; }
+.client-shell .trip-countdown > div:last-child strong {
+  font-size: 1rem;
+  line-height: 1.4;
+}
+.client-shell .client-hero-badge strong { font-size: .875rem; line-height: 1.5; }
+.client-shell .client-hero-badge svg,
+.client-shell .security-checklist svg,
+.client-shell .client-document-row svg { flex-shrink: 0; }
+.client-shell .security-checklist span,
+.client-shell .client-passenger-readonly strong,
+.client-shell .client-document-row > div,
+.client-shell .client-quote-item > div,
+.client-shell .installment-row > div { min-width: 0; overflow-wrap: anywhere; }
+.client-shell .client-quote-item strong,
+.client-shell .client-service-row strong,
+.client-shell .installment-row strong,
+.client-shell .client-document-row strong,
+.client-shell .security-checklist span { font-size: .875rem; line-height: 1.5; }
+.client-shell .client-document-row span,
+.client-shell .client-service-row span,
+.client-shell .installment-row span { font-size: .8125rem; line-height: 1.6; }
+.client-shell .client-document-row { min-height: 64px; gap: 16px; text-align: left; }
+.client-shell .client-quote-actions button,
+.client-shell .client-passengers-panel button,
+.client-shell .client-cancellation-panel button { min-height: 44px; }
+
+@media (max-width: 820px) {
+  .client-shell .client-topbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding-block: 10px;
+  }
+  .client-shell .client-nav { grid-row: 2; grid-column: 1 / -1; }
+  .client-shell .client-top-actions { gap: 4px; }
+  .client-shell .client-avatar { display: none; }
+  .client-shell .client-hero { padding: 24px; }
+  .client-shell .client-hero-badge { width: 100%; }
+}
+@media (max-width: 620px) {
+  .client-shell .client-hero { padding: 20px; }
+  .client-shell .client-hero-badge { padding: 12px; }
+  .client-shell .trip-countdown { gap: 10px; }
+  .client-shell .trip-countdown > div:last-child { flex: 1; min-width: 100px; }
+  .client-shell .client-quote-item,
+  .client-shell .installment-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 12px;
+    padding-block: 14px;
+  }
+  .client-shell .client-quote-item > div,
+  .client-shell .installment-row > div { grid-column: 1 / -1; }
+  .client-shell .client-quote-actions { flex-direction: column; }
+  .client-shell .client-service-row { padding-block: 14px; overflow-wrap: anywhere; }
+}
