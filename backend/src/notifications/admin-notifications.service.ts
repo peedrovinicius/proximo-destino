@@ -11,8 +11,10 @@ import {
   ReservationStatus,
   TripStatus,
   UserRole,
+  Prisma,
 } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
+import { securityAlertSeed } from './security-alerts'
 
 type NotificationSeed = {
   type: string
@@ -52,7 +54,7 @@ export class AdminNotificationsService
     const take = Math.min(Math.max(limit, 1), 100)
     const [items, unreadCount] = await Promise.all([
       this.prisma.adminNotification.findMany({
-        where: { userId },
+        where: this.notificationScope(userId),
         orderBy: { createdAt: 'desc' },
         take,
         select: {
@@ -67,7 +69,7 @@ export class AdminNotificationsService
         },
       }),
       this.prisma.adminNotification.count({
-        where: { userId, isRead: false },
+        where: { ...this.notificationScope(userId), isRead: false },
       }),
     ])
 
@@ -76,7 +78,7 @@ export class AdminNotificationsService
 
   async markRead(userId: string, notificationId: string) {
     const updated = await this.prisma.adminNotification.updateMany({
-      where: { id: notificationId, userId },
+      where: { ...this.notificationScope(userId), id: notificationId },
       data: { isRead: true, readAt: new Date() },
     })
 
@@ -85,7 +87,7 @@ export class AdminNotificationsService
     }
 
     return this.prisma.adminNotification.findFirstOrThrow({
-      where: { id: notificationId, userId },
+      where: { ...this.notificationScope(userId), id: notificationId },
       select: {
         id: true,
         type: true,
@@ -101,7 +103,7 @@ export class AdminNotificationsService
 
   async markAllRead(userId: string) {
     const result = await this.prisma.adminNotification.updateMany({
-      where: { userId, isRead: false },
+      where: { ...this.notificationScope(userId), isRead: false },
       data: { isRead: true, readAt: new Date() },
     })
 
@@ -130,6 +132,16 @@ export class AdminNotificationsService
     })
 
     return { created: result.count }
+  }
+
+  private notificationScope(userId: string): Prisma.AdminNotificationWhereInput {
+    return {
+      userId,
+      OR: [
+        { type: { not: 'SECURITY_AUTH_ANOMALY' } },
+        { user: { role: UserRole.ADMIN, isActive: true } },
+      ],
+    }
   }
 
   private async syncAllUsers() {
@@ -222,6 +234,26 @@ export class AdminNotificationsService
     }
 
     if (role === UserRole.ADMIN) {
+      // Fixed ten-minute windows give each administrator one durable alert per
+      // window, even when more than one API replica synchronizes notifications.
+      // Include the previous window so a restart/boundary does not lose an alert.
+      const windowMs = 10 * 60_000
+      const currentStart = Math.floor(now.getTime() / windowMs) * windowMs
+      for (const start of [currentStart - windowMs, currentStart]) {
+        const counts = await this.prisma.authAuditEvent.groupBy({
+          by: ['eventType'],
+          where: {
+            createdAt: { gte: new Date(start), lt: new Date(start + windowMs) },
+            eventType: { in: ['LOGIN_FAILED', 'LOGIN_LOCKED', 'MFA_FAILED', 'LOGIN_ROLE_DENIED'] },
+          },
+          _count: { _all: true },
+        })
+        const alert = securityAlertSeed(start, counts.map(row => ({
+          eventType: row.eventType, count: row._count._all,
+        })))
+        if (alert) seeds.push(alert)
+      }
+
       const cancellations = await this.prisma.reservation.findMany({
         where: {
           cancellationRequestStatus: CancellationRequestStatus.PENDING,
