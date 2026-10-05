@@ -40,6 +40,7 @@ describe('fluxos reais com conexão PostgreSQL runtime restrita', () => {
   const actorEmail = `flow-admin-${suffix}@example.com`
   const clientEmail = `flow-client-${suffix}@example.com`
   const otherEmail = `flow-other-${suffix}@example.com`
+  const httpEmail = `flow-http-${suffix}@example.com`
   const password = `Synthetic-${randomUUID()}`
   let connected = false
   let roleCreated = false
@@ -108,7 +109,7 @@ describe('fluxos reais com conexão PostgreSQL runtime restrita', () => {
       await owner.quote.deleteMany({ where: { reservationId: { in: ids } } })
       await owner.seatAssignment.deleteMany({ where: { tripId } })
       await owner.reservation.deleteMany({ where: { tripId } })
-      await owner.client.deleteMany({ where: { email: { in: [clientEmail, otherEmail] } } })
+      await owner.client.deleteMany({ where: { email: { in: [clientEmail, otherEmail, httpEmail] } } })
       await owner.trip.deleteMany({ where: { id: tripId } })
       await owner.authAuditEvent.deleteMany({ where: { userId: actorId } })
       await owner.user.deleteMany({ where: { id: actorId } })
@@ -259,13 +260,13 @@ describe('fluxos reais com conexão PostgreSQL runtime restrita', () => {
       token = refreshed.body.accessToken
       cookie = refreshed.headers.get('set-cookie')!.split(';')[0]
       const invalid = await request('/public/reservations/request', 'POST', { tripId, fullName: 'Synthetic HTTP',
-        email: otherEmail, phone: '85888888888', passengerCount: 1, selectedSeats: [3], unexpectedField: true })
+        email: httpEmail, phone: '85888888888', passengerCount: 1, selectedSeats: [3], unexpectedField: true })
       assert.equal(invalid.status, 400)
       const reserved = await request('/public/reservations/request', 'POST', { tripId, fullName: 'Synthetic HTTP',
-        email: otherEmail, phone: '85888888888', passengerCount: 1, selectedSeats: [3] })
+        email: httpEmail, phone: '85888888888', passengerCount: 1, selectedSeats: [3] })
       assert.equal(reserved.status, 201)
       const id = reserved.body.reservation.id as string
-      const clientLogin = await request('/client/login', 'POST', { email: otherEmail, code: reserved.body.accessCode })
+      const clientLogin = await request('/client/login', 'POST', { email: httpEmail, code: reserved.body.accessCode })
       assert.equal(clientLogin.status, 201)
       const clientToken = clientLogin.body.accessToken as string
       assert.equal((await request('/admin/reservations', 'GET', undefined, clientToken)).status, 401)
