@@ -2,7 +2,7 @@ import 'reflect-metadata'
 import assert from 'node:assert/strict'
 import { after, before, describe, it } from 'node:test'
 import { randomUUID } from 'node:crypto'
-import type { INestApplication } from '@nestjs/common'
+import { ValidationPipe, type INestApplication } from '@nestjs/common'
 import { ConfigModule, ConfigService } from '@nestjs/config'
 import { JwtService } from '@nestjs/jwt'
 import { Test } from '@nestjs/testing'
@@ -14,6 +14,9 @@ import type { AuditService } from '../auth/audit.service'
 import { PrismaModule } from '../prisma/prisma.module'
 import { PrismaService } from '../prisma/prisma.service'
 import { TenancyModule } from '../tenancy/tenancy.module'
+import { CompanyClientsService } from '../tenancy/company-clients.service'
+import { CompanyScopeService } from '../tenancy/company-scope.service'
+import { revealDocument } from '../security/sensitive-data'
 import { ClientsController } from '../clients/clients.controller'
 import { ClientsService } from '../clients/clients.service'
 import { AdminTripsController } from '../trips/admin-trips.controller'
@@ -81,13 +84,16 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
           createReservation: () => { legacyWrites++; return { id: 'legacy' } } } },
       ],
     }).overrideProvider(PrismaService).useValue(prisma).overrideProvider(AuthService).useValue(auth).compile()
-    app = module.createNestApplication({ logger: false }); await app.listen(0, '127.0.0.1'); base = await app.getUrl()
+    app = module.createNestApplication({ logger: false })
+    app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }))
+    await app.listen(0, '127.0.0.1'); base = await app.getUrl()
   })
   after(async () => {
     if (!connected) return
     try {
       await app?.close()
       await prisma.reservation.deleteMany({ where: { id: { in: reservations } } })
+      await prisma.authAuditEvent.deleteMany({ where: { userId: { in: users } } })
       await prisma.client.deleteMany({ where: { id: { in: clients } } })
       await prisma.trip.deleteMany({ where: { id: { in: trips } } })
       await prisma.authSession.deleteMany({ where: { userId: { in: users } } })
@@ -96,9 +102,9 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
       await prisma.user.deleteMany({ where: { id: { in: [owner, ...users] } } })
     } finally { await prisma.$disconnect() }
   })
-  const call = (path: string, token = tokens[0], method = 'GET') => fetch(`${base}${path}`, {
+  const call = (path: string, token = tokens[0], method = 'GET', body: object = {}) => fetch(`${base}${path}`, {
     method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    ...(method === 'POST' ? { body: '{}' } : {}),
+    ...(['POST', 'PATCH'].includes(method) ? { body: JSON.stringify(body) } : {}),
   })
 
   it('uses persisted company despite a forged company claim and serves only own lists', async () => {
@@ -117,7 +123,7 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
     for (const path of ['/admin/dashboard', `/admin/clients/${clients[0]}/credits`, '/admin/payments/orders']) {
       assert.equal((await call(path)).status, 403)
     }
-    for (const path of ['/admin/clients', '/admin/trips', '/admin/reservations']) assert.equal((await call(path, tokens[0], 'POST')).status, 403)
+    for (const path of ['/admin/trips', '/admin/reservations']) assert.equal((await call(path, tokens[0], 'POST')).status, 403)
     assert.equal(legacyWrites, 0)
   })
   it('never falls back to legacy routes for an unbound session of a managed user', async () => {
@@ -136,6 +142,81 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
     assert.ok(result.some(row => row.id === sessions[0])); assert.ok(result.every(row => row.id !== sessions[1]))
     assert.equal((await call(`/auth/sessions/${sessions[1]}`, tokens[0], 'DELETE')).status, 204)
     assert.equal((await prisma.authSession.findUniqueOrThrow({ where: { id: sessions[1] } })).revokedAt, null)
+  })
+  it('creates in the persisted company and encrypts CPF without exposing internal fields', async () => {
+    const response = await call('/admin/clients', tokens[0], 'POST', { fullName: 'Synthetic new client', document: '529.982.247-25' })
+    assert.equal(response.status, 201)
+    const saved = await response.json() as { id: string }
+    clients.push(saved.id)
+    const row = await prisma.client.findUniqueOrThrow({ where: { id: saved.id } })
+    assert.equal(row.companyId, companies[0]); assert.equal(row.document, null)
+    assert.equal(revealDocument(row), '52998224725')
+    for (const key of ['document', 'documentHash', 'documentEncrypted', 'companyId', 'notes', 'userId']) assert.equal(key in saved, false)
+    assert.equal(legacyWrites, 0)
+  })
+  it('updates only own clients and conceals foreign and missing IDs', async () => {
+    assert.equal((await call(`/admin/clients/${clients[2]}`, tokens[0], 'PATCH', { fullName: 'Synthetic renamed' })).status, 200)
+    for (const id of [clients[1], 'nonexistent']) {
+      assert.equal((await call(`/admin/clients/${id}`, tokens[0], 'PATCH', { fullName: 'Forbidden edit' })).status, 404)
+    }
+    assert.equal((await prisma.client.findUniqueOrThrow({ where: { id: clients[1] } })).fullName, 'Synthetic 1')
+  })
+  it('rejects injected ownership, invalid names/CPF and unscoped companion creation', async () => {
+    for (const extra of [{ companyId: companies[1] }, { userId: users[1] }, { fullName: '  ' },
+      { document: '11111111111' }, { companions: [{ fullName: 'Synthetic companion' }] }]) {
+      assert.equal((await call('/admin/clients', tokens[0], 'POST', { fullName: 'Synthetic', ...extra })).status, 400)
+    }
+    assert.equal((await call(`/admin/clients/${clients[2]}`, tokens[0], 'PATCH', { companyId: companies[1] })).status, 400)
+  })
+  it('checks CPF uniqueness within one company and allows separate private profiles in another', async () => {
+    assert.equal((await call('/admin/clients', tokens[0], 'POST', { fullName: 'Duplicate', document: '52998224725' })).status, 409)
+    const response = await call('/admin/clients', tokens[1], 'POST', { fullName: 'Synthetic other', document: '52998224725' })
+    assert.equal(response.status, 201); const result = await response.json() as { id: string }; clients.push(result.id)
+    assert.equal((await prisma.client.findUniqueOrThrow({ where: { id: result.id } })).companyId, companies[1])
+  })
+  it('preserves CPF on unrelated edits and clears it only when explicitly requested', async () => {
+    await call(`/admin/clients/${clients[2]}`, tokens[0], 'PATCH', { phone: 'synthetic' })
+    assert.equal(revealDocument(await prisma.client.findUniqueOrThrow({ where: { id: clients[2] } })), '52998224725')
+    assert.equal((await call(`/admin/clients/${clients[2]}`, tokens[0], 'PATCH', { document: '' })).status, 200)
+    const row = await prisma.client.findUniqueOrThrow({ where: { id: clients[2] } })
+    assert.equal(row.documentEncrypted, null); assert.equal(row.documentHash, null)
+    const audit = await prisma.authAuditEvent.findMany({ where: { userId: users[0], eventType: { startsWith: 'OPS_COMPANY_CLIENT_' } } })
+    assert.ok(audit.length > 0); assert.equal(JSON.stringify(audit).includes('52998224725'), false)
+  })
+  it('rechecks revoked authorization inside the write transaction even after scope resolution', async () => {
+    const resolved = await new CompanyScopeService(prisma).resolveSession(users[0], sessions[0])
+    const writes = new CompanyClientsService(prisma, { resolveSession: async () => resolved } as unknown as CompanyScopeService)
+    await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { isActive: false } })
+    try {
+      await assert.rejects(writes.create(users[0], sessions[0], { fullName: 'Denied write' }), { status: 403 })
+    } finally { await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { isActive: true } }) }
+  })
+  it('serializes concurrent CPF creation in the same company', async () => {
+    const responses = await Promise.all([0, 1].map(() => call('/admin/clients', tokens[0], 'POST', {
+      fullName: 'Synthetic concurrent', document: '11144477735',
+    })))
+    for (const response of responses) if (response.status === 201) clients.push((await response.json() as { id: string }).id)
+    assert.deepEqual(responses.map(response => response.status).sort(), [201, 409])
+  })
+  it('rolls back the client when its audit event cannot be recorded', async () => {
+    const failing = new CompanyClientsService({ $transaction: (callback: (tx: unknown) => Promise<unknown>) =>
+      prisma.$transaction(tx => callback({ $queryRaw: tx.$queryRaw.bind(tx), client: tx.client,
+        authAuditEvent: { create: async () => { throw new Error('synthetic audit failure') } } }))
+    } as unknown as PrismaService, new CompanyScopeService(prisma))
+    await assert.rejects(failing.create(users[0], sessions[0], { fullName: `Rollback ${suffix}` }), /synthetic audit failure/)
+    assert.equal(await prisma.client.count({ where: { companyId: companies[0], fullName: `Rollback ${suffix}` } }), 0)
+  })
+  it('denies client writes for finance and for managed sessions without a company', async () => {
+    assert.equal((await call('/admin/clients', unboundToken, 'POST', { fullName: 'Denied' })).status, 403)
+    await prisma.user.update({ where: { id: users[0] }, data: { role: 'FINANCE' } })
+    await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { role: 'FINANCE' } })
+    try {
+      assert.equal((await call('/admin/clients', tokens[0], 'POST', { fullName: 'Denied' })).status, 403)
+      assert.equal((await call(`/admin/clients/${clients[2]}`, tokens[0], 'PATCH', { fullName: 'Denied' })).status, 403)
+    } finally {
+      await prisma.user.update({ where: { id: users[0] }, data: { role: 'ADMIN' } })
+      await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { role: 'ADMIN' } })
+    }
   })
   it('revocation and deletion do not restore global access, and the marker cannot be cleared', async () => {
     await prisma.companyMembership.deleteMany({ where: { userId: users[0] } })

@@ -8,7 +8,7 @@ export type VerifiedCompanyScope = Readonly<{
   role: 'ADMIN' | 'AGENT' | 'FINANCE'
 }>
 
-/** Server-only foundation. Not yet connected to legacy operational endpoints.
+/** Server-only resolver for explicitly scoped operational endpoints.
  * The company comes from the persisted session, never a body/header/JWT claim.
  */
 @Injectable()

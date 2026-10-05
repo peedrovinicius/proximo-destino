@@ -36,7 +36,7 @@ export class JwtAuthGuard implements CanActivate {
     if (request.user.companyId || request.user.requiresCompanyScope) {
       const mode = this.reflector.getAllAndOverride<string>(COMPANY_ACCESS, [context.getHandler(), context.getClass()])
       if (mode === 'SELF') return true
-      if (mode !== 'SCOPED_READ' || !request.user.companyId) {
+      if (!['SCOPED_READ', 'SCOPED_WRITE'].includes(mode ?? '') || !request.user.companyId) {
         throw new ForbiddenException('Operação ainda não habilitada para empresas')
       }
       request.companyScope = await this.scopes.resolveSession(request.user.id, request.user.sessionId)

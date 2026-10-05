@@ -61,9 +61,26 @@ GET `/admin/clients/:id` usam esses leitores para sessões de empresa. Contas
 legadas sem vínculo preservam o comportamento anterior. A busca textual de
 viagens ainda não é aplicada ao leitor de empresa.
 
+POST `/admin/clients` e PATCH `/admin/clients/:id` também recebem escopo de empresa
+para ADMIN/AGENT. Campos de posse são rejeitados pelo DTO. CPF é validado,
+criptografado e verificado por duplicidade apenas dentro da própria empresa;
+o mesmo CPF pode representar perfis privados distintos em empresas diferentes.
+O e-mail de cliente ainda tem unicidade global legada; conflitos retornam uma
+mensagem genérica, sem informar a existência de outra empresa. Alterar essa
+restrição depende de escopar primeiro o portal e as consultas públicas.
+
+A transação revalida e bloqueia sessão, usuário, empresa e vínculo até o commit,
+serializa a conferência de CPF na empresa e inclui o evento de auditoria sem
+valores pessoais. IDs externos retornam 404. Respostas mantêm projeção mínima,
+sem notas privadas, documentos, hashes ou credenciais. CPF omitido na edição
+é preservado; vazio explicitamente limpa o campo. Acompanhantes não vazios
+continuam recusados até seu próprio isolamento. Nenhuma conta de cliente ou
+sessão de portal é criada por esse cadastro.
+
 O guard nega às contas de empresa todas as outras rotas administrativas
-protegidas por ele, incluindo gravações, dashboard e financeiro. As únicas
-exceções são consultar/revogar as próprias sessões e logout. O marcador
+protegidas por ele, incluindo gravações de viagens/reservas, dashboard e
+financeiro. Consultar/revogar as próprias sessões e logout também permanecem
+disponíveis. O marcador
 persistente `User.companyManaged` é definido pelo vínculo e não pode voltar a
 false: revogar ou apagar o vínculo nunca restaura acesso global pelas rotas
 legadas. O contexto vem da sessão persistida, não de claims de empresa do JWT.

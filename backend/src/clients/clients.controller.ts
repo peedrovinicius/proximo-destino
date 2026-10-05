@@ -18,7 +18,8 @@ import { Roles } from '../auth/roles.decorator'
 import { RolesGuard } from '../auth/roles.guard'
 import { ClientsService } from './clients.service'
 import { CompanyDataService } from '../tenancy/company-data.service'
-import { CompanyRead } from '../tenancy/company-access.decorator'
+import { CompanyRead, CompanyWrite } from '../tenancy/company-access.decorator'
+import { CompanyClientsService } from '../tenancy/company-clients.service'
 import { CreateClientDto } from './dto/create-client.dto'
 import { UpdateClientDto } from './dto/update-client.dto'
 import { RemoveClientBonusDto } from './dto/bonus.dto'
@@ -27,7 +28,8 @@ import { RemoveClientBonusDto } from './dto/bonus.dto'
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(...OPERATIONS_ROLES)
 export class ClientsController {
-  constructor(private readonly clients: ClientsService, private readonly scoped: CompanyDataService) {}
+  constructor(private readonly clients: ClientsService, private readonly scoped: CompanyDataService,
+    private readonly scopedWrites: CompanyClientsService) {}
 
   @Get()
   @CompanyRead()
@@ -64,19 +66,23 @@ export class ClientsController {
   }
 
   @Post()
+  @CompanyWrite()
   create(
     @Body() body: CreateClientDto,
     @Req() request: AuthenticatedRequest,
   ) {
+    if (request.companyScope) return this.scopedWrites.create(request.user.id, request.user.sessionId, body)
     return this.clients.create(body, request.user.id)
   }
 
   @Patch(':id')
+  @CompanyWrite()
   update(
     @Param('id') id: string,
     @Body() body: UpdateClientDto,
     @Req() request: AuthenticatedRequest,
   ) {
+    if (request.companyScope) return this.scopedWrites.update(request.user.id, request.user.sessionId, id, body)
     return this.clients.update(id, body, request.user.id)
   }
 }
