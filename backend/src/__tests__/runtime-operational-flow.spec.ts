@@ -272,8 +272,21 @@ describe('fluxos reais com conexão PostgreSQL runtime restrita', () => {
       assert.equal((await request('/admin/reservations', 'GET', undefined, clientToken)).status, 401)
       const seats = await request('/client/seats', 'PATCH', { selectedSeats: [4] }, clientToken)
       assert.equal(seats.status, 200)
+      const quote = await request('/admin/commercial/quotes', 'POST', { reservationId: id, title: 'Synthetic HTTP quote' }, token)
+      assert.equal(quote.status, 201)
+      const quoteId = quote.body.id as string
+      assert.equal((await request(`/admin/commercial/quotes/${quoteId}/items`, 'POST', {
+        category: 'OTHER', description: 'Synthetic HTTP service', quantity: 1,
+        unitCostCents: 0, unitSaleCents: 10000,
+      }, token)).status, 201)
+      assert.equal((await request(`/admin/commercial/quotes/${quoteId}/send`, 'POST', undefined, token)).status, 201)
+      assert.equal((await request(`/client/quotes/${quoteId}/approve`, 'POST', undefined, clientToken)).status, 201)
+      const plan = await request('/admin/commercial/finance/plans', 'POST', { reservationId: id,
+        installmentCount: 1, firstDueDate: new Date(Date.now() + 86400000).toISOString(),
+      }, token)
+      assert.equal(plan.status, 201)
       const finance = await request(`/admin/reservations/${id}/finance/manual-payments`, 'POST',
-        { amountCents: 10000, method: 'CASH' }, token)
+        { amountCents: 10000, method: 'CASH', installmentId: plan.body.installments[0].id }, token)
       assert.equal(finance.status, 201)
       assert.equal(finance.body.summary.netPaidCents, 10000)
       const paymentId = finance.body.manualPayments[0].id
