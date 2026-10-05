@@ -42,7 +42,9 @@ export class AdminController {
     private readonly scopedReservations: CompanyReservationsService) {}
 
   @Get('dashboard')
+  @CompanyRead()
   dashboard(@Req() request: AuthenticatedRequest) {
+    if (request.companyScope) return this.scoped.dashboard(request.user.id, request.user.sessionId)
     return this.admin.dashboard(request.user.role)
   }
 

@@ -69,6 +69,32 @@ describe('core company data isolation in PostgreSQL (no production writes)', () 
     }
     await assert.rejects(readers.client(users[0], sessions[0], 'nonexistent'), { status: 404 })
   })
+  it('dashboard excludes foreign/legacy counts and birthday identities', async () => {
+    const now = new Date()
+    const birthDate = new Date(Date.UTC(1990, now.getUTCMonth(), now.getUTCDate()))
+    await prisma.client.updateMany({ where: { id: { in: clients } }, data: { birthDate } })
+    await prisma.reservation.update({ where: { id: reservations[1] }, data: { status: 'CONFIRMED' } })
+    try {
+      const own = await readers.dashboard(users[0], sessions[0])
+      assert.deepEqual(own.metrics, { clients: 1, pendingReservations: 1, activeTrips: 1, confirmedReservations: 0 })
+      assert.deepEqual(own.birthdays.map(row => row.id), [clients[0]])
+      assert.equal(own.birthdays[0].daysUntil, 0)
+      for (const key of ['email', 'notes', 'document', 'documentEncrypted', 'documentHash', 'companyId', 'userId']) {
+        assert.equal(key in own.birthdays[0], false)
+      }
+      const other = await readers.dashboard(users[1], sessions[1])
+      assert.deepEqual(other.metrics, { clients: 1, pendingReservations: 0, activeTrips: 1, confirmedReservations: 1 })
+      assert.deepEqual(other.birthdays.map(row => row.id), [clients[1]])
+    } finally {
+      await prisma.reservation.update({ where: { id: reservations[1] }, data: { status: 'PENDING' } })
+    }
+  })
+  it('dashboard denies foreign sessions and revoked memberships instead of falling back', async () => {
+    await assert.rejects(readers.dashboard(users[0], sessions[1]), { status: 403 })
+    await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { isActive: false } })
+    try { await assert.rejects(readers.dashboard(users[0], sessions[0]), { status: 403 }) }
+    finally { await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { isActive: true } }) }
+  })
   it('revalidates the session instead of trusting a user-supplied company or another session', async () => {
     await assert.rejects(readers.clients(users[0], sessions[1]), { status: 403 })
     await assert.rejects(readers.reservations(owner, sessions[0]), { status: 403 })
@@ -117,5 +143,8 @@ describe('core company data isolation in PostgreSQL (no production writes)', () 
     await assert.rejects(readers.trips(users[0], sessions[0]), { status: 403 })
     const reservation = await readers.reservation(users[0], sessions[0], reservations[0])
     assert.deepEqual(reservation.client, { id: clients[0] })
+    const dashboard = await readers.dashboard(users[0], sessions[0])
+    assert.deepEqual(dashboard.birthdays, [])
+    assert.equal(dashboard.metrics.clients, 2)
   })
 })

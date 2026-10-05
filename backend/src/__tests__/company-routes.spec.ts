@@ -124,12 +124,21 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
     assert.equal((await call(`/admin/clients/${clients[1]}`)).status, 404)
     assert.equal((await call(`/admin/clients/${clients[0]}`, tokens[1])).status, 404)
   })
-  it('blocks company sessions from unscoped dashboard, credit, finance and writes', async () => {
-    for (const path of ['/admin/dashboard', `/admin/clients/${clients[0]}/credits`, '/admin/payments/orders']) {
+  it('blocks company sessions from unscoped credit, finance and writes', async () => {
+    for (const path of [`/admin/clients/${clients[0]}/credits`, '/admin/payments/orders']) {
       assert.equal((await call(path)).status, 403)
     }
     assert.equal((await call('/admin/reservations', tokens[0], 'POST')).status, 400)
     assert.equal(legacyWrites, 0)
+  })
+  it('serves company dashboard metrics without invoking the legacy global reader', async () => {
+    for (const token of [tokens[0], tokens[1]]) {
+      const response = await call('/admin/dashboard', token)
+      assert.equal(response.status, 200)
+      assert.deepEqual(await response.json(), { metrics: {
+        clients: 1, pendingReservations: 1, activeTrips: 0, confirmedReservations: 0,
+      }, birthdays: [] })
+    }
   })
   it('never falls back to legacy routes for an unbound session of a managed user', async () => {
     assert.equal((await call('/admin/clients', unboundToken)).status, 403)

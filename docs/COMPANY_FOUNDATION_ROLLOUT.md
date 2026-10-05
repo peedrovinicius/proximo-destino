@@ -115,8 +115,14 @@ de autenticação no próprio domínio, como a correção de sessão da main.
 Este registro pendente ainda não é uma compra ou reserva operacional entregue
 ao cliente; é preparação em ambiente isolado.
 
+GET `/admin/dashboard` usa métricas somente da empresa persistida na sessão.
+Contagem de reservas exige cliente e viagem da mesma empresa; aniversariantes
+limitam-se aos próprios clientes e não são retornados para FINANCE. As consultas
+do painel compartilham um snapshot RepeatableRead, sem valores financeiros ou
+documentos. Sessão sem empresa ou vínculo revogado não recorre ao painel legado.
+
 O guard nega às contas de empresa todas as outras rotas administrativas
-protegidas por ele, incluindo confirmação/cancelamento operacional de reservas, publicação de viagens, dashboard e
+protegidas por ele, incluindo confirmação/cancelamento operacional de reservas, publicação de viagens e
 financeiro. Consultar/revogar as próprias sessões e logout também permanecem
 disponíveis. O marcador
 persistente `User.companyManaged` é definido pelo vínculo e não pode voltar a
