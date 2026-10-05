@@ -637,7 +637,8 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
     assert.equal((await call(`/admin/reservations/${id}/cancel`, tokens[0], 'POST')).status, 409)
     assert.equal((await call(`/admin/reservations/${id}/passengers`, tokens[0], 'PATCH', { passengers: [{ id: 'foreign' }] })).status, 409)
     assert.equal(await prisma.reservation.count({ where: { tripId: trips[2], status: { not: 'CANCELLED' } } }), beforeActive - 1)
-    assert.equal(await prisma.authAuditEvent.count({ where: { userId: users[0], eventType: 'OPS_COMPANY_DRAFT_RESERVATION_CANCELLED' } }), 1)
+    assert.equal(await prisma.authAuditEvent.count({ where: { userId: users[0], eventType: 'OPS_COMPANY_DRAFT_RESERVATION_CANCELLED',
+      metadata: { path: ['reservationId'], equals: id } } }), 1)
     assert.equal(legacyWrites, 0)
   })
   it('refuses reservation preparation on published or past trips', async () => {
