@@ -1,4 +1,6 @@
 const API_BASE = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '')
+// Keep the HttpOnly refresh cookie first-party in production (including Safari).
+const AUTH_BASE = import.meta.env.PROD ? '/api/v1' : API_BASE
 
 type AdminUser = {
   id: string
@@ -38,7 +40,7 @@ async function parseError(response: Response) {
 }
 
 export async function loginAdmin(email: string, password: string): Promise<AdminLoginResult> {
-  const response = await fetch(`${API_BASE}/auth/admin/login`, {
+  const response = await fetch(`${AUTH_BASE}/auth/admin/login`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -50,7 +52,7 @@ export async function loginAdmin(email: string, password: string): Promise<Admin
 }
 
 export async function loginCreator(email: string, password: string): Promise<AdminLoginResult> {
-  const response = await fetch(`${API_BASE}/auth/creator/login`, {
+  const response = await fetch(`${AUTH_BASE}/auth/creator/login`, {
     method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
   })
@@ -59,7 +61,7 @@ export async function loginCreator(email: string, password: string): Promise<Adm
 }
 
 export async function setupMfa(challengeToken: string): Promise<MfaSetupResult> {
-  const response = await fetch(`${API_BASE}/auth/mfa/setup`, {
+  const response = await fetch(`${AUTH_BASE}/auth/mfa/setup`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -74,7 +76,7 @@ export async function verifyMfaSetup(
   challengeToken: string,
   code: string,
 ): Promise<AuthenticatedResult> {
-  const response = await fetch(`${API_BASE}/auth/mfa/setup/verify`, {
+  const response = await fetch(`${AUTH_BASE}/auth/mfa/setup/verify`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -89,7 +91,7 @@ export async function verifyMfa(
   challengeToken: string,
   code: string,
 ): Promise<AuthenticatedResult> {
-  const response = await fetch(`${API_BASE}/auth/mfa/verify`, {
+  const response = await fetch(`${AUTH_BASE}/auth/mfa/verify`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -100,8 +102,16 @@ export async function verifyMfa(
   return response.json() as Promise<AuthenticatedResult>
 }
 
-export async function refreshAdminSession(): Promise<AuthenticatedResult> {
-  const response = await fetch(`${API_BASE}/auth/refresh`, {
+let pendingRefresh: Promise<AuthenticatedResult> | null = null
+
+export function refreshAdminSession(): Promise<AuthenticatedResult> {
+  // Rotation must not race against another refresh from this same tab.
+  if (!pendingRefresh) pendingRefresh = refreshOnce().finally(() => { pendingRefresh = null })
+  return pendingRefresh
+}
+
+async function refreshOnce(): Promise<AuthenticatedResult> {
+  const response = await fetch(`${AUTH_BASE}/auth/refresh`, {
     method: 'POST',
     credentials: 'include',
   })
@@ -111,7 +121,7 @@ export async function refreshAdminSession(): Promise<AuthenticatedResult> {
 }
 
 export async function logoutAdmin(accessToken: string) {
-  await fetch(`${API_BASE}/auth/logout`, {
+  await fetch(`${AUTH_BASE}/auth/logout`, {
     method: 'POST',
     credentials: 'include',
     headers: { Authorization: `Bearer ${accessToken}` },

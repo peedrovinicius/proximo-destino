@@ -14,6 +14,21 @@ const fields = {
 export class CompaniesService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async readiness(id: string) {
+    const company = await this.prisma.company.findUnique({ where: { id }, select: {
+      status: true, memberships: { where: { role: 'ADMIN' }, select: { isActive: true,
+        user: { select: { isActive: true, mfaEnabled: true } } } },
+    } })
+    if (!company) throw new NotFoundException('Empresa não encontrada')
+    // Informational only. No feature flag or submitted status can bypass these gates.
+    return { companyId: id, status: company.status, activationAllowed: false,
+      administrators: { total: company.memberships.length,
+        activeWithMfa: company.memberships.filter(m => m.isActive && m.user.isActive && m.user.mfaEnabled).length },
+      blockers: ['TENANT_ISOLATION_INCOMPLETE', 'SECURE_ADMIN_ONBOARDING_REQUIRED',
+        'PRODUCTION_BACKFILL_AND_ACCEPTANCE_REQUIRED'],
+    }
+  }
+
   async admins(companyId: string) {
     if (!await this.prisma.company.findUnique({ where: { id: companyId }, select: { id: true } })) {
       throw new NotFoundException('Empresa não encontrada')

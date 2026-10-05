@@ -93,13 +93,30 @@ de um passageiro em viagem futura DRAFT, somente com cliente e viagem da
 mesma empresa. Verifica duplicidade, capacidade e assentos bloqueados, com
 bloqueio dos pais e serialização transacional. Cria passageiro principal sem
 copiar documento ou atribuir assento. Auditoria é atômica. Não gera código de
-portal, pedido de compra, financeiro, documento ou mensagem. Confirmação,
-cancelamento e qualquer movimentação financeira permanecem bloqueados.
+portal, pedido de compra, financeiro, documento ou mensagem. Confirmação
+e qualquer movimentação financeira permanecem bloqueadas.
+
+GET/PATCH `/admin/reservations/:id/passengers` isolam leitura e edição por
+reserva, cliente e viagem da própria empresa. ADMIN edita nome, nascimento e
+documento; documento é criptografado e não aparece na resposta. IDs externos,
+duplicados e atribuição de assentos são recusados. Edição exige reserva PENDING
+e viagem DRAFT, sem código de portal, financeiro, pedido, documentos, cotações,
+serviços, pagamentos ou créditos.
+
+POST `/admin/reservations/:id/cancel` permite ADMIN cancelar somente esse mesmo
+tipo de reserva preparatória. Não gera bônus, estorno ou comunicação; mantém
+passageiro e histórico. Alteração e auditoria são atômicas, com autorização
+revalidada e bloqueio de viagem/reserva. Cancelamento operacional segue bloqueado.
+
+GET `/platform/companies/:id/readiness`, exclusivo do Criador com MFA, informa
+contagem de administradores e bloqueios. `activationAllowed` permanece false;
+essa consulta não ativa empresa ou conta. Login do Criador incorpora o proxy
+de autenticação no próprio domínio, como a correção de sessão da main.
 Este registro pendente ainda não é uma compra ou reserva operacional entregue
 ao cliente; é preparação em ambiente isolado.
 
 O guard nega às contas de empresa todas as outras rotas administrativas
-protegidas por ele, incluindo confirmação/cancelamento de reservas, publicação de viagens, dashboard e
+protegidas por ele, incluindo confirmação/cancelamento operacional de reservas, publicação de viagens, dashboard e
 financeiro. Consultar/revogar as próprias sessões e logout também permanecem
 disponíveis. O marcador
 persistente `User.companyManaged` é definido pelo vínculo e não pode voltar a
@@ -130,6 +147,30 @@ rotas públicas, portal, gravações, entidades derivadas e integrações.**
 Manter/desabilitar `COMPANY_FOUNDATION_ENABLED` e retornar a versão anterior da
 aplicação. Preservar as novas tabelas e rascunhos; não apagar dados ou tentar
 remover o valor de enum do PostgreSQL durante uma reversão operacional.
+
+## Preparação dos cinco primeiros itens pendentes
+
+1. Hierarquia: estrutura e rotas do Criador nesta proposta; faltam convite
+   expirante, ativação e aceite ponta a ponta.
+2. Ativação: diagnóstico de bloqueios, sem atalho para ativar contas.
+3. Isolamento: passageiros e cancelamento preparatório adicionados; portal,
+   publicação, assentos, financeiro e integrações ainda impedem ativação.
+4. Banco restrito: `backend/scripts/security/check-runtime.sql` consulta somente
+   leitura, com a conexão da API: poderes administrativos, propriedade,
+   memberships, privilégios, auditoria e migrations. Não provisiona papel nem
+   concede permissões. Executar psql `-v ON_ERROR_STOP=1 -f` com conexão pelo
+   canal seguro/ambiente, nunca senha em argumento. Doze tabelas com RLS não
+   comprovam isolamento entre empresas; validar API/políticas com duas empresas.
+5. Backup: `python3 scripts/backup-preflight.py` valida configuração offline,
+   sem acessar banco/bucket nem iniciar subprocessos. Emite nomes de campos
+   ausentes e nunca declara ponto de recuperação. Faltam destino privado,
+   retenção, credenciais seguras e custódia de chave definidos pelo proprietário;
+   depois executar backup real e restore isolado. A execução local sem variáveis
+   confirma somente que esta estação não está configurada.
+
+Esses preparativos não equivalem à ativação em produção. A correção de sessão
+do PR39 está incorporada. Não publicar antes do isolamento completo e plano de
+backfill/aceite revisado.
 
 Limitações já conhecidas (Mercado Pago/e-mail não ativados e backup externo
 pendente) não são resolvidas nem alteradas por esta mudança.

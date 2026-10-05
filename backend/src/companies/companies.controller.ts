@@ -11,6 +11,9 @@ import { Throttle } from '@nestjs/throttler'
 export class CompaniesController {
   constructor(private readonly companies: CompaniesService) {}
 
+  @Get(':id/readiness')
+  readiness(@Param('id') id: string) { return this.companies.readiness(id) }
+
   @Get(':id/admins')
   admins(@Param('id') id: string) { return this.companies.admins(id) }
 

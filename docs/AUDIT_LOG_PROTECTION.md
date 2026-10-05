@@ -40,6 +40,66 @@ prova integridade dos logs. Somente ativação e ensaio reais encerram esse item
 
 ## Aceite
 
+### Ensaio do papel runtime
+
+`backend/scripts/security/rehearse-runtime.sql` é exclusivamente um ensaio opt-in
+fora das migrations. Exige um papel NOLOGIN novo, sem propriedade, memberships,
+superuser, BYPASSRLS, criação de bancos/papéis ou replicação. Não cria credenciais.
+Concede SELECT/INSERT/UPDATE nas tabelas explicitamente listadas, DELETE apenas
+nas oito tabelas onde a API o usa hoje, e SELECT/INSERT na auditoria. Nega acesso
+à tabela de migrations, DELETE de User (inclusive para evitar alterar a auditoria
+pela FK), CREATE no schema e TRUNCATE/TRIGGER/REFERENCES. Concessões via PUBLIC que
+excedam essas verificações fazem rollback. Tabelas novas exigem revisão explícita.
+
+Cria políticas RLS apenas para esse papel nas doze tabelas já protegidas, mantendo
+RLS ativado e as políticas atuais. Essas políticas autorizam a API confiável a
+trabalhar com as linhas; não isolam clientes/empresas dentro da conexão. Os guards
+e filtros da API continuam indispensáveis. O ensaio não é uma implantação de
+isolamento multiempresa. Referência: https://www.postgresql.org/docs/current/ddl-rowsecurity.html.
+
+O CI usa banco local descartável, papéis aleatórios e transações revertidas para
+testar clientes/auditoria, bloqueio de outro papel, DDL, privilégios e recusa de
+papéis inadequados. O script não é idempotente: reaplicação das mesmas políticas
+falha e reverte. A limpeza do teste remove políticas/papéis criados.
+
+O teste `runtime-operational-flow.spec.ts` abre uma conexão Prisma com LOGIN e
+senha aleatórios exclusivos do PostgreSQL local descartável. Confere current_user
+e session_user e usa os serviços reais, sem mocks: matrícula MFA/TOTP, código de
+recuperação usado uma vez, refresh/logout, reserva/troca/colisão/cancelamento de
+assentos, cotação/aprovação, parcelas, recebimento e estorno. O proprietário só
+prepara o papel e limpa os dados no final. As operações da aplicação usam a conexão
+restrita, incluindo transações e auditoria.
+
+O mesmo teste também inicia `dist/main.js` em processo separado com apenas a URL
+runtime, porta local e segredos sintéticos. Por HTTP, verifica readiness e o
+diagnóstico de privilégios, MFA, refresh em cookie HttpOnly/SameSite=Strict sem
+refreshToken no JSON, acesso anônimo e token de cliente recusados no Admin,
+origem inválida, campo inesperado, reserva/login do cliente, troca de assento,
+recebimento/estorno e revogação no logout. Não cobre navegador, cookies Secure em
+HTTPS de produção, todos os módulos/integradores ou concorrência entre processos.
+
+`npm run prisma:deploy:isolated` exige MIGRATION_DATABASE_URL explícita e passa
+essa conexão somente ao subprocesso Prisma; nunca usa DATABASE_URL como fallback.
+O ensaio executa migrations com essa conexão administrativa enquanto DATABASE_URL
+aponta ao papel restrito, e recusa execução sem a URL administrativa. O comando
+existente `prisma:deploy` e o predeploy atual permanecem como estão. A URL de
+migrations não deve ser disponibilizada no ambiente do processo API.
+
+**Não aplicado em produção.** Ainda faltam revisão de privilégios públicos/defaults,
+provisionamento seguro e separação efetiva da execução de migrations e
+plano de troca/retorno. Só depois preparar LOGIN/credenciais por canal seguro e
+considerar a mudança da conexão runtime. Não alterar o papel proprietário atual.
+
+Na inicialização, a API consulta os privilégios efetivos da conexão e registra
+DATABASE_SECURITY_CHECK: somente booleanos sobre superuser, BYPASSRLS, vínculo
+ao proprietário e SELECT/INSERT/UPDATE/DELETE/TRUNCATE da auditoria. Não registra
+credenciais, nomes de papéis ou dados de usuários. restrictedAuditWriter só é
+verdadeiro com leitura/inserção e sem esses poderes administrativos ou de edição.
+Uma falha emite DATABASE_SECURITY_CHECK_UNAVAILABLE sem detalhes do erro e não
+impede a inicialização. O diagnóstico não altera permissões nem comprova políticas
+RLS, isolamento de linhas ou retenção externa. O teste PostgreSQL confirma que ele
+reconhece o proprietário, o escritor restrito e uma concessão posterior de UPDATE.
+
 Testes de limiares e de PostgreSQL isolado devem comprovar persistência,
 deduplicação concorrente, ausência de dados sensíveis, isolamento por usuário e
 revogação de acesso após rebaixamento. O CI não comprova recebimento pelo usuário

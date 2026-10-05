@@ -32,6 +32,8 @@ jobs:
         run: node scripts/mobile-check.mjs
       - name: Check isolated creator onboarding at mobile and desktop widths
         run: node scripts/creator-check.mjs
+      - name: Verify first-party session restoration through preview proxy
+        run: node scripts/session-check.mjs
       - name: Save synthetic browser evidence
         if: always()
         uses: actions/upload-artifact@v4

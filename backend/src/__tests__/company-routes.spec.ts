@@ -44,6 +44,7 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
   let base: string
   let connected = false
   let legacyWrites = 0
+  let preparedReservationId: string
   const config = new ConfigService({ JWT_ACCESS_SECRET: 'synthetic-http-access-secret-only-for-tests',
     AUDIT_HASH_KEY: 'synthetic-http-audit-key-only-for-tests' })
   const jwt = new JwtService()
@@ -283,7 +284,8 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
   it('prepares only a pending own-company reservation without checkout, credentials or seats', async () => {
     const response = await call('/admin/reservations', tokens[0], 'POST', { clientId: clients[2], tripId: trips[2] })
     assert.equal(response.status, 201); const result = await response.json() as { id: string; status: string; passengerCount: number }
-    reservations.push(result.id); assert.equal(result.status, 'PENDING'); assert.equal(result.passengerCount, 1)
+    reservations.push(result.id); preparedReservationId = result.id
+    assert.equal(result.status, 'PENDING'); assert.equal(result.passengerCount, 1)
     const row = await prisma.reservation.findUniqueOrThrow({ where: { id: result.id }, include: { passengers: true } })
     assert.equal(row.companyId, companies[0]); assert.equal(row.accessCodeHash, null)
     assert.equal(row.passengers.length, 1); assert.equal(row.passengers[0].isPrimary, true)
@@ -322,14 +324,50 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
     assert.equal(await prisma.reservation.count({ where: { tripId: trip.id } }), 0)
     assert.equal(await prisma.reservationPassenger.count({ where: { reservation: { tripId: trip.id } } }), 0)
   })
-  it('keeps confirmation, cancellation, financial and seat actions blocked', async () => {
+  it('keeps confirmation, financial and seat actions blocked', async () => {
     for (const [path, method, body] of [
       [`/admin/reservations/${reservations[0]}/status`, 'PATCH', { status: 'CONFIRMED' }],
-      [`/admin/reservations/${reservations[0]}/cancel`, 'POST', {}],
       [`/admin/reservations/${reservations[0]}/finance/manual-payments`, 'POST', {}],
       [`/admin/trips/${trips[2]}/seats/2/assignment`, 'POST', { clientId: clients[2] }],
     ] as const) assert.equal((await call(path, tokens[0], method, body)).status, 403)
     assert.equal((await call('/admin/reservations', unboundToken, 'POST', { clientId: clients[2], tripId: trips[2] })).status, 403)
+  })
+  it('scopes passenger reads and edits, encrypts documents and refuses foreign passenger IDs', async () => {
+    const id = preparedReservationId
+    const list = await call(`/admin/reservations/${id}/passengers`)
+    assert.equal(list.status, 200)
+    const passengers = await list.json() as { id: string }[]
+    const passenger = passengers[0].id
+    assert.equal((await call(`/admin/reservations/${reservations[1]}/passengers`)).status, 404)
+    const changed = await call(`/admin/reservations/${id}/passengers`, tokens[0], 'PATCH', {
+      passengers: [{ id: passenger, fullName: 'Synthetic edited passenger', document: 'SYNTHETIC-123' }],
+    })
+    assert.equal(changed.status, 200)
+    const output = JSON.stringify(await changed.json())
+    assert.equal(output.includes('SYNTHETIC-123'), false); assert.equal(output.includes('documentEncrypted'), false)
+    const saved = await prisma.reservationPassenger.findUniqueOrThrow({ where: { id: passenger } })
+    assert.equal(saved.document, null); assert.equal(revealDocument(saved), 'SYNTHETIC-123')
+    assert.equal((await call(`/admin/reservations/${id}/passengers`, tokens[0], 'PATCH', { passengers: [{ id: 'foreign' }] })).status, 404)
+    assert.equal((await call(`/admin/reservations/${id}/passengers`, tokens[0], 'PATCH', { passengers: [{ id: passenger, seatNumber: 1 }] })).status, 400)
+    assert.equal((await call(`/admin/reservations/${id}/passengers`, tokens[0], 'PATCH', { passengers: [{ id: passenger }, { id: passenger }] })).status, 400)
+    assert.equal(legacyWrites, 0)
+  })
+  it('cancels only own non-operational drafts, refuses bonus and frees capacity without deleting history', async () => {
+    const id = preparedReservationId
+    assert.equal((await call(`/admin/reservations/${reservations[1]}/cancel`, tokens[0], 'POST')).status, 404)
+    assert.equal((await call(`/admin/reservations/${id}/cancel`, tokens[0], 'POST', { creditAsBonus: true })).status, 400)
+    await prisma.reservation.update({ where: { id }, data: { accessCodeHash: 'synthetic-code' } })
+    assert.equal((await call(`/admin/reservations/${id}/cancel`, tokens[0], 'POST')).status, 409)
+    await prisma.reservation.update({ where: { id }, data: { accessCodeHash: null } })
+    const response = await call(`/admin/reservations/${id}/cancel`, tokens[0], 'POST')
+    assert.equal(response.status, 201)
+    assert.equal((await prisma.reservation.findUniqueOrThrow({ where: { id } })).status, 'CANCELLED')
+    assert.equal(await prisma.reservationPassenger.count({ where: { reservationId: id } }), 1)
+    assert.equal((await call(`/admin/reservations/${id}/cancel`, tokens[0], 'POST')).status, 409)
+    assert.equal((await call(`/admin/reservations/${id}/passengers`, tokens[0], 'PATCH', { passengers: [{ id: 'foreign' }] })).status, 409)
+    assert.equal(await prisma.reservation.count({ where: { tripId: trips[2], status: { not: 'CANCELLED' } } }), 0)
+    assert.equal(await prisma.authAuditEvent.count({ where: { userId: users[0], eventType: 'OPS_COMPANY_DRAFT_RESERVATION_CANCELLED' } }), 1)
+    assert.equal(legacyWrites, 0)
   })
   it('refuses reservation preparation on published or past trips', async () => {
     const tripId = trips.at(-1)!
@@ -337,6 +375,27 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
     assert.equal((await call('/admin/reservations', tokens[0], 'POST', { clientId: clients[2], tripId })).status, 409)
     await prisma.trip.update({ where: { id: tripId }, data: { status: 'DRAFT', departureDate: new Date('2020-01-01') } })
     assert.equal((await call('/admin/reservations', tokens[0], 'POST', { clientId: clients[2], tripId })).status, 409)
+  })
+  it('rolls back passenger edits and cancellation when audit fails; serializes competing cancellations', async () => {
+    const trip = await prisma.trip.create({ data: { companyId: companies[0], title: 'Synthetic draft rollback',
+      origin: 'Synthetic', destination: 'Synthetic', departureDate: new Date('2027-01-01'), capacity: 2 } })
+    trips.push(trip.id)
+    const reservation = await new CompanyReservationsService(prisma, new CompanyScopeService(prisma))
+      .create(users[0], sessions[0], { clientId: clients[0], tripId: trip.id })
+    reservations.push(reservation.id)
+    const passenger = await prisma.reservationPassenger.findFirstOrThrow({ where: { reservationId: reservation.id } })
+    const failing = new CompanyReservationsService({ $transaction: (callback: (tx: unknown) => Promise<unknown>) =>
+      prisma.$transaction(tx => callback({ $queryRaw: tx.$queryRaw.bind(tx), trip: tx.trip, reservation: tx.reservation,
+        reservationPassenger: tx.reservationPassenger,
+        authAuditEvent: { create: async () => { throw new Error('synthetic mutation audit failure') } } }))
+    } as unknown as PrismaService, new CompanyScopeService(prisma))
+    await assert.rejects(failing.updatePassengers(users[0], sessions[0], reservation.id,
+      { passengers: [{ id: passenger.id, fullName: 'Must roll back' }] }), /synthetic mutation audit failure/)
+    assert.equal((await prisma.reservationPassenger.findUniqueOrThrow({ where: { id: passenger.id } })).fullName, passenger.fullName)
+    await assert.rejects(failing.cancelDraft(users[0], sessions[0], reservation.id, {}), /synthetic mutation audit failure/)
+    assert.equal((await prisma.reservation.findUniqueOrThrow({ where: { id: reservation.id } })).status, 'PENDING')
+    const concurrent = await Promise.all([1, 2].map(() => call(`/admin/reservations/${reservation.id}/cancel`, tokens[0], 'POST')))
+    assert.deepEqual(concurrent.map(r => r.status).sort(), [201, 409])
   })
   it('revalidates revoked membership before reserving and denies finance', async () => {
     const scope = await new CompanyScopeService(prisma).resolveSession(users[0], sessions[0])

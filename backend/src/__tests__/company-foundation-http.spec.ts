@@ -39,7 +39,7 @@ describe('company foundation HTTP boundary (synthetic database adapter)', () => 
       return sessionValid ? { id: 'synthetic-session' } : null
     } },
     company: {
-      findUnique: async () => ({ id: 'synthetic-company' }),
+      findUnique: async () => ({ id: 'synthetic-company', status: 'DRAFT', memberships: [] }),
       findMany: async () => [],
       create: async (query: { data: Record<string, unknown> }) => { writes.push(query.data); return { ...query.data, id: 'synthetic-company' } },
       update: async (query: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
@@ -83,6 +83,7 @@ describe('company foundation HTTP boundary (synthetic database adapter)', () => 
       for (const response of [await call(role), await call(role, data), await call(role, data, '/synthetic-company')]) assert.equal(response.status, 403)
       assert.equal((await call(role, adminData, '/synthetic-company/admins')).status, 403)
       assert.equal((await call(role, undefined, '/synthetic-company/admins')).status, 403)
+      assert.equal((await call(role, undefined, '/synthetic-company/readiness')).status, 403)
       assert.equal(writes.length, count)
     })
   }
@@ -102,6 +103,16 @@ describe('company foundation HTTP boundary (synthetic database adapter)', () => 
     assert.equal(saved.status, 'DRAFT'); assert.equal(saved.createdById, 'synthetic-user')
     assert.equal(saved.contactEmail, 'contact@example.invalid')
     assert.equal('memberships' in writes.at(-1)!, false)
+  })
+  it('reports activation blockers without modifying accounts or exposing credentials', async () => {
+    const count = writes.length
+    const response = await call('CREATOR', undefined, '/synthetic-company/readiness')
+    assert.equal(response.status, 200)
+    const result = await response.json() as { activationAllowed: boolean; blockers: string[] }
+    assert.equal(result.activationAllowed, false)
+    assert.ok(result.blockers.includes('TENANT_ISOLATION_INCOMPLETE'))
+    assert.equal(writes.length, count)
+    assert.equal(JSON.stringify(result).includes('password'), false)
   })
   it('rejects injected activation, ownership and membership fields before writes', async () => {
     for (const extra of [{ status: 'ACTIVE' }, { createdById: 'other' }, { memberships: [] }]) {

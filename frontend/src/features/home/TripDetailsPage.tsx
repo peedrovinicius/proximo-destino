@@ -4,6 +4,7 @@ import {
   CalendarDays,
   Check,
   CheckCircle2,
+  CircleAlert,
   Copy,
   MapPin,
   Bus,
@@ -286,9 +287,18 @@ export function TripDetailsPage({
 
   if (error && !trip) {
     return (
-      <main className="trip-details-shell">
-        <button className="trip-details-back" type="button" onClick={onBack}><ArrowLeft size={16} /> Voltar</button>
-        <div className="empty-trips"><h3>Viagem indisponível</h3><p>{error}</p></div>
+      <main className="trip-details-shell trip-details-state-shell">
+        <button className="trip-details-back" type="button" onClick={onBack}>
+          <ArrowLeft size={16} /> Voltar às viagens
+        </button>
+        <section className="public-state-card public-state-card--error" role="alert">
+          <CircleAlert size={22} />
+          <div>
+            <strong>Esta viagem não está disponível agora</strong>
+            <span>{error}</span>
+          </div>
+          <button type="button" onClick={onBack}>Ver outras viagens</button>
+        </section>
       </main>
     )
   }

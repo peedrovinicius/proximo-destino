@@ -15,7 +15,8 @@
     "creator:create": "node scripts/create-creator.mjs",
     "admin:recover": "node scripts/recover-admin.mjs",
     "test:unit": "node --test --test-concurrency=1 dist/__tests__/*.spec.js",
-    "test": "npm run build && npm run test:unit"
+    "test": "npm run build && npm run test:unit",
+    "prisma:deploy:isolated": "node scripts/migrate-isolated.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",

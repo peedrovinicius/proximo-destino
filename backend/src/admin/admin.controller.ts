@@ -92,18 +92,22 @@ export class AdminController {
   }
 
   @Get('reservations/:id/passengers')
+  @CompanyRead()
   @Roles(...ADMIN_ONLY_ROLES)
-  reservationPassengers(@Param('id') id: string) {
+  reservationPassengers(@Param('id') id: string, @Req() request: AuthenticatedRequest) {
+    if (request.companyScope) return this.scopedReservations.passengers(request.user.id, request.user.sessionId, id)
     return this.admin.reservationPassengers(id)
   }
 
   @Patch('reservations/:id/passengers')
+  @CompanyWrite()
   @Roles(...ADMIN_ONLY_ROLES)
   updateReservationPassengers(
     @Param('id') id: string,
     @Body() body: UpdateReservationPassengersDto,
     @Req() request: AuthenticatedRequest,
   ) {
+    if (request.companyScope) return this.scopedReservations.updatePassengers(request.user.id, request.user.sessionId, id, body)
     return this.admin.updateReservationPassengers(
       id,
       body,
@@ -126,12 +130,14 @@ export class AdminController {
   }
 
   @Post('reservations/:id/cancel')
+  @CompanyWrite()
   @Roles(...ADMIN_ONLY_ROLES)
   cancelReservation(
     @Param('id') id: string,
     @Body() body: CancelReservationDto,
     @Req() request: AuthenticatedRequest,
   ) {
+    if (request.companyScope) return this.scopedReservations.cancelDraft(request.user.id, request.user.sessionId, id, body)
     return this.admin.cancelReservation(
       id,
       body.creditAsBonus ?? false,
