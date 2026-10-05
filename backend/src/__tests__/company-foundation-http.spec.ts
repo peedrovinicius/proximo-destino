@@ -168,6 +168,22 @@ describe('company foundation HTTP boundary (synthetic database adapter)', () => 
       assert.equal((await accept({ token: 'a'.repeat(43), password: 'synthetic-pending-password-123' })).status, 403)
     } finally { enabled = true }
   })
+  it('validates onboarding MFA input and fails closed for every onboarding endpoint', async () => {
+    const callOnboarding = (path: string, body: object) => fetch(`${base}/company-invitations/${path}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    assert.equal((await callOnboarding('mfa/setup', { onboardingToken: 'invalid' })).status, 400)
+    assert.equal((await callOnboarding('mfa/confirm', { onboardingToken: 'a'.repeat(43), code: '1234567' })).status, 400)
+    assert.equal((await callOnboarding('mfa/setup', { onboardingToken: 'a'.repeat(43), userId: 'another' })).status, 400)
+    assert.equal((await callOnboarding('resume', { email: 'invalid', password: 'short' })).status, 400)
+    enabled = false
+    try {
+      for (const [path, body] of [
+        ['mfa/setup', { onboardingToken: 'a'.repeat(43) }],
+        ['mfa/confirm', { onboardingToken: 'a'.repeat(43), code: '123456' }],
+        ['resume', { email: 'admin@example.invalid', password: 'synthetic-new-password-123' }],
+      ] as const) assert.equal((await callOnboarding(path, body)).status, 403)
+    } finally { enabled = true }
+  })
   it('rejects short passwords, missing name, invalid email and injected privilege fields', async () => {
     for (const extra of [{ password: 'short' }, { displayName: '' }, { email: 'invalid' },
       { role: 'CREATOR' }, { isActive: true }, { companyId: 'other' }, { companyManaged: false }]) {

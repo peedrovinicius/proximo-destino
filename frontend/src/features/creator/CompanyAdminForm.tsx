@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 
 type Admin = { id: string; isActive: boolean; inviteUsedAt?: string | null; user: {
-  id: string; displayName: string | null; email: string; isActive: boolean;
+  id: string; displayName: string | null; email: string; isActive: boolean; mfaEnabled?: boolean;
 } }
 const API_BASE = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '')
 
@@ -57,7 +57,7 @@ export function CompanyAdminForm({ companyId, companyName, token, onClose }: {
         method: 'POST', headers: { Authorization: `Bearer ${token}` }, cache: 'no-store',
       })
       if (!response.ok) throw new Error('Não foi possível alterar o convite deste administrador pendente.')
-      if (revoke) setNotice('Convite revogado. O código anterior não pode mais ser usado.')
+      if (revoke) setNotice('Convite revogado. A preparação temporária de MFA também foi revogada; os códigos anteriores não podem mais ser usados.')
       else {
         const result = await response.json() as { token: string; expiresAt: string }
         setInvite({ membershipId: admin.id, token: result.token, expiresAt: result.expiresAt })
@@ -87,10 +87,10 @@ export function CompanyAdminForm({ companyId, companyName, token, onClose }: {
     </fieldset></form>
     {loading ? <p role="status">Carregando administradores…</p> : admins.length ? <ul className="creator-company-list">
       {admins.map(admin => <li key={admin.id}><strong>{admin.user.displayName || 'Administrador'}</strong><p>{admin.user.email}</p>
-        <span>{admin.isActive && admin.user.isActive ? 'Ativo' : admin.inviteUsedAt ? 'Senha definida · acesso inativo' : 'Acesso inativo'}</span>
-        {!admin.isActive && !admin.user.isActive && !admin.inviteUsedAt ? <div>
-          <button type="button" disabled={saving} onClick={() => void invitation(admin)}>Gerar novo convite para {admin.user.displayName || admin.user.email}</button>
-          <button type="button" disabled={saving} onClick={() => void invitation(admin, true)}>Revogar convite de {admin.user.displayName || admin.user.email}</button>
+        <span>{admin.isActive && admin.user.isActive ? 'Ativo' : admin.user.mfaEnabled ? 'MFA configurado · acesso inativo' : admin.inviteUsedAt ? 'Senha definida · acesso inativo' : 'Acesso inativo'}</span>
+        {!admin.isActive && !admin.user.isActive && !admin.user.mfaEnabled ? <div>
+          <>{!admin.inviteUsedAt ? <button type="button" disabled={saving} onClick={() => void invitation(admin)}>Gerar novo convite para {admin.user.displayName || admin.user.email}</button> : null}</>
+          <button type="button" disabled={saving} onClick={() => void invitation(admin, true)}>{admin.inviteUsedAt ? 'Revogar preparação de ' : 'Revogar convite de '}{admin.user.displayName || admin.user.email}</button>
         </div> : null}</li>)}
     </ul> : <p>Nenhum administrador cadastrado.</p>}
   </section>

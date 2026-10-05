@@ -53,6 +53,9 @@ model Company {
 }
 
 model CompanyMembership {
+  onboardingTokenHash String? @unique
+  onboardingExpiresAt DateTime?
+  onboardingFailedAttempts Int @default(0)
   inviteTokenHash String? @unique
   inviteExpiresAt DateTime?
   inviteUsedAt DateTime?

@@ -17,15 +17,18 @@ export class CompaniesService {
 
   async readiness(id: string) {
     const company = await this.prisma.company.findUnique({ where: { id }, select: {
-      status: true, memberships: { where: { role: 'ADMIN' }, select: { isActive: true,
-        user: { select: { isActive: true, mfaEnabled: true } } } },
+      status: true, memberships: { where: { role: 'ADMIN' }, select: { isActive: true, inviteUsedAt: true,
+        user: { select: { isActive: true, mfaEnabled: true, mfaEnrolledAt: true, role: true, companyManaged: true } } } },
     } })
     if (!company) throw new NotFoundException('Empresa não encontrada')
+    const preparedWithMfa = company.memberships.filter(m => !m.isActive && !m.user.isActive && m.inviteUsedAt &&
+      m.user.role === 'ADMIN' && m.user.companyManaged && m.user.mfaEnabled && m.user.mfaEnrolledAt &&
+      m.user.mfaEnrolledAt >= m.inviteUsedAt).length
     // Informational only. No feature flag or submitted status can bypass these gates.
     return { companyId: id, status: company.status, activationAllowed: false,
       administrators: { total: company.memberships.length,
-        activeWithMfa: company.memberships.filter(m => m.isActive && m.user.isActive && m.user.mfaEnabled).length },
-      blockers: ['TENANT_ISOLATION_INCOMPLETE', 'SECURE_ADMIN_ONBOARDING_REQUIRED',
+        preparedWithMfa, activeWithMfa: company.memberships.filter(m => m.isActive && m.user.isActive && m.user.role === 'ADMIN' && m.user.mfaEnabled).length },
+      blockers: ['TENANT_ISOLATION_INCOMPLETE', ...(preparedWithMfa ? [] : ['SECURE_ADMIN_ONBOARDING_REQUIRED']),
         'PRODUCTION_BACKFILL_AND_ACCEPTANCE_REQUIRED'],
     }
   }
@@ -36,7 +39,7 @@ export class CompaniesService {
     }
     return this.prisma.companyMembership.findMany({ where: { companyId, role: 'ADMIN' },
       select: { id: true, isActive: true, inviteUsedAt: true, inviteExpiresAt: true, user: { select: {
-        id: true, displayName: true, email: true, isActive: true,
+        id: true, displayName: true, email: true, isActive: true, mfaEnabled: true,
       } } }, orderBy: { createdAt: 'desc' }, take: 100 })
   }
 

@@ -178,7 +178,7 @@ rotas públicas, portal, gravações, entidades derivadas e integrações.**
 - Impedir referências cruzadas com restrições compostas e testes negativos.
 - Escopar unicidade de integrações por empresa e vincular webhooks à conexão
   confiável; não aceitar empresa livremente declarada no payload do provedor.
-- Concluir MFA dos administradores e ativação somente após todos os
+- Concluir ativação somente após todos os
   testes de isolamento ponta a ponta passarem, inclusive dois clientes e duas
   empresas reais em banco isolado.
 
@@ -190,7 +190,7 @@ remover o valor de enum do PostgreSQL durante uma reversão operacional.
 
 ## Preparação dos cinco primeiros itens pendentes
 
-1. Hierarquia: estrutura e rotas do Criador nesta proposta; convite expirante para definição de senha incluído; faltam MFA, ativação e aceite ponta a ponta.
+1. Hierarquia: estrutura e rotas do Criador nesta proposta; convite expirante para definição de senha incluído; MFA do ADMIN pendente incluído; faltam ativação e aceite ponta a ponta.
 2. Ativação: diagnóstico de bloqueios, sem atalho para ativar contas.
 3. Isolamento: passageiros e cancelamento preparatório adicionados; portal,
    publicação, assentos, financeiro e integrações ainda impedem ativação.
@@ -228,6 +228,27 @@ O endpoint exige a flag da fundação, valida entrada e limita tentativas. Consu
 senha Argon2id e auditoria são atômicos; bloqueios impedem consumo duplo. Respostas
 não permitem cache. Auditoria omite código, hash, senha e dados pessoais.
 
-Não envia e-mail, cria sessão, ativa empresa/usuário/vínculo, configura MFA ou promove
-contas existentes. O acesso permanece bloqueado. O Criador entrega o código por
+Não envia e-mail, cria sessão, ativa empresa/usuário/vínculo ou promove contas existentes. O acesso permanece bloqueado. O Criador entrega o código por
 canal privado; definição de senha não conclui o onboarding ou o checklist de ativação.
+
+## MFA do administrador pendente (sem acesso operacional)
+
+Aceitar o convite gera um código opaco separado para preparar MFA, válido por 15 minutos;
+apenas SHA-256 fica no vínculo. Não é JWT, sessão ou cookie de login. O código é enviado
+no corpo de `/company-invitations/mfa/setup` e `/company-invitations/mfa/confirm`.
+MFA exige empresa DRAFT, conta/vínculo ADMIN inativos, senha definida pelo convite,
+conta gerenciada e MFA ainda não configurado. Estado, papel, validade e bloqueio de senha
+são revalidados com bloqueios no PostgreSQL até o commit.
+
+QR code e chave manual são exibidos apenas durante configuração. Cinco códigos errados
+invalidam a preparação e limpam o segredo pendente. Confirmação única grava segredo AES-GCM,
+MFA habilitado e dez hashes Argon2 de recuperação, limpa o código temporário e audita tudo
+atomicamente. Conta, vínculo e empresa continuam inativos/DRAFT; nenhuma sessão é criada.
+Códigos de recuperação são exibidos uma vez, apenas em memória, com controle para ocultar.
+
+Se a página for fechada ou a preparação expirar, `/company-invitations/resume` permite
+retomar usando e-mail e a senha definida, somente antes de concluir MFA. Invalida a
+preparação anterior; cinco erros de senha bloqueiam a conta por 15 minutos, com contador
+serializado e auditoria sem dados pessoais. O Criador pode revogar a preparação pendente.
+Endpoints exigem a flag, limitam tentativas e enviam Cache-Control no-store. Segredos não
+entram em URLs, storage ou auditoria. MFA legado de contas ativas permanece separado.

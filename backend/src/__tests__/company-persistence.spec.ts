@@ -5,12 +5,15 @@ import { PrismaService } from '../prisma/prisma.service'
 import { CompaniesService } from '../companies/companies.service'
 import { CompanyScopeService } from '../tenancy/company-scope.service'
 import argon2 from 'argon2'
+import { ConfigService } from '@nestjs/config'
+import { MfaService } from '../auth/mfa.service'
 import { CompanyInvitationsService } from '../companies/company-invitations.service'
 
 describe('company additive migration in isolated PostgreSQL', () => {
   const prisma = new PrismaService()
   const service = new CompaniesService(prisma)
-  const invites = new CompanyInvitationsService(prisma)
+  const mfa = new MfaService(prisma, new ConfigService({ MFA_ENCRYPTION_KEY: Buffer.alloc(32, 11).toString('base64') }))
+  const invites = new CompanyInvitationsService(prisma, mfa)
   const scope = new CompanyScopeService(prisma)
   const suffix = randomUUID()
   const creatorId = `creator-${suffix}`
@@ -223,7 +226,7 @@ describe('company additive migration in isolated PostgreSQL', () => {
     const failing = new CompanyInvitationsService({ $transaction: (callback: (tx: unknown) => Promise<unknown>) =>
       prisma.$transaction(tx => callback({ $queryRaw: tx.$queryRaw.bind(tx), user: tx.user, companyMembership: tx.companyMembership,
         authAuditEvent: { create: async () => { throw new Error('synthetic invite audit failure') } } }))
-    } as unknown as PrismaService)
+    } as unknown as PrismaService, mfa)
     await assert.rejects(failing.issue(creatorId, creatorSessionId, ids[0], admin.id), /synthetic invite audit failure/)
     assert.equal((await prisma.companyMembership.findUniqueOrThrow({ where: { id: admin.id } })).inviteTokenHash, null)
     const invite = await invites.issue(creatorId, creatorSessionId, ids[0], admin.id)
@@ -233,6 +236,88 @@ describe('company additive migration in isolated PostgreSQL', () => {
     assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: admin.user.id } })).passwordHash, before.passwordHash)
     assert.equal((await prisma.companyMembership.findUniqueOrThrow({ where: { id: admin.id } })).inviteUsedAt, null)
     assert.equal((await invites.accept(invite.token, 'synthetic-new-password-123')).activationAllowed, false)
+  })
+  const totp = (secret: string, offset = 0) => (mfa as unknown as { totp(secret: string, counter: number): string })
+    .totp(secret, Math.floor(Date.now() / 30_000) + offset)
+
+  it('prepares MFA once with encrypted secrets and hashed recovery codes while keeping access inactive', async () => {
+    const admin = await pendingInvite()
+    const invite = await invites.issue(creatorId, creatorSessionId, ids[0], admin.id)
+    const accepted = await invites.accept(invite.token, 'synthetic-new-password-123')
+    const setup = await invites.beginMfa(accepted.onboardingToken)
+    assert.ok(setup.qrDataUrl.startsWith('data:image/png;base64,'))
+    assert.equal(setup.activationAllowed, false)
+    const secretRow = await prisma.user.findUniqueOrThrow({ where: { id: admin.user.id } })
+    assert.ok(secretRow.mfaPendingSecretEncrypted); assert.notEqual(secretRow.mfaPendingSecretEncrypted, setup.manualKey)
+    const results = await Promise.allSettled([
+      invites.confirmMfa(accepted.onboardingToken, totp(setup.manualKey)),
+      invites.confirmMfa(accepted.onboardingToken, totp(setup.manualKey)),
+    ])
+    assert.equal(results.filter(r => r.status === 'fulfilled').length, 1)
+    const success = results.find(r => r.status === 'fulfilled') as PromiseFulfilledResult<{ recoveryCodes: string[]; activationAllowed: boolean }>
+    assert.equal(success.value.activationAllowed, false); assert.equal(success.value.recoveryCodes.length, 10)
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: admin.user.id } })
+    assert.equal(user.mfaEnabled, true); assert.ok(user.mfaEnrolledAt); assert.equal(user.isActive, false)
+    assert.equal(user.mfaPendingSecretEncrypted, null); assert.notEqual(user.mfaSecretEncrypted, setup.manualKey)
+    const readiness = await service.readiness(ids[0])
+    assert.ok(readiness.administrators.preparedWithMfa >= 1); assert.equal(readiness.activationAllowed, false)
+    assert.equal(readiness.blockers.includes('SECURE_ADMIN_ONBOARDING_REQUIRED'), false)
+    const membership = await prisma.companyMembership.findUniqueOrThrow({ where: { id: admin.id } })
+    assert.equal(membership.isActive, false); assert.equal(membership.onboardingTokenHash, null)
+    assert.equal((await prisma.company.findUniqueOrThrow({ where: { id: ids[0] } })).status, 'DRAFT')
+    assert.equal(await prisma.authSession.count({ where: { userId: user.id } }), 0)
+    const recovery = await prisma.mfaRecoveryCode.findMany({ where: { userId: user.id } })
+    assert.equal(recovery.length, 10); assert.ok(recovery.every(row => row.codeHash.startsWith('$argon2')))
+    await assert.rejects(invites.beginMfa(accepted.onboardingToken), { status: 400 })
+    await assert.rejects(invites.confirmMfa(accepted.onboardingToken, totp(setup.manualKey)), { status: 400 })
+    await assert.rejects(invites.resume(admin.user.email, 'synthetic-new-password-123'), { status: 401 })
+    assert.equal(await mfa.verify(user.id, success.value.recoveryCodes[0]), true)
+    assert.equal(await mfa.verify(user.id, success.value.recoveryCodes[0]), false)
+    const events = await prisma.authAuditEvent.findMany({ where: { userId: user.id } })
+    const serialized = JSON.stringify(events.map(event => event.metadata))
+    for (const secret of [accepted.onboardingToken, setup.manualKey, ...success.value.recoveryCodes]) assert.equal(serialized.includes(secret), false)
+  })
+  it('expires and replaces onboarding tokens and limits password and TOTP attempts', async () => {
+    const admin = await pendingInvite()
+    const invite = await invites.issue(creatorId, creatorSessionId, ids[0], admin.id)
+    const accepted = await invites.accept(invite.token, 'synthetic-new-password-123')
+    await prisma.companyMembership.update({ where: { id: admin.id }, data: { onboardingExpiresAt: new Date(0) } })
+    await assert.rejects(invites.beginMfa(accepted.onboardingToken), { status: 400 })
+    const resumed = await invites.resume(admin.user.email.toUpperCase(), 'synthetic-new-password-123')
+    await assert.rejects(invites.beginMfa(accepted.onboardingToken), { status: 400 })
+    const setup = await invites.beginMfa(resumed.onboardingToken)
+    const valid = [-1, 0, 1].map(offset => totp(setup.manualKey, offset))
+    const bad = ['000000', '000001', '000002', '000003'].find(code => !valid.includes(code))!
+    for (let n = 0; n < 5; n++) await assert.rejects(invites.confirmMfa(resumed.onboardingToken, bad), { status: 401 })
+    await assert.rejects(invites.beginMfa(resumed.onboardingToken), { status: 400 })
+    assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: admin.user.id } })).mfaPendingSecretEncrypted, null)
+    for (let n = 0; n < 5; n++) await assert.rejects(invites.resume(admin.user.email, 'synthetic-incorrect-password'), { status: 401 })
+    const locked = await prisma.user.findUniqueOrThrow({ where: { id: admin.user.id } })
+    assert.ok(locked.lockedUntil!.getTime() > Date.now())
+    await assert.rejects(invites.resume(admin.user.email, 'synthetic-new-password-123'), { status: 401 })
+    await prisma.user.update({ where: { id: admin.user.id }, data: { lockedUntil: new Date(0) } })
+    const fresh = await invites.resume(admin.user.email, 'synthetic-new-password-123')
+    await invites.beginMfa(fresh.onboardingToken)
+    await invites.revoke(creatorId, creatorSessionId, ids[0], admin.id)
+    await assert.rejects(invites.beginMfa(fresh.onboardingToken), { status: 400 })
+    assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: admin.user.id } })).isActive, false)
+  })
+  it('rolls back MFA enrollment, recovery codes and token consumption when audit fails', async () => {
+    const admin = await pendingInvite()
+    const invite = await invites.issue(creatorId, creatorSessionId, ids[0], admin.id)
+    const accepted = await invites.accept(invite.token, 'synthetic-new-password-123')
+    const failing = new CompanyInvitationsService({ $transaction: (callback: (tx: unknown) => Promise<unknown>) =>
+      prisma.$transaction(tx => callback({ $queryRaw: tx.$queryRaw.bind(tx), user: tx.user,
+        companyMembership: tx.companyMembership, mfaRecoveryCode: tx.mfaRecoveryCode,
+        authAuditEvent: { create: async () => { throw new Error('synthetic onboarding audit failure') } } }))
+    } as unknown as PrismaService, mfa)
+    await assert.rejects(failing.beginMfa(accepted.onboardingToken), /synthetic onboarding audit failure/)
+    assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: admin.user.id } })).mfaPendingSecretEncrypted, null)
+    const setup = await invites.beginMfa(accepted.onboardingToken)
+    await assert.rejects(failing.confirmMfa(accepted.onboardingToken, totp(setup.manualKey)), /synthetic onboarding audit failure/)
+    assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: admin.user.id } })).mfaEnabled, false)
+    assert.equal(await prisma.mfaRecoveryCode.count({ where: { userId: admin.user.id } }), 0)
+    assert.equal((await invites.confirmMfa(accepted.onboardingToken, totp(setup.manualKey))).mfaConfigured, true)
   })
   it('cannot edit or provision active companies through draft endpoints', async () => {
     // Synthetic database fixture only; no API activation route exists.

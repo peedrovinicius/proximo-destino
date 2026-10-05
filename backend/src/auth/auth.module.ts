@@ -20,6 +20,6 @@ import { TenancyModule } from '../tenancy/tenancy.module'
     JwtAuthGuard,
     RolesGuard,
   ],
-  exports: [AuthService, JwtAuthGuard, RolesGuard, TenancyModule],
+  exports: [MfaService, AuthService, JwtAuthGuard, RolesGuard, TenancyModule],
 })
 export class AuthModule {}

@@ -30,6 +30,9 @@ try {
     let inviteActive = false
     let accepted = 0
     const inviteCode = 's'.repeat(43)
+    const onboardingCode = 'o'.repeat(43)
+    const manualKey = 'JBSWY3DPEHPK3PXP'
+    let mfaConfirmed = false
     page.on('pageerror', error => errors.push(error.message))
     await page.route('**/*', async route => {
       const url = new URL(route.request().url())
@@ -54,7 +57,22 @@ try {
         assert.equal(payload.token, inviteCode)
         assert.equal(payload.password, 'Synthetic-invite-password-for-test')
         inviteActive = false; accepted++
-        return respond(201, { passwordSet: true, activationAllowed: false })
+        return respond(201, { passwordSet: true, onboardingToken: onboardingCode, activationAllowed: false })
+      }
+      if (url.pathname === '/api/v1/company-invitations/resume') {
+        const payload = request.postDataJSON()
+        assert.equal(payload.email, 'admin@example.invalid'); assert.equal(payload.password, 'Synthetic-invite-password-for-test')
+        return respond(201, { onboardingToken: onboardingCode, activationAllowed: false })
+      }
+      if (url.pathname === '/api/v1/company-invitations/mfa/setup') {
+        assert.equal(request.postDataJSON().onboardingToken, onboardingCode)
+        return respond(201, { manualKey, qrDataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', activationAllowed: false })
+      }
+      if (url.pathname === '/api/v1/company-invitations/mfa/confirm') {
+        assert.deepEqual(request.postDataJSON(), { onboardingToken: onboardingCode, code: '123456' })
+        mfaConfirmed = true
+        return respond(201, { mfaConfigured: true, activationAllowed: false,
+          recoveryCodes: Array.from({ length: 10 }, (_, n) => `ABCD-EFGH-${String(n).padStart(4, '0')}`) })
       }
       if (url.pathname.startsWith('/api/v1/platform/companies')) {
         assert.equal(request.headers().authorization, 'Bearer synthetic-creator-token')
@@ -153,6 +171,24 @@ try {
     assert.equal(afterStorage.includes('Synthetic-invite-password-for-test'), false)
     const inviteDimensions = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth }))
     assert.ok(inviteDimensions.scroll <= inviteDimensions.width + 1)
+    await page.getByRole('button', { name: 'Retomar com minha senha' }).click()
+    await page.getByLabel('E-mail de acesso', { exact: true }).fill('admin@example.invalid')
+    await page.getByLabel('Senha definida', { exact: true }).fill('Synthetic-invite-password-for-test')
+    await page.getByRole('button', { name: 'Retomar preparação' }).click()
+    await page.getByRole('button', { name: 'Configurar autenticador' }).click()
+    await page.getByLabel('Chave manual').waitFor()
+    assert.equal(await page.getByLabel('Chave manual').inputValue(), manualKey)
+    assert.equal(page.url().includes(onboardingCode), false)
+    await page.getByLabel('Código do autenticador').fill('123456')
+    await page.getByRole('button', { name: 'Confirmar autenticador' }).click()
+    await page.getByRole('status').filter({ hasText: 'MFA configurado. Seu acesso continua inativo' }).waitFor()
+    assert.equal(mfaConfirmed, true)
+    await page.getByRole('heading', { name: 'Guarde os códigos de recuperação' }).waitFor()
+    assert.equal(await page.locator('li code').count(), 10)
+    const mfaStorage = await page.evaluate(() => JSON.stringify({ local: { ...localStorage }, session: { ...sessionStorage } }))
+    for (const secret of [onboardingCode, manualKey, 'ABCD-EFGH-0000']) assert.equal(mfaStorage.includes(secret), false)
+    await page.getByRole('button', { name: 'Já guardei; ocultar códigos' }).click()
+    assert.equal(await page.locator('li code').count(), 0)
     await page.screenshot({ path: resolve(output, `company-invite-${width}.png`), fullPage: true })
     await page.goto(`${base}/?screen=creator`)
     await page.reload()
@@ -162,5 +198,5 @@ try {
     assert.deepEqual(errors, []); assert.deepEqual(unexpected, [])
     await page.close(); checks++
   }
-  console.log(`Creator: ${checks} responsive flows passed (login + MFA, draft create/edit, pending administrator, invite issue/revoke, password definition without activation or stored secrets, session restore, logout).`)
+  console.log(`Creator: ${checks} responsive flows passed (login + MFA, draft create/edit, pending administrator, invite issue/revoke, password definition + resumed MFA enrollment and recovery codes without activation or stored secrets, session restore, logout).`)
 } finally { await browser?.close(); await new Promise(done => server.close(done)) }
