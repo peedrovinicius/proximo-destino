@@ -17,6 +17,8 @@ import { TenancyModule } from '../tenancy/tenancy.module'
 import { CompanyClientsService } from '../tenancy/company-clients.service'
 import { CompanyScopeService } from '../tenancy/company-scope.service'
 import { revealDocument } from '../security/sensitive-data'
+import { CompanyTripsService } from '../tenancy/company-trips.service'
+import { listBusTemplates } from '../trips/bus-templates'
 import { ClientsController } from '../clients/clients.controller'
 import { ClientsService } from '../clients/clients.service'
 import { AdminTripsController } from '../trips/admin-trips.controller'
@@ -79,7 +81,8 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
       controllers: [ClientsController, AdminTripsController, AdminController], providers: [
         { provide: ClientsService, useValue: { list: () => ['legacy'], findById: () => ({ id: 'legacy' }),
           create: () => { legacyWrites++; return { id: 'legacy' } }, credits: () => ['legacy'] } },
-        { provide: TripsService, useValue: { listAdmin: () => ['legacy'], create: () => { legacyWrites++; return { id: 'legacy' } } } },
+        { provide: TripsService, useValue: { listAdmin: () => ['legacy'], busTemplates: () => listBusTemplates(),
+          create: () => { legacyWrites++; return { id: 'legacy' } } } },
         { provide: AdminService, useValue: { listReservations: () => ['legacy'], dashboard: () => ({ legacy: true }),
           createReservation: () => { legacyWrites++; return { id: 'legacy' } } } },
       ],
@@ -123,7 +126,7 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
     for (const path of ['/admin/dashboard', `/admin/clients/${clients[0]}/credits`, '/admin/payments/orders']) {
       assert.equal((await call(path)).status, 403)
     }
-    for (const path of ['/admin/trips', '/admin/reservations']) assert.equal((await call(path, tokens[0], 'POST')).status, 403)
+    assert.equal((await call('/admin/reservations', tokens[0], 'POST')).status, 403)
     assert.equal(legacyWrites, 0)
   })
   it('never falls back to legacy routes for an unbound session of a managed user', async () => {
@@ -214,6 +217,64 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
       assert.equal((await call('/admin/clients', tokens[0], 'POST', { fullName: 'Denied' })).status, 403)
       assert.equal((await call(`/admin/clients/${clients[2]}`, tokens[0], 'PATCH', { fullName: 'Denied' })).status, 403)
     } finally {
+      await prisma.user.update({ where: { id: users[0] }, data: { role: 'ADMIN' } })
+      await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { role: 'ADMIN' } })
+    }
+  })
+  const draft = { title: 'Synthetic draft', origin: 'Fortaleza', destination: 'Recife', departureDate: '2027-01-01',
+    returnDate: '2027-01-03', busTemplate: 'CUSTOM', capacity: 16, deckCount: 2, lowerDeckCapacity: 8,
+    priceCents: 15000, blockedSeats: [1] }
+  it('creates a company draft with validated vehicle configuration and no publication', async () => {
+    assert.equal((await call('/admin/trips/bus-templates')).status, 200)
+    const response = await call('/admin/trips', tokens[0], 'POST', draft)
+    assert.equal(response.status, 201); const result = await response.json() as { id: string; status: string; capacity: number }
+    trips.push(result.id); assert.equal(result.status, 'DRAFT'); assert.equal(result.capacity, 16)
+    assert.equal((await prisma.trip.findUniqueOrThrow({ where: { id: result.id } })).companyId, companies[0])
+    assert.equal('companyId' in result, false); assert.equal('imageData' in result, false)
+    assert.equal(legacyWrites, 0)
+  })
+  it('edits only own drafts and preserves unrelated vehicle fields', async () => {
+    const response = await call(`/admin/trips/${trips[2]}`, tokens[0], 'PATCH', { title: 'Synthetic revised' })
+    assert.equal(response.status, 200)
+    const row = await prisma.trip.findUniqueOrThrow({ where: { id: trips[2] } })
+    assert.equal(row.title, 'Synthetic revised'); assert.equal(row.capacity, 16)
+    assert.deepEqual(row.blockedSeats, [1]); assert.equal(row.lowerDeckCapacity, 8)
+    for (const id of [trips[1], 'nonexistent']) assert.equal((await call(`/admin/trips/${id}`, tokens[0], 'PATCH', { title: 'Denied' })).status, 404)
+  })
+  it('rejects ownership injection, publication and invalid dates, prices or bus configuration', async () => {
+    for (const extra of [{ companyId: companies[1] }, { status: 'ACTIVE' }, { status: 'SCHEDULED' },
+      { title: ' ' }, { returnDate: '2026-01-01' }, { priceCents: 2147483648 }, { blockedSeats: [17] },
+      { lowerDeckCapacity: 16 }, { deckCount: 1, vehicleFeatures: [{ type: 'DOOR', deck: 2, position: 'FRONT', side: 'LEFT' }] }]) {
+      assert.equal((await call('/admin/trips', tokens[0], 'POST', { ...draft, ...extra })).status, 400)
+    }
+    assert.equal((await call(`/admin/trips/${trips[2]}`, tokens[0], 'PATCH', { status: 'ACTIVE' })).status, 400)
+    assert.equal((await call(`/admin/trips/${trips[2]}`, tokens[0], 'PATCH', { departureDate: '2027-02-01' })).status, 400)
+  })
+  it('refuses editing a non-draft or a draft with reservations', async () => {
+    await prisma.trip.update({ where: { id: trips[2] }, data: { status: 'ACTIVE' } })
+    assert.equal((await call(`/admin/trips/${trips[2]}`, tokens[0], 'PATCH', { title: 'Denied' })).status, 409)
+    await prisma.trip.update({ where: { id: trips[2] }, data: { status: 'DRAFT' } })
+    const reservation = await prisma.reservation.create({ data: { companyId: companies[0], clientId: clients[0], tripId: trips[2] } })
+    reservations.push(reservation.id)
+    assert.equal((await call(`/admin/trips/${trips[2]}`, tokens[0], 'PATCH', { title: 'Denied' })).status, 409)
+    assert.equal((await prisma.trip.findUniqueOrThrow({ where: { id: trips[2] } })).title, 'Synthetic revised')
+  })
+  it('rolls back a draft if audit insertion fails', async () => {
+    const failing = new CompanyTripsService({ $transaction: (callback: (tx: unknown) => Promise<unknown>) =>
+      prisma.$transaction(tx => callback({ $queryRaw: tx.$queryRaw.bind(tx), trip: tx.trip,
+        authAuditEvent: { create: async () => { throw new Error('synthetic trip audit failure') } } }))
+    } as unknown as PrismaService, new CompanyScopeService(prisma))
+    const title = `Rollback trip ${suffix}`
+    await assert.rejects(failing.create(users[0], sessions[0], { title, origin: 'Synthetic', destination: 'Synthetic',
+      departureDate: new Date('2027-01-01') }), /synthetic trip audit failure/)
+    assert.equal(await prisma.trip.count({ where: { companyId: companies[0], title } }), 0)
+  })
+  it('denies draft creation for finance and sessions without company scope', async () => {
+    assert.equal((await call('/admin/trips', unboundToken, 'POST', draft)).status, 403)
+    await prisma.user.update({ where: { id: users[0] }, data: { role: 'FINANCE' } })
+    await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { role: 'FINANCE' } })
+    try { assert.equal((await call('/admin/trips', tokens[0], 'POST', draft)).status, 403) }
+    finally {
       await prisma.user.update({ where: { id: users[0] }, data: { role: 'ADMIN' } })
       await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { role: 'ADMIN' } })
     }

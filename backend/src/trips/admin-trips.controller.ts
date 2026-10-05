@@ -37,15 +37,18 @@ import {
 } from './dto/admin-trip.dto'
 import { TripsService } from './trips.service'
 import { CompanyDataService } from '../tenancy/company-data.service'
-import { CompanyRead } from '../tenancy/company-access.decorator'
+import { CompanyRead, CompanyWrite } from '../tenancy/company-access.decorator'
+import { CompanyTripsService } from '../tenancy/company-trips.service'
 
 @Controller('admin/trips')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(...STAFF_ROLES)
 export class AdminTripsController {
-  constructor(private readonly trips: TripsService, private readonly scoped: CompanyDataService) {}
+  constructor(private readonly trips: TripsService, private readonly scoped: CompanyDataService,
+    private readonly scopedWrites: CompanyTripsService) {}
 
   @Get('bus-templates')
+  @CompanyRead()
   @Roles(...OPERATIONS_ROLES)
   busTemplates() {
     return this.trips.busTemplates()
@@ -66,11 +69,13 @@ export class AdminTripsController {
   }
 
   @Post()
+  @CompanyWrite()
   @Roles(...OPERATIONS_ROLES)
   create(
     @Body() body: CreateTripDto,
     @Req() request: AuthenticatedRequest,
   ) {
+    if (request.companyScope) return this.scopedWrites.create(request.user.id, request.user.sessionId, body)
     return this.trips.create(body, request.user.id)
   }
 
@@ -215,12 +220,14 @@ export class AdminTripsController {
   }
 
   @Patch(':id')
+  @CompanyWrite()
   @Roles(...OPERATIONS_ROLES)
   update(
     @Param('id') id: string,
     @Body() body: UpdateTripDto,
     @Req() request: AuthenticatedRequest,
   ) {
+    if (request.companyScope) return this.scopedWrites.update(request.user.id, request.user.sessionId, id, body)
     return this.trips.update(id, body, request.user.id)
   }
 }

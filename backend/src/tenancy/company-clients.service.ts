@@ -5,6 +5,7 @@ import { CompanyScopeService } from './company-scope.service'
 import { CreateClientDto } from '../clients/dto/create-client.dto'
 import { UpdateClientDto } from '../clients/dto/update-client.dto'
 import { encryptedDocumentFields, hashSensitive } from '../security/sensitive-data'
+import { lockCompanyWrite } from './company-write-lock'
 
 const fields = { id: true, fullName: true, email: true, phone: true, birthDate: true } as const
 
@@ -43,18 +44,7 @@ export class CompanyClientsService {
     }
     try {
       return await this.prisma.$transaction(async tx => {
-        // Revalidate and hold authorization rows until commit; serialize CPF checks per company.
-        const authorized = await tx.$queryRaw<{ id: string }[]>`
-          SELECT c."id" FROM "Company" c
-          JOIN "AuthSession" s ON s."companyId" = c."id"
-          JOIN "User" u ON u."id" = s."userId"
-          JOIN "CompanyMembership" m ON m."companyId" = c."id" AND m."userId" = u."id"
-          WHERE c."id" = ${scope.companyId} AND c."status" = 'ACTIVE'
-            AND s."id" = ${sessionId} AND s."userId" = ${userId} AND s."revokedAt" IS NULL
-            AND s."expiresAt" > clock_timestamp() AND u."isActive" = true AND m."isActive" = true
-            AND u."role"::text = ${scope.role} AND m."role"::text = ${scope.role}
-          FOR UPDATE OF c FOR SHARE OF s, u, m`
-        if (!authorized.length) throw new ForbiddenException('Sessão sem acesso ativo à empresa')
+        await lockCompanyWrite(tx, scope)
         if (id && !await tx.client.findFirst({ where: { id, companyId: scope.companyId }, select: { id: true } })) {
           throw new NotFoundException('Cliente não encontrado')
         }

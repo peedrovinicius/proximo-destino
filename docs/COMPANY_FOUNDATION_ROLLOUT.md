@@ -77,8 +77,19 @@ sem notas privadas, documentos, hashes ou credenciais. CPF omitido na edição
 continuam recusados até seu próprio isolamento. Nenhuma conta de cliente ou
 sessão de portal é criada por esse cadastro.
 
+POST `/admin/trips` e PATCH `/admin/trips/:id` permitem ADMIN/AGENT cadastrar
+e editar somente viagens DRAFT da própria empresa. Publicação é recusada;
+editar viagem com reservas ou assentos atribuídos também é recusado. Datas,
+preço, modelo, capacidade, andares, instalações e assentos bloqueados são
+validados. GET `/admin/trips/bus-templates` libera somente o catálogo estático
+de modelos após validação da sessão. Upload, atribuição e movimento de assentos,
+embarque, cancelamento e conclusão continuam bloqueados para contas de empresa.
+Gravação e auditoria são atômicas; o bloqueio de autorização transacional é
+compartilhado com o cadastro de clientes. Não existe conta operacional ativa
+criada pelo Criador nesta etapa.
+
 O guard nega às contas de empresa todas as outras rotas administrativas
-protegidas por ele, incluindo gravações de viagens/reservas, dashboard e
+protegidas por ele, incluindo gravações de reservas, publicação de viagens, dashboard e
 financeiro. Consultar/revogar as próprias sessões e logout também permanecem
 disponíveis. O marcador
 persistente `User.companyManaged` é definido pelo vínculo e não pode voltar a
