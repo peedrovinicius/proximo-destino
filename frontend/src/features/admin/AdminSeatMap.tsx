@@ -198,7 +198,7 @@ export function AdminSeatMapDialog({
         return
       }
 
-      if (occupied.has(seatNumber)) {
+      if (occupied.has(seatNumber) || (data?.preparatory && blocked.has(seatNumber))) {
         setError('Escolha uma poltrona livre para fazer a troca.')
         return
       }
@@ -351,6 +351,17 @@ export function AdminSeatMapDialog({
     }
   }
 
+  async function releaseDraftSeat() {
+    if (!data?.preparatory || selectedSeat === null || assigning) return
+    setAssigning(true); setError('')
+    try {
+      setData(await adminApi.releaseDraftSeat(accessToken, tripId, selectedSeat))
+      setMovingFromSeat(null); setMoveTargetSeat(null)
+      await onChanged()
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Falha ao liberar a poltrona preparatória.') }
+    finally { setAssigning(false) }
+  }
+
   const capacity = data?.capacity ?? 0
   const lowerCapacity =
     data?.deckCount === 2 &&
@@ -400,7 +411,8 @@ export function AdminSeatMapDialog({
           </button>
         </header>
 
-        {error ? <div className="admin-seat-manager-error">{error}</div> : null}
+        {error ? <div className="admin-seat-manager-error" role="alert">{error}</div> : null}
+        {data?.preparatory ? <p>Mapa preparatório: selecione um cliente com reserva pendente nesta viagem. A publicação e a compra continuam indisponíveis.</p> : null}
 
         {data && !data.enabled ? (
           <div className="admin-seat-manager-empty">
@@ -556,14 +568,14 @@ export function AdminSeatMapDialog({
                       {' · '}
                       {assignment.reservation.status}
                     </p>
-                    <small>
+                    {!data.preparatory ? <small>
                       {assignment.passenger?.document
                         ? 'Documento: ' + assignment.passenger.document
                         : assignment.passenger
                           ? 'Documento não informado'
                           : 'Passageiro específico ainda não identificado'}
-                    </small>
-                    <small>{assignment.reservation.client.email || 'Sem e-mail'} · {assignment.reservation.client.phone || 'Sem telefone'}</small>
+                    </small> : null}
+                    {!data.preparatory ? <small>{assignment.reservation.client.email || 'Sem e-mail'} · {assignment.reservation.client.phone || 'Sem telefone'}</small> : null}
                     <span className={'admin-seat-source admin-seat-source--' + assignment.source.toLowerCase()}>
                       {assignment.source === 'ONLINE_PURCHASE'
                         ? 'Compra online · protegida'
@@ -581,17 +593,19 @@ export function AdminSeatMapDialog({
                         Mover passageiro
                       </button>
                     ) : null}
+                    {data.preparatory ? <button type="button" disabled={assigning || movingSeat}
+                      onClick={() => void releaseDraftSeat()}>Liberar poltrona preparatória</button> : null}
                   </>
                 ) : blocked.has(selectedSeat) ? (
                   <>
                     <span className="admin-seat-detail-kicker">Assento {selectedSeat}</span>
                     <strong>Bloqueado pela agência</strong>
-                    <p>Este lugar não pode ser comprado pelo site enquanto estiver bloqueado. O Admin ainda pode cadastrar um cliente nele.</p>
+                    <p>{data.preparatory ? 'Poltrona bloqueada. Não pode receber uma atribuição preparatória.' : 'Este lugar não pode ser comprado pelo site enquanto estiver bloqueado. O Admin ainda pode cadastrar um cliente nele.'}</p>
                     <div className="admin-seat-detail-actions">
-                      <button type="button" onClick={() => setAssignOpen(true)}>
+                      {!data.preparatory ? <button type="button" onClick={() => setAssignOpen(true)}>
                         <UserPlus size={15} />
                         Cadastrar cliente
-                      </button>
+                      </button> : null}
                       <button type="button" className="secondary" onClick={() => void toggleSeatBlock(selectedSeat)}>
                         <Unlock size={15} />
                         Liberar assento
@@ -602,7 +616,7 @@ export function AdminSeatMapDialog({
                   <>
                     <span className="admin-seat-detail-kicker">Assento {selectedSeat}</span>
                     <strong>Poltrona disponível</strong>
-                    <p>Cadastre um cliente diretamente nesta poltrona ou mantenha o lugar fora da venda pública.</p>
+                    <p>{data.preparatory ? 'Atribua o passageiro principal de uma reserva pendente existente nesta viagem.' : 'Cadastre um cliente diretamente nesta poltrona ou mantenha o lugar fora da venda pública.'}</p>
                     <div className="admin-seat-detail-actions">
                       <button type="button" onClick={() => setAssignOpen(true)}>
                         <UserPlus size={15} />
@@ -689,13 +703,13 @@ export function AdminSeatMapDialog({
                     >
                       Cliente existente
                     </button>
-                    <button
+                    {!data.preparatory ? <button
                       type="button"
                       className={assignMode === 'new' ? 'active' : ''}
                       onClick={() => setAssignMode('new')}
                     >
                       Novo cliente
-                    </button>
+                    </button> : null}
                   </div>
 
                   {assignMode === 'existing' ? (

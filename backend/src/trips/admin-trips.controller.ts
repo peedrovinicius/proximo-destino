@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   ForbiddenException,
   Param,
   Patch,
@@ -106,6 +107,7 @@ export class AdminTripsController {
   }
 
   @Get(':id/seats')
+  @Header('Cache-Control', 'no-store')
   @CompanyRead()
   @Roles(...ADMIN_ONLY_ROLES)
   seatMap(@Param('id') id: string, @Req() request: AuthenticatedRequest) {
@@ -114,6 +116,7 @@ export class AdminTripsController {
   }
 
   @Post(':id/seats/:seatNumber/assignment')
+  @CompanyWrite()
   @Roles(...ADMIN_ONLY_ROLES)
   assignSeatClient(
     @Param('id') id: string,
@@ -121,10 +124,12 @@ export class AdminTripsController {
     @Body() body: AssignSeatClientDto,
     @Req() request: AuthenticatedRequest,
   ) {
+    if (request.companyScope) return this.scopedWrites.assignDraftSeat(request.user.id, request.user.sessionId, id, seatNumber, body)
     return this.trips.assignClientToSeat(id, seatNumber, body, request.user.id)
   }
 
   @Patch(':id/seats/:seatNumber/assignment')
+  @CompanyWrite()
   @Roles(...ADMIN_ONLY_ROLES)
   moveSeatAssignment(
     @Param('id') id: string,
@@ -132,12 +137,22 @@ export class AdminTripsController {
     @Body() body: MoveSeatAssignmentDto,
     @Req() request: AuthenticatedRequest,
   ) {
+    if (request.companyScope) return this.scopedWrites.moveDraftSeat(request.user.id, request.user.sessionId, id, seatNumber, body.toSeatNumber)
     return this.trips.moveSeatAssignment(
       id,
       seatNumber,
       body.toSeatNumber,
       request.user.id,
     )
+  }
+
+  @Delete(':id/seats/:seatNumber/assignment')
+  @CompanyWrite()
+  @Roles(...ADMIN_ONLY_ROLES)
+  releaseDraftSeat(@Param('id') id: string, @Param('seatNumber', ParseIntPipe) seatNumber: number,
+    @Req() request: AuthenticatedRequest) {
+    if (!request.companyScope) throw new ForbiddenException('Liberação preparatória exige sessão de empresa')
+    return this.scopedWrites.releaseDraftSeat(request.user.id, request.user.sessionId, id, seatNumber)
   }
 
   @Patch(':id/seats/:seatNumber')

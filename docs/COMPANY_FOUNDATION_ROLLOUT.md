@@ -110,13 +110,13 @@ lista e detalhe mantêm capacidade, modelo, andares, instalações, layout e ass
 bloqueados, sem imagem binária, identificadores internos de posse ou passageiros.
 IDs externos ou inexistentes retornam 404. A nova consulta exige sessão de empresa.
 ADMIN pode consultar GET `/admin/trips/:id/seats` somente em viagem DRAFT da própria
-empresa sem atribuições. O mapa contém configuração, bloqueios e disponibilidade,
-sem identidades de passageiros. PATCH `/admin/trips/:id/seats/:seatNumber` bloqueia
+empresa com atribuições preparatórias válidas. O mapa contém configuração, bloqueios,
+disponibilidade e os nomes mínimos das reservas da própria empresa. PATCH `/admin/trips/:id/seats/:seatNumber` bloqueia
 ou libera assento somente em rascunho sem reservas nem atribuições, com autorização
 e viagem bloqueadas na transação. Concorrência preserva ambos os bloqueios; falha de
 auditoria desfaz a alteração. Este mapa preparatório não habilita escolha/atribuição
 operacional de assentos ou publicação.
-Upload, atribuição e movimento de assentos, embarque, cancelamento e conclusão
+Upload, atribuição e movimento operacionais de assentos, embarque, cancelamento e conclusão
 continuam bloqueados para contas de empresa.
 Gravação e auditoria são atômicas; o bloqueio de autorização transacional é
 compartilhado com o cadastro de clientes. Não existe conta operacional ativa
@@ -133,7 +133,7 @@ e qualquer movimentação financeira permanecem bloqueadas.
 GET/PATCH `/admin/reservations/:id/passengers` isolam leitura e edição por
 reserva, cliente e viagem da própria empresa. ADMIN edita nome, nascimento e
 documento; documento é criptografado e não aparece na resposta. IDs externos,
-duplicados e atribuição de assentos são recusados. Edição exige reserva PENDING
+duplicados e edição de passageiros com assentos atribuídos são recusados. Edição exige reserva PENDING
 e viagem DRAFT, sem código de portal, financeiro, pedido, documentos, cotações,
 serviços, pagamentos ou créditos.
 
@@ -192,8 +192,8 @@ remover o valor de enum do PostgreSQL durante uma reversão operacional.
 
 1. Hierarquia: estrutura e rotas do Criador nesta proposta; convite expirante para definição de senha incluído; MFA do ADMIN pendente incluído; faltam ativação e aceite ponta a ponta.
 2. Ativação: diagnóstico de bloqueios, sem atalho para ativar contas.
-3. Isolamento: passageiros e cancelamento preparatório adicionados; portal,
-   publicação, assentos, financeiro e integrações ainda impedem ativação.
+3. Isolamento: passageiros, cancelamento e assentos preparatórios adicionados; portal,
+   publicação, assentos operacionais, financeiro e integrações ainda impedem ativação.
 4. Banco restrito: `backend/scripts/security/check-runtime.sql` consulta somente
    leitura, com a conexão da API: poderes administrativos, propriedade,
    memberships, privilégios, auditoria e migrations. Não provisiona papel nem
@@ -213,6 +213,22 @@ backfill/aceite revisado.
 
 Limitações já conhecidas (Mercado Pago/e-mail não ativados e backup externo
 pendente) não são resolvidas nem alteradas por esta mudança.
+
+## Assentos de reservas preparatórias
+
+ADMIN pode atribuir a poltrona do passageiro principal de reserva PENDING existente,
+de um passageiro, na própria empresa e em viagem DRAFT futura. POST na rota de
+assignment aceita somente clientId; não cria cliente/reserva automaticamente.
+PATCH move para poltrona livre e não bloqueada. DELETE libera apenas a atribuição
+preparatória, preservando reserva e passageiro. A interface distingue este mapa,
+oculta cadastro implícito e permite liberar a poltrona preparatória.
+
+Autorização, viagem, cliente, reserva e passageiro são bloqueados na transação.
+Compra, portal, financeiro, documentos, serviços e créditos impedem a alteração.
+Concorrência não sobrepõe ocupantes; alteração e auditoria são atômicas. O mapa usa
+snapshot RepeatableRead, omite documentos e contatos e recusa vínculos inconsistentes.
+Não habilita publicação, compra, embarque nem alocação em viagens operacionais.
+É preciso liberar a atribuição antes de editar passageiros ou cancelar essa reserva.
 
 ## Convite para definir senha do ADMIN pendente
 

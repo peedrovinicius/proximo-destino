@@ -316,6 +316,7 @@ export type AdminPurchaseOrder = {
 
 export type AdminSeatMap = {
   enabled: boolean
+  preparatory?: boolean
   trip: {
     id: string
     title: string
@@ -338,7 +339,7 @@ export type AdminSeatMap = {
       id: string
       sequence: number
       fullName: string | null
-      document: string | null
+      document?: string | null
     } | null
     source: 'ONLINE_PURCHASE' | 'PUBLIC_RESERVATION' | 'ADMIN_RESERVATION'
     reservation: {
@@ -1003,6 +1004,10 @@ export const adminApi = {
       token,
       `/admin/trips/${encodeURIComponent(tripId)}/seats`,
     ),
+
+  releaseDraftSeat: (token: string, tripId: string, seatNumber: number) =>
+    adminFetch<AdminSeatMap>(token,
+      `/admin/trips/${encodeURIComponent(tripId)}/seats/${seatNumber}/assignment`, { method: 'DELETE' }),
 
   setSeatBlocked: (
     token: string,
