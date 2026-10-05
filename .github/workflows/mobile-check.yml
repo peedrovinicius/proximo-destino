@@ -32,6 +32,8 @@ jobs:
         run: node scripts/mobile-check.mjs
       - name: Check isolated creator onboarding at mobile and desktop widths
         run: node scripts/creator-check.mjs
+      - name: Check preparatory company seat assignment, movement and release
+        run: node scripts/company-seat-check.mjs
       - name: Verify first-party session restoration through preview proxy
         run: node scripts/session-check.mjs
       - name: Save synthetic browser evidence

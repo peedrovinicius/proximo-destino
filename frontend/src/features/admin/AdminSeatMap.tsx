@@ -543,9 +543,9 @@ export function AdminSeatMapDialog({
               </div>
 
               <div className="admin-seat-manager-legend">
-                <span><i className="seat-legend-swatch available" />Disponível: cadastrar cliente ou bloquear</span>
+                <span><i className="seat-legend-swatch available" />{data.preparatory ? 'Disponível: atribuir reserva pendente' : 'Disponível: cadastrar cliente ou bloquear'}</span>
                 <span><i className="seat-legend-swatch occupied" />Ocupado: identificar ou trocar poltrona</span>
-                <span><i className="seat-legend-swatch blocked" />Bloqueado: pode ser liberado ou usado pelo Admin</span>
+                <span><i className="seat-legend-swatch blocked" />{data.preparatory ? 'Bloqueado: não pode receber passageiro' : 'Bloqueado: pode ser liberado ou usado pelo Admin'}</span>
               </div>
 
               <div className="admin-seat-detail">
@@ -620,7 +620,7 @@ export function AdminSeatMapDialog({
                     <div className="admin-seat-detail-actions">
                       <button type="button" onClick={() => setAssignOpen(true)}>
                         <UserPlus size={15} />
-                        Cadastrar cliente
+                        {data.preparatory ? 'Atribuir cliente' : 'Cadastrar cliente'}
                       </button>
                       <button type="button" className="secondary" onClick={() => void toggleSeatBlock(selectedSeat)}>
                         <Lock size={15} />
@@ -688,7 +688,7 @@ export function AdminSeatMapDialog({
                   <div className="admin-seat-client-panel-head">
                     <div>
                       <span>Poltrona {selectedSeat}</span>
-                      <strong>Cadastrar cliente</strong>
+                      <strong>{data.preparatory ? 'Atribuir reserva pendente' : 'Cadastrar cliente'}</strong>
                     </div>
                     <button type="button" onClick={() => setAssignOpen(false)} aria-label="Fechar cadastro">
                       <X size={16} />
@@ -735,7 +735,7 @@ export function AdminSeatMapDialog({
                               onClick={() => setSelectedClientId(client.id)}
                             >
                               <strong>{client.fullName}</strong>
-                              <small>{client.email || client.phone || 'Sem contato informado'}</small>
+                              {!data.preparatory ? <small>{client.email || client.phone || 'Sem contato informado'}</small> : null}
                             </button>
                           ))
                         ) : (
