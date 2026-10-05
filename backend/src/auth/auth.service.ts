@@ -294,8 +294,7 @@ export class AuthService {
       const user = await this.prisma.user.findUnique({
         where: { id: payload.sub },
         select: { id: true, email: true, role: true, isActive: true,
-          companyManaged: true,
-          companyMemberships: { select: { id: true }, take: 1 } },
+          companyManaged: true },
       })
       if (!user?.isActive) {
         throw new UnauthorizedException('Token inválido')
@@ -316,7 +315,10 @@ export class AuthService {
         role: user.role,
         sessionId: payload.sid,
         companyId: persistedSession.companyId,
-        requiresCompanyScope: user.companyManaged || user.companyMemberships.length > 0,
+        // The database marks every membership insertion and forbids resetting this
+        // marker, including after deletion/revocation. Legacy verification therefore
+        // does not require read access to tenant membership tables.
+        requiresCompanyScope: user.companyManaged,
       }
     } catch {
       throw new UnauthorizedException('Token inválido')

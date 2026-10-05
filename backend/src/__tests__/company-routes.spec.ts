@@ -354,6 +354,7 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
   })
   it('cancels only own non-operational drafts, refuses bonus and frees capacity without deleting history', async () => {
     const id = preparedReservationId
+    const beforeActive = await prisma.reservation.count({ where: { tripId: trips[2], status: { not: 'CANCELLED' } } })
     assert.equal((await call(`/admin/reservations/${reservations[1]}/cancel`, tokens[0], 'POST')).status, 404)
     assert.equal((await call(`/admin/reservations/${id}/cancel`, tokens[0], 'POST', { creditAsBonus: true })).status, 400)
     await prisma.reservation.update({ where: { id }, data: { accessCodeHash: 'synthetic-code' } })
@@ -365,7 +366,7 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
     assert.equal(await prisma.reservationPassenger.count({ where: { reservationId: id } }), 1)
     assert.equal((await call(`/admin/reservations/${id}/cancel`, tokens[0], 'POST')).status, 409)
     assert.equal((await call(`/admin/reservations/${id}/passengers`, tokens[0], 'PATCH', { passengers: [{ id: 'foreign' }] })).status, 409)
-    assert.equal(await prisma.reservation.count({ where: { tripId: trips[2], status: { not: 'CANCELLED' } } }), 0)
+    assert.equal(await prisma.reservation.count({ where: { tripId: trips[2], status: { not: 'CANCELLED' } } }), beforeActive - 1)
     assert.equal(await prisma.authAuditEvent.count({ where: { userId: users[0], eventType: 'OPS_COMPANY_DRAFT_RESERVATION_CANCELLED' } }), 1)
     assert.equal(legacyWrites, 0)
   })
