@@ -500,6 +500,8 @@ export type AdminManualPayment = {
 }
 
 export type AdminPaymentsDashboard = {
+  summaryOnly?: boolean
+  coverage?: 'ONLINE_ORDERS'
   summary: {
     totalOrders: number
     paidOrders: number

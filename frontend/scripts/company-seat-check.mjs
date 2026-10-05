@@ -51,6 +51,10 @@ try {
         if (path === '/admin/trips') return respond(200, [trip])
         if (path === '/admin/clients') return respond(200, [client])
         if (path === '/admin/reservations') return respond(200, [])
+        if (path === '/admin/payments/orders') return respond(200, { summaryOnly: true, coverage: 'ONLINE_ORDERS',
+          summary: { totalOrders: 206, paidOrders: 202, pendingOrders: 1, refundedOrders: 1, cancelledOrders: 1, expiredOrders: 1,
+            paidCents: 20900, pendingCents: 500, refundedCents: 500, manualReceivedCount: 0, manualReceivedCents: 0,
+            manualReversedCount: 0, manualReversedCents: 0 }, orders: [], manualPayments: [] })
         if (path === '/admin/trips/bus-templates') return respond(200, [])
         if (path === `/admin/trips/${trip.id}/audit`) return respond(200, { trip, preparatory: true, limit: 100, hasMore: true,
           events: [{ id: `event-${company}`, eventType: 'OPS_COMPANY_DRAFT_SEAT_MOVE', createdAt: '2026-10-05T12:00:00Z',
@@ -128,10 +132,16 @@ try {
         await page.getByText('Poltrona 1 → Poltrona 2', { exact: true }).waitFor()
         await page.getByRole('status').filter({ hasText: 'há registros anteriores não exibidos' }).waitFor()
         assert.equal((await page.getByRole('dialog').innerText()).includes('admin@example.invalid'), false)
+        await page.goto(`${base}/?screen=admin&tab=payments`)
+        await page.getByText('Resumo somente leitura dos pedidos online da própria empresa.', { exact: false }).waitFor()
+        assert.equal(await page.getByPlaceholder('Cliente, viagem, reserva ou pedido').count(), 0)
+        assert.equal(await page.locator('.admin-payment-filters').count(), 0)
+        await page.getByText(/209,00/).waitFor()
+        assert.equal((await page.locator('.admin-payments-workspace').innerText()).includes('manual(is)'), false)
         assert.deepEqual(writes.map(row => row.method), ['POST', 'POST', 'PATCH', 'DELETE', 'DELETE'])
         assert.deepEqual(errors, []); assert.deepEqual(unexpected, [])
         await page.screenshot({ path: `${output}/company-seats-${company}-${width}.png`, fullPage: true })
-        console.log(`PASS company-seats-${company}-${width}: assignment conflict/retry, blocked move, move, release failure/retry, reload, minimal display, preparatory audit and history limit`)
+        console.log(`PASS company-seats-${company}-${width}: seats, preparatory audit, online-only financial summary with blocked details`)
       } catch (error) {
         await page.screenshot({ path: `${output}/company-seats-${company}-${width}-failed.png`, fullPage: true }).catch(() => {})
         throw error

@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Param,
   Patch,
   Post,
@@ -78,8 +79,11 @@ export class AdminController {
   }
 
   @Get('payments/orders')
+  @Header('Cache-Control', 'no-store')
+  @CompanyRead()
   @Roles(...FINANCE_ROLES)
-  payments() {
+  payments(@Req() request: AuthenticatedRequest) {
+    if (request.companyScope) return this.scoped.onlinePaymentsSummary(request.user.id, request.user.sessionId)
     return this.admin.paymentsDashboard()
   }
 

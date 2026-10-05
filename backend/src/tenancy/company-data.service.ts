@@ -1,6 +1,7 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import { CompanyScopeService } from './company-scope.service'
+import { lockCompanyWrite } from './company-write-lock'
 
 const clientFields = { id: true, fullName: true, email: true, phone: true, birthDate: true } as const
 const tripFields = { id: true, title: true, origin: true, destination: true,
@@ -24,6 +25,41 @@ function tripSearch(query: string) {
 @Injectable()
 export class CompanyDataService {
   constructor(private readonly prisma: PrismaService, private readonly scopes: CompanyScopeService) {}
+
+  async onlinePaymentsSummary(userId: string, sessionId: string) {
+    const scope = await this.scopes.resolveSession(userId, sessionId)
+    if (scope.role === 'AGENT') throw new ForbiddenException('Perfil sem acesso ao resumo financeiro')
+    return this.prisma.$transaction(async tx => {
+      await lockCompanyWrite(tx, scope)
+      const where = { reservation: { companyId: scope.companyId,
+        client: { companyId: scope.companyId }, trip: { companyId: scope.companyId } } }
+      const invalid = await tx.purchaseOrder.count({ where: { ...where, OR: [
+        { totalCents: { lt: 0 } }, { refundedCents: { lt: 0 } },
+        { refundedCents: { gt: tx.purchaseOrder.fields.totalCents } },
+      ] } })
+      if (invalid) throw new ConflictException('Pedidos com valores inconsistentes impedem o resumo financeiro')
+      const rows = await tx.purchaseOrder.groupBy({ by: ['status'], where,
+        _count: { _all: true }, _sum: { totalCents: true, refundedCents: true } })
+      const summary = { totalOrders: 0, paidOrders: 0, pendingOrders: 0, refundedOrders: 0,
+        cancelledOrders: 0, expiredOrders: 0, paidCents: 0, pendingCents: 0, refundedCents: 0,
+        manualReceivedCount: 0, manualReceivedCents: 0, manualReversedCount: 0, manualReversedCents: 0 }
+      for (const row of rows) {
+        const count = row._count._all, total = row._sum.totalCents ?? 0, refunded = row._sum.refundedCents ?? 0
+        summary.totalOrders += count; summary.refundedCents += refunded
+        if (row.status === 'PAID' || row.status === 'PARTIALLY_REFUNDED') {
+          summary.paidOrders += count; summary.paidCents += total - refunded
+        } else if (row.status === 'PENDING_PAYMENT') {
+          summary.pendingOrders += count; summary.pendingCents += total
+        } else if (row.status === 'REFUNDED') summary.refundedOrders += count
+        else if (row.status === 'CANCELLED') summary.cancelledOrders += count
+        else if (row.status === 'EXPIRED') summary.expiredOrders += count
+      }
+      if (Object.values(summary).some(value => !Number.isSafeInteger(value))) {
+        throw new ConflictException('Valores excedem o limite seguro do resumo financeiro')
+      }
+      return { summaryOnly: true, coverage: 'ONLINE_ORDERS' as const, summary, orders: [], manualPayments: [] }
+    }, { isolationLevel: 'RepeatableRead' })
+  }
 
   async search(userId: string, sessionId: string, rawQuery: string) {
     const scope = await this.scopes.resolveSession(userId, sessionId)

@@ -216,6 +216,16 @@ pendente) não são resolvidas nem alteradas por esta mudança.
 
 ## Assentos de reservas preparatórias
 
+GET `/admin/payments/orders` permite ADMIN/FINANCE consultar somente um resumo
+dos pedidos online da própria empresa, com reserva, cliente e viagem no mesmo
+escopo. A agregação inclui todos os pedidos, sem o corte de 200 itens da lista
+legada; valores negativos ou estornos acima do total recusam a resposta.
+Autorização é revalidada na transação e mantida por SELECT locks, sem gravação
+ou acesso ao provedor. A resposta marca summaryOnly e coverage ONLINE_ORDERS;
+não inclui contatos, IDs de pedidos, identificadores do provedor ou notas.
+Recebimentos manuais não fazem parte desses totais e a interface informa isso.
+Detalhes, lançamentos, conciliação e estornos permanecem bloqueados para empresas.
+
 GET `/admin/trips/:id/audit` permite somente ADMIN consultar criação/configuração
 de viagem DRAFT própria e atribuição/movimento/liberação de assentos preparatórios.
 Exige companyId e tripId no evento e uma lista explícita de tipos permitidos;
