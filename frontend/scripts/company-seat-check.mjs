@@ -43,7 +43,8 @@ try {
         if (!url.pathname.startsWith('/api/v1/')) return route.continue()
         const respond = (status, body) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
         const path = url.pathname.slice('/api/v1'.length)
-        if (path === '/auth/refresh') return respond(200, { status: 'authenticated', accessToken: `synthetic-${company}`,
+        if (path === '/auth/refresh') return respond(200, { status: 'authenticated',
+          accessToken: `test.${Buffer.from(JSON.stringify({ role: 'ADMIN', sub: `admin-${company}` })).toString('base64url')}.test`,
           user: { id: `admin-${company}`, email: 'admin@example.invalid', role: 'ADMIN' } })
         if (path === '/admin/dashboard') return respond(200, { metrics: { clients: 1, pendingReservations: 1, activeTrips: 0, confirmedReservations: 0 }, birthdays: [] })
         if (path === '/admin/notifications') return respond(200, { unreadCount: 0, items: [] })
