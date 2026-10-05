@@ -17,6 +17,37 @@ export class CompanyTripsService {
   create(userId: string, sessionId: string, data: CreateTripDto) { return this.write(userId, sessionId, data) }
   update(userId: string, sessionId: string, id: string, data: UpdateTripDto) { return this.write(userId, sessionId, data, id) }
 
+  async preparatoryAudit(userId: string, sessionId: string, id: string) {
+    const scope = await this.scopes.resolveSession(userId, sessionId)
+    if (scope.role !== 'ADMIN') throw new ForbiddenException('Perfil sem acesso à auditoria da viagem')
+    return this.prisma.$transaction(async tx => {
+      // SELECT locks only: no event insertion, alteration or deletion on this read route.
+      await lockCompanyWrite(tx, scope)
+      const trip = await tx.trip.findFirst({ where: { id, companyId: scope.companyId },
+        select: { id: true, title: true, origin: true, destination: true, departureDate: true, status: true } })
+      if (!trip) throw new NotFoundException('Viagem não encontrada')
+      if (trip.status !== 'DRAFT') throw new ConflictException('Auditoria operacional ainda não habilitada para empresas')
+      const eventTypes = ['OPS_COMPANY_TRIP_CREATED', 'OPS_COMPANY_TRIP_UPDATED',
+        'OPS_COMPANY_DRAFT_SEAT_ASSIGN', 'OPS_COMPANY_DRAFT_SEAT_MOVE', 'OPS_COMPANY_DRAFT_SEAT_RELEASE']
+      const rows = await tx.authAuditEvent.findMany({ where: { eventType: { in: eventTypes }, AND: [
+        { metadata: { path: ['companyId'], equals: scope.companyId } },
+        { metadata: { path: ['tripId'], equals: id } },
+      ] }, select: { id: true, eventType: true, createdAt: true, metadata: true },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 101 })
+      const events = rows.slice(0, 100).map(row => {
+        const raw = row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
+          ? row.metadata as Record<string, unknown> : {}
+        const metadata: Record<string, number> = {}
+        for (const key of ['seatNumber', 'targetSeat']) {
+          const value = raw[key]
+          if (typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 80) metadata[key] = value
+        }
+        return { id: row.id, eventType: row.eventType, createdAt: row.createdAt, metadata, user: null }
+      })
+      return { trip, events, preparatory: true, limit: 100, hasMore: rows.length > 100 }
+    })
+  }
+
   async seatMap(userId: string, sessionId: string, id: string) {
     const scope = await this.scopes.resolveSession(userId, sessionId)
     if (scope.role !== 'ADMIN') throw new ForbiddenException('Perfil sem acesso ao mapa de assentos')

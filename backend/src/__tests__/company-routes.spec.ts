@@ -445,6 +445,68 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
       await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { role: 'ADMIN' } })
     }
   })
+  it('isolates preparatory trip audit, strips metadata and reports bounded history without writes', async () => {
+    const trip = await new CompanyTripsService(prisma, new CompanyScopeService(prisma)).create(users[0], sessions[0], {
+      title: 'Synthetic audit draft', origin: 'Synthetic', destination: 'Synthetic', departureDate: new Date('2027-01-01') })
+    trips.push(trip.id)
+    await prisma.authAuditEvent.createMany({ data: [
+      { userId: users[0], eventType: 'OPS_COMPANY_DRAFT_SEAT_ASSIGN', metadata: { companyId: companies[0], tripId: trip.id,
+        seatNumber: 1, targetSeat: 1, email: 'secret@example.invalid', document: 'secret-document', token: 'secret-token',
+        reservationId: reservations[1], passengerId: 'private-id', nested: { phone: 'secret-phone' } } },
+      { userId: users[1], eventType: 'OPS_COMPANY_TRIP_UPDATED', metadata: { companyId: companies[1], tripId: trip.id } },
+      { userId: users[0], eventType: 'OPS_COMPANY_TRIP_UPDATED', metadata: { companyId: companies[0], tripId: trips[1] } },
+      { userId: users[0], eventType: 'OPS_UNKNOWN_PRIVATE_EVENT', metadata: { companyId: companies[0], tripId: trip.id } },
+      { userId: users[0], eventType: 'OPS_COMPANY_TRIP_UPDATED', metadata: { tripId: trip.id } },
+    ] })
+    const before = await prisma.authAuditEvent.count({ where: { userId: { in: users } } })
+    const response = await call(`/admin/trips/${trip.id}/audit`)
+    assert.equal(response.status, 200); assert.equal(response.headers.get('cache-control'), 'no-store')
+    const body = await response.json() as { preparatory: boolean; hasMore: boolean; limit: number;
+      events: { eventType: string; metadata: unknown; user: unknown }[] }
+    assert.equal(body.preparatory, true); assert.equal(body.hasMore, false); assert.equal(body.limit, 100)
+    assert.equal(body.events.length, 2)
+    const assigned = body.events.find(row => row.eventType === 'OPS_COMPANY_DRAFT_SEAT_ASSIGN')!
+    assert.deepEqual(assigned.metadata, { seatNumber: 1, targetSeat: 1 }); assert.equal(assigned.user, null)
+    const serialized = JSON.stringify(body)
+    for (const field of ['secret', 'companyId', 'tripId', 'reservationId', 'passengerId', 'email', 'document', 'phone', 'token', 'nested']) {
+      assert.equal(serialized.includes(field), false)
+    }
+    assert.equal(await prisma.authAuditEvent.count({ where: { userId: { in: users } } }), before)
+    for (const id of [trips[1], 'nonexistent']) assert.equal((await call(`/admin/trips/${id}/audit`)).status, 404)
+    const when = new Date('2028-01-01')
+    await prisma.authAuditEvent.createMany({ data: Array.from({ length: 101 }, (_, i) => ({
+      userId: users[0], eventType: 'OPS_COMPANY_TRIP_UPDATED', createdAt: when,
+      metadata: { companyId: companies[0], tripId: trip.id, seatNumber: i === 0 ? 81 : 2, targetSeat: 'invalid' },
+    })) })
+    const limited = await (await call(`/admin/trips/${trip.id}/audit`)).json() as {
+      hasMore: boolean; events: { id: string; metadata: Record<string, unknown> }[] }
+    assert.equal(limited.hasMore, true); assert.equal(limited.events.length, 100)
+    assert.deepEqual(limited.events.map(row => row.id), limited.events.map(row => row.id).sort().reverse())
+    for (const event of limited.events) {
+      assert.equal('targetSeat' in event.metadata, false)
+      assert.ok(!('seatNumber' in event.metadata) || event.metadata.seatNumber === 2)
+    }
+  })
+  it('denies stale, revoked or non-admin authorization and operational trips on preparatory audit', async () => {
+    const scopes = new CompanyScopeService(prisma)
+    const scope = await scopes.resolveSession(users[0], sessions[0])
+    const stale = new CompanyTripsService(prisma, { resolveSession: async () => scope } as unknown as CompanyScopeService)
+    await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { isActive: false } })
+    try {
+      assert.equal((await call(`/admin/trips/${trips[2]}/audit`)).status, 403)
+      await assert.rejects(stale.preparatoryAudit(users[0], sessions[0], trips[2]), { status: 403 })
+    } finally { await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { isActive: true } }) }
+    await prisma.user.update({ where: { id: users[0] }, data: { role: 'AGENT' } })
+    await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { role: 'AGENT' } })
+    try { assert.equal((await call(`/admin/trips/${trips[2]}/audit`)).status, 403) }
+    finally {
+      await prisma.user.update({ where: { id: users[0] }, data: { role: 'ADMIN' } })
+      await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { role: 'ADMIN' } })
+    }
+    await prisma.trip.update({ where: { id: trips[2] }, data: { status: 'ACTIVE' } })
+    try { assert.equal((await call(`/admin/trips/${trips[2]}/audit`)).status, 409) }
+    finally { await prisma.trip.update({ where: { id: trips[2] }, data: { status: 'DRAFT' } }) }
+  })
   it('assigns, moves and releases own preparatory seats with atomic occupancy under concurrency', async () => {
     const service = new CompanyTripsService(prisma, new CompanyScopeService(prisma))
     const trip = await service.create(users[0], sessions[0], { title: 'Synthetic assignment draft', origin: 'Synthetic',

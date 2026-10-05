@@ -396,6 +396,9 @@ export type AdminAuditTrail = {
 }
 
 export type AdminOperationalAudit = {
+  preparatory?: boolean
+  limit?: number
+  hasMore?: boolean
   trip: {
     id: string
     title: string

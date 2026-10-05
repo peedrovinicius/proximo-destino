@@ -216,6 +216,15 @@ pendente) não são resolvidas nem alteradas por esta mudança.
 
 ## Assentos de reservas preparatórias
 
+GET `/admin/trips/:id/audit` permite somente ADMIN consultar criação/configuração
+de viagem DRAFT própria e atribuição/movimento/liberação de assentos preparatórios.
+Exige companyId e tripId no evento e uma lista explícita de tipos permitidos;
+recusa viagem externa, operacional ou autorização revogada. A consulta revalida
+e mantém autorização por bloqueios SELECT até terminar, sem gravar eventos.
+Retorna até 100 eventos com ordenação estável e hasMore explícito; projeta apenas
+números válidos de poltrona, sem contatos, operador, IDs internos ou metadados livres.
+Não equivale a histórico completo de reservas, pagamentos ou embarques.
+
 ADMIN pode atribuir a poltrona do passageiro principal de reserva PENDING existente,
 de um passageiro, na própria empresa e em viagem DRAFT futura. POST na rota de
 assignment aceita somente clientId; não cria cliente/reserva automaticamente.

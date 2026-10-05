@@ -174,8 +174,11 @@ export class AdminTripsController {
   }
 
   @Get(':id/audit')
+  @Header('Cache-Control', 'no-store')
+  @CompanyRead()
   @Roles(...ADMIN_ONLY_ROLES)
-  audit(@Param('id') id: string) {
+  audit(@Param('id') id: string, @Req() request: AuthenticatedRequest) {
+    if (request.companyScope) return this.scopedWrites.preparatoryAudit(request.user.id, request.user.sessionId, id)
     return this.trips.operationalAudit(id)
   }
 

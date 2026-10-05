@@ -52,6 +52,9 @@ try {
         if (path === '/admin/clients') return respond(200, [client])
         if (path === '/admin/reservations') return respond(200, [])
         if (path === '/admin/trips/bus-templates') return respond(200, [])
+        if (path === `/admin/trips/${trip.id}/audit`) return respond(200, { trip, preparatory: true, limit: 100, hasMore: true,
+          events: [{ id: `event-${company}`, eventType: 'OPS_COMPANY_DRAFT_SEAT_MOVE', createdAt: '2026-10-05T12:00:00Z',
+            metadata: { seatNumber: 1, targetSeat: 2 }, user: null }] })
         if (path === `/admin/trips/${trip.id}/seats` && request.method() === 'GET') return respond(200, map())
         const match = path.match(new RegExp(`^/admin/trips/${trip.id}/seats/(\\d+)/assignment$`))
         if (match) {
@@ -118,10 +121,17 @@ try {
         await page.getByRole('button', { name: 'Gerenciar assentos', exact: true }).click()
         await page.getByText('Mapa preparatório:', { exact: false }).waitFor()
         assert.equal(await page.getByRole('button', { name: /ocupado\. Ver passageiro/ }).count(), 0)
+        await page.keyboard.press('Escape')
+        await page.getByRole('button', { name: 'Auditoria', exact: true }).last().click()
+        await page.getByText('Histórico preparatório da empresa', { exact: true }).waitFor()
+        await page.getByText('Poltrona preparatória alterada', { exact: true }).waitFor()
+        await page.getByText('Poltrona 1 → Poltrona 2', { exact: true }).waitFor()
+        await page.getByRole('status').filter({ hasText: 'há registros anteriores não exibidos' }).waitFor()
+        assert.equal((await page.getByRole('dialog').innerText()).includes('admin@example.invalid'), false)
         assert.deepEqual(writes.map(row => row.method), ['POST', 'POST', 'PATCH', 'DELETE', 'DELETE'])
         assert.deepEqual(errors, []); assert.deepEqual(unexpected, [])
         await page.screenshot({ path: `${output}/company-seats-${company}-${width}.png`, fullPage: true })
-        console.log(`PASS company-seats-${company}-${width}: assignment conflict/retry, blocked move, move, release failure/retry, reload, minimal display`)
+        console.log(`PASS company-seats-${company}-${width}: assignment conflict/retry, blocked move, move, release failure/retry, reload, minimal display, preparatory audit and history limit`)
       } catch (error) {
         await page.screenshot({ path: `${output}/company-seats-${company}-${width}-failed.png`, fullPage: true }).catch(() => {})
         throw error
