@@ -58,7 +58,7 @@ export class AdminTripsController {
   @CompanyRead()
   @Roles(...OPERATIONS_ROLES)
   list(@Req() request: AuthenticatedRequest, @Query('q') query?: string) {
-    if (request.companyScope) return this.scoped.trips(request.user.id, request.user.sessionId, query)
+    if (request.companyScope) return this.scoped.trips(request.user.id, request.user.sessionId, request.query.q as string | undefined)
     return this.trips.listAdmin(query)
   }
 

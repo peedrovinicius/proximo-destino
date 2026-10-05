@@ -36,7 +36,7 @@ export class ClientsController {
   @Get()
   @CompanyRead()
   list(@Req() request: AuthenticatedRequest, @Query('q') query?: string) {
-    if (request.companyScope) return this.scoped.clients(request.user.id, request.user.sessionId, query)
+    if (request.companyScope) return this.scoped.clients(request.user.id, request.user.sessionId, request.query.q as string | undefined)
     return this.clients.list(query)
   }
 

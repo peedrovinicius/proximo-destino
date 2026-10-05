@@ -54,7 +54,7 @@ export class AdminController {
     @Query('q') query = '',
     @Req() request: AuthenticatedRequest,
   ) {
-    if (request.companyScope) return this.scoped.search(request.user.id, request.user.sessionId, query)
+    if (request.companyScope) return this.scoped.search(request.user.id, request.user.sessionId, (request.query.q ?? '') as string)
     return this.admin.search(query, request.user.role)
   }
 
