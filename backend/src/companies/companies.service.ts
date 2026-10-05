@@ -1,7 +1,8 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
-import { CreateCompanyDto } from './company.dto'
+import { CreateCompanyDto, CreateCompanyAdminDto } from './company.dto'
+import argon2 from 'argon2'
 
 const fields = {
   id: true, slug: true, tradeName: true, legalName: true, registrationNumber: true,
@@ -12,6 +13,45 @@ const fields = {
 @Injectable()
 export class CompaniesService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async admins(companyId: string) {
+    if (!await this.prisma.company.findUnique({ where: { id: companyId }, select: { id: true } })) {
+      throw new NotFoundException('Empresa não encontrada')
+    }
+    return this.prisma.companyMembership.findMany({ where: { companyId, role: 'ADMIN' },
+      select: { id: true, isActive: true, user: { select: {
+        id: true, displayName: true, email: true, isActive: true,
+      } } }, orderBy: { createdAt: 'desc' }, take: 100 })
+  }
+
+  async createPendingAdmin(companyId: string, body: CreateCompanyAdminDto) {
+    const email = body.email.trim().toLowerCase()
+    const passwordHash = await argon2.hash(body.password, { type: argon2.argon2id })
+    try {
+      return await this.prisma.$transaction(async tx => {
+        // Serialize against company status changes; never provision onto an active company.
+        const company = await tx.$queryRaw<{ id: string }[]>`
+          SELECT "id" FROM "Company" WHERE "id" = ${companyId} AND "status" = 'DRAFT' FOR UPDATE`
+        if (!company.length) throw new NotFoundException('Rascunho de empresa não encontrado')
+        // Do not reuse/promote an existing account (including case variants from legacy data).
+        if (await tx.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' } }, select: { id: true } })) {
+          throw new ConflictException('E-mail já vinculado a uma conta; nenhuma conta existente foi alterada')
+        }
+        const user = await tx.user.create({ data: { email, displayName: body.displayName,
+          passwordHash, role: 'ADMIN', isActive: false, companyManaged: true },
+          select: { id: true, displayName: true, email: true, isActive: true } })
+        const membership = await tx.companyMembership.create({ data: {
+          companyId, userId: user.id, role: 'ADMIN', isActive: false,
+        }, select: { id: true, isActive: true } })
+        return { ...membership, user }
+      })
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ConflictException('E-mail já vinculado a uma conta; nenhuma conta existente foi alterada')
+      }
+      throw error
+    }
+  }
 
   list() {
     return this.prisma.company.findMany({ select: fields, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 100 })

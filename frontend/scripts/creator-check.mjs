@@ -25,7 +25,7 @@ try {
   browser = await chromium.launch({ headless: true })
   for (const width of [375, 768, 1440]) {
     const page = await browser.newPage({ viewport: { width, height: 950 } })
-    const errors = []; const unexpected = []; const drafts = []; const writes = []
+    const errors = []; const unexpected = []; const drafts = []; const writes = []; const admins = []
     let authenticated = false
     page.on('pageerror', error => errors.push(error.message))
     await page.route('**/*', async route => {
@@ -45,6 +45,17 @@ try {
       if (url.pathname === '/api/v1/auth/logout') { authenticated = false; return route.fulfill({ status: 204, body: '' }) }
       if (url.pathname.startsWith('/api/v1/platform/companies')) {
         assert.equal(request.headers().authorization, 'Bearer synthetic-creator-token')
+        if (url.pathname.endsWith('/admins')) {
+          if (request.method() === 'GET') return respond(200, admins)
+          assert.equal(request.method(), 'POST')
+          const payload = request.postDataJSON()
+          assert.deepEqual(Object.keys(payload).sort(), ['displayName', 'email', 'password'])
+          assert.ok(payload.password.length >= 16)
+          const admin = { id: 'synthetic-membership', isActive: false,
+            user: { id: 'synthetic-admin', displayName: payload.displayName, email: payload.email, isActive: false } }
+          admins.push(admin)
+          return respond(201, admin)
+        }
         if (request.method() === 'GET') return respond(200, drafts)
         const payload = request.postDataJSON(); writes.push(payload)
         assert.equal('status' in payload, false); assert.equal('createdById' in payload, false)
@@ -77,6 +88,17 @@ try {
     await page.getByRole('button', { name: 'Salvar rascunho' }).click()
     await page.getByRole('heading', { name: 'Agência sintética revisada', exact: true }).waitFor()
     assert.equal(writes.length, 2)
+    await page.getByRole('button', { name: 'Administradores de Agência sintética revisada' }).click()
+    await page.getByText('Nenhum administrador cadastrado.').waitFor()
+    await page.getByLabel('Nome do administrador', { exact: true }).fill('Administrador sintético')
+    await page.getByLabel('E-mail de acesso', { exact: true }).fill('admin@example.invalid')
+    await page.getByLabel('Senha inicial', { exact: true }).fill('Synthetic-password-only-for-test')
+    await page.getByRole('button', { name: 'Cadastrar administrador pendente' }).click()
+    await page.getByRole('status').filter({ hasText: 'Administrador cadastrado, com acesso inativo' }).waitFor()
+    assert.equal(await page.getByLabel('Senha inicial', { exact: true }).inputValue(), '')
+    await page.getByText('Acesso inativo', { exact: true }).waitFor()
+    const storage = await page.evaluate(() => JSON.stringify({ local: { ...localStorage }, session: { ...sessionStorage } }))
+    assert.equal(storage.includes('Synthetic-password-only-for-test'), false)
     const dimensions = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth }))
     assert.ok(dimensions.scroll <= dimensions.width + 1, `Creator overflow: ${JSON.stringify(dimensions)}`)
     assert.equal(await page.getByRole('button', { name: /Ativar empresa|Enviar convite/ }).count(), 0)
@@ -88,5 +110,5 @@ try {
     assert.deepEqual(errors, []); assert.deepEqual(unexpected, [])
     await page.close(); checks++
   }
-  console.log(`Creator: ${checks} responsive flows passed (login + MFA, draft create/edit, session restore, logout).`)
+  console.log(`Creator: ${checks} responsive flows passed (login + MFA, draft create/edit, pending administrator, cleared password, session restore, logout).`)
 } finally { await browser?.close(); await new Promise(done => server.close(done)) }

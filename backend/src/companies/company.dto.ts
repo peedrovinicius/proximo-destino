@@ -4,6 +4,18 @@ import { IsEmail, IsOptional, IsString, Matches, MaxLength, MinLength } from 'cl
 const trim = ({ value }: { value: unknown }) => typeof value === 'string' ? value.trim() : value
 const normalizeEmail = ({ value }: { value: unknown }) => typeof value === 'string' ? value.trim().toLowerCase() : value
 
+export class CreateCompanyAdminDto {
+  @Transform(trim) @IsString() @MinLength(2) @MaxLength(160)
+  displayName!: string
+
+  @Transform(normalizeEmail) @IsEmail() @MaxLength(254)
+  email!: string
+
+  // Never trim or normalize passwords. The account remains inactive.
+  @IsString() @MinLength(16) @MaxLength(128)
+  password!: string
+}
+
 export class CreateCompanyDto {
   @Transform(trim) @IsString() @MinLength(2) @MaxLength(160)
   tradeName!: string

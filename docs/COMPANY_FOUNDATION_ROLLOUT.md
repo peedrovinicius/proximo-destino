@@ -12,8 +12,19 @@
   cadastrais, contato, endereço e responsável. Nenhum convite é enviado.
 - API `/platform/companies` protegida por sessão, perfil atual do Criador e MFA.
   Campos não previstos, como status, proprietário e vínculos, são rejeitados.
-- Novas empresas ficam sempre `DRAFT`. Não existe endpoint de ativação, criação
-  de equipe, exclusão ou acesso aos dados operacionais de outra empresa.
+- Novas empresas ficam sempre `DRAFT`. Não existe endpoint de ativação,
+  exclusão ou acesso aos dados operacionais de outra empresa.
+- No painel do Criador, "Administradores de …" abre o cadastro de uma conta
+  nova com nome, e-mail e senha (16–128 caracteres). POST
+  `/platform/companies/:id/admins` cria somente ADMIN inativo e vínculo inativo
+  em transação, exclusivamente em empresa DRAFT. GET na mesma rota lista
+  administradores com projeção sem segredos. Nenhuma conta existente é promovida
+  ou tem credenciais alteradas; duplicidade de e-mail é recusada.
+- A senha usa Argon2id; não é devolvida pela API, salva no navegador ou enviada
+  por e-mail. O formulário limpa a senha ao enviar. Não há sessão criada nem
+  login permitido para a conta pendente. A migração adiciona User.displayName.
+  Futuro fluxo de ativação deverá exigir definição segura de credencial e MFA;
+  não entregar uma conta pendente como acesso operacional pronto.
 
 ## Pré-condições para usar em ambiente isolado
 

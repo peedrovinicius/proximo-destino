@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { AdminLogin } from '../admin/AdminLogin'
 import { logoutAdmin, refreshAdminSession } from '../../lib/adminAuth'
 import './creator.css'
+import { CompanyAdminForm } from './CompanyAdminForm'
 
 type CompanyFields = {
   tradeName: string; slug: string; legalName: string; registrationNumber: string;
@@ -49,6 +50,7 @@ export function CreatorWorkspace({ onBack }: { onBack: () => void }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [adminCompany, setAdminCompany] = useState<Company | null>(null)
 
   useEffect(() => {
     let active = true
@@ -102,11 +104,13 @@ export function CreatorWorkspace({ onBack }: { onBack: () => void }) {
     <header className="creator-heading">
       <div><span className="eyebrow">Próximo Destino · Criador</span><h1>Empresas da plataforma</h1><p>Cadastre quem vai usar o sistema, com dados e responsável próprios.</p></div>
       <div className="creator-actions"><button type="button" onClick={onBack}>Voltar ao site</button>
-        <button type="button" disabled={saving} onClick={() => { void logoutAdmin(token); setToken(null); setCompanies([]); setFields({ ...emptyFields }); setEditingId(null); setError(''); setNotice('') }}>Sair</button></div>
+        <button type="button" disabled={saving} onClick={() => { void logoutAdmin(token); setToken(null); setCompanies([]); setFields({ ...emptyFields }); setEditingId(null); setAdminCompany(null); setError(''); setNotice('') }}>Sair</button></div>
     </header>
     <aside className="creator-warning"><strong>Preparação das empresas</strong><p>Por segurança, novos cadastros ficam em rascunho. A ativação, os convites e o acesso da empresa serão liberados após o isolamento completo de viagens, clientes, reservas, financeiro e integrações.</p></aside>
     {error ? <p role="alert" className="admin-login-error">{error}</p> : null}
     {notice ? <p role="status">{notice}</p> : null}
+    {adminCompany ? <CompanyAdminForm key={adminCompany.id} companyId={adminCompany.id} companyName={adminCompany.tradeName}
+      token={token} onClose={() => setAdminCompany(null)} /> : null}
     <div className="creator-columns">
       <section className="creator-panel" aria-labelledby="company-form-title"><h2 id="company-form-title">{editingId ? 'Editar rascunho' : 'Cadastrar empresa'}</h2>
         <form onSubmit={save}><fieldset disabled={saving} className="creator-fields">
@@ -130,6 +134,7 @@ export function CreatorWorkspace({ onBack }: { onBack: () => void }) {
             {company.status === 'DRAFT' ? <button type="button" disabled={saving} onClick={() => {
               setEditingId(company.id); setNotice(''); setFields(Object.fromEntries(Object.keys(labels).map(key => [key, company[key as keyof CompanyFields] ?? ''])) as CompanyFields)
             }}>Editar rascunho de {company.tradeName}</button> : null}
+            {company.status === 'DRAFT' ? <button type="button" onClick={() => setAdminCompany(company)}>Administradores de {company.tradeName}</button> : null}
           </li>)}
         </ul>}
       </section>

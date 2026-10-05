@@ -173,6 +173,7 @@ enum ClientCreditTransactionType {
 model User {
   id                        String    @id @default(cuid())
   email                     String    @unique
+  displayName               String?
   passwordHash              String
   refreshTokenHash          String?
   role                      UserRole

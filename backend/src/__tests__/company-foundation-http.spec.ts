@@ -20,14 +20,26 @@ describe('company foundation HTTP boundary (synthetic database adapter)', () => 
   let writes: Record<string, unknown>[] = []
   const data = { tradeName: 'Empresa fictícia', slug: 'empresa-teste', contactEmail: 'contato@example.invalid',
     responsibleName: 'Responsável fictício', responsibleEmail: 'responsavel@example.invalid' }
+  const adminData = { displayName: 'Administrador fictício', email: 'ADMIN@example.invalid', password: 'synthetic-password-12345' }
   const database = {
-    user: { findUnique: async () => ({ role: 'CREATOR', isActive: active, mfaEnabled: mfa, mfaEnrolledAt: mfa ? new Date('2026-01-01') : null }) },
+    user: { findUnique: async () => ({ role: 'CREATOR', isActive: active, mfaEnabled: mfa, mfaEnrolledAt: mfa ? new Date('2026-01-01') : null }),
+      findFirst: async () => null,
+      create: async (query: { data: Record<string, unknown> }) => { writes.push(query.data); return {
+        id: 'pending-user', displayName: query.data.displayName, email: query.data.email, isActive: query.data.isActive,
+      } },
+    },
+    companyMembership: { findMany: async () => [], create: async (query: { data: Record<string, unknown> }) => {
+      writes.push(query.data); return { id: 'pending-membership', isActive: query.data.isActive }
+    } },
+    $queryRaw: async () => [{ id: 'synthetic-company' }],
+    $transaction: async (callback: (tx: unknown) => Promise<unknown>): Promise<unknown> => callback(database),
     authSession: { findFirst: async (query: { where: Record<string, unknown> }) => {
       assert.equal(query.where.revokedAt, null)
       assert.ok(query.where.createdAt); assert.ok(query.where.expiresAt)
       return sessionValid ? { id: 'synthetic-session' } : null
     } },
     company: {
+      findUnique: async () => ({ id: 'synthetic-company' }),
       findMany: async () => [],
       create: async (query: { data: Record<string, unknown> }) => { writes.push(query.data); return { ...query.data, id: 'synthetic-company' } },
       update: async (query: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
@@ -56,7 +68,7 @@ describe('company foundation HTTP boundary (synthetic database adapter)', () => 
   after(async () => { await app?.close() })
 
   function call(token?: string, body?: object, path = '') {
-    return fetch(`${base}/platform/companies${path}`, { method: body ? path ? 'PUT' : 'POST' : 'GET',
+    return fetch(`${base}/platform/companies${path}`, { method: body ? path && !path.endsWith('/admins') ? 'PUT' : 'POST' : 'GET',
       headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), 'Content-Type': 'application/json' },
       ...(body ? { body: JSON.stringify(body) } : {}) })
   }
@@ -69,6 +81,8 @@ describe('company foundation HTTP boundary (synthetic database adapter)', () => 
     it(`rejects ${role} for company creation, reading and editing`, async () => {
       const count = writes.length
       for (const response of [await call(role), await call(role, data), await call(role, data, '/synthetic-company')]) assert.equal(response.status, 403)
+      assert.equal((await call(role, adminData, '/synthetic-company/admins')).status, 403)
+      assert.equal((await call(role, undefined, '/synthetic-company/admins')).status, 403)
       assert.equal(writes.length, count)
     })
   }
@@ -105,5 +119,24 @@ describe('company foundation HTTP boundary (synthetic database adapter)', () => 
     assert.equal((await call('CREATOR', data, '/synthetic-company')).status, 200)
     const response = await call('CREATOR'); assert.equal(response.status, 200)
     assert.deepEqual(await response.json(), [])
+  })
+  it('creates only an inactive ADMIN account and membership, with no secret response', async () => {
+    const response = await call('CREATOR', adminData, '/synthetic-company/admins')
+    assert.equal(response.status, 201)
+    const result = await response.json() as { user: { isActive: boolean }; isActive: boolean }
+    assert.equal(result.user.isActive, false); assert.equal(result.isActive, false)
+    assert.equal(JSON.stringify(result).includes('password'), false)
+    assert.equal(writes.at(-2)!.role, 'ADMIN'); assert.equal(writes.at(-2)!.companyManaged, true)
+    assert.equal(writes.at(-1)!.companyId, 'synthetic-company')
+  })
+  it('rejects short passwords, missing name, invalid email and injected privilege fields', async () => {
+    for (const extra of [{ password: 'short' }, { displayName: '' }, { email: 'invalid' },
+      { role: 'CREATOR' }, { isActive: true }, { companyId: 'other' }, { companyManaged: false }]) {
+      const count = writes.length
+      assert.equal((await call('CREATOR', { ...adminData, ...extra }, '/synthetic-company/admins')).status, 400)
+      assert.equal(writes.length, count)
+    }
+    enabled = false
+    try { assert.equal((await call('CREATOR', adminData, '/synthetic-company/admins')).status, 403) } finally { enabled = true }
   })
 })
