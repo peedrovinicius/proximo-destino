@@ -77,7 +77,14 @@ sem notas privadas, documentos, hashes ou credenciais. CPF omitido na edição
 acompanhantes podem ser criados atomicamente sob o novo cliente da empresa.
 IDs e campos de posse fornecidos pelo navegador são recusados; documentos são
 criptografados. O detalhe do próprio cliente inclui acompanhantes sem documentos,
-hashes ou IDs de posse. Edição/reassociação de acompanhantes ainda não é habilitada.
+hashes ou IDs de posse. POST `/admin/clients/:id/companions` e PATCH
+`/admin/clients/:id/companions/:companionId` permitem ADMIN/AGENT cadastrar e editar
+acompanhantes do próprio cliente. Revalidam autorização na transação e bloqueiam
+o cliente contra reassociação; IDs que não pertencem ao cliente retornam 404.
+Até 80 acompanhantes por cliente, inclusive sob concorrência. Documento omitido
+é preservado; vazio limpa a cifra e o hash. Auditoria não guarda valores pessoais.
+As novas rotas recusam sessões legadas sem empresa. Reassociação/exclusão e cópia
+automática de dados para passageiros de reserva não estão habilitadas.
 Falha de auditoria desfaz cliente e acompanhantes juntos. Nenhuma conta de cliente ou
 sessão de portal é criada por esse cadastro.
 

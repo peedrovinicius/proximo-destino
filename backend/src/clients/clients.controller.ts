@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  ForbiddenException,
   Param,
   Patch,
   Post,
@@ -20,7 +21,8 @@ import { ClientsService } from './clients.service'
 import { CompanyDataService } from '../tenancy/company-data.service'
 import { CompanyRead, CompanyWrite } from '../tenancy/company-access.decorator'
 import { CompanyClientsService } from '../tenancy/company-clients.service'
-import { CreateClientDto } from './dto/create-client.dto'
+import { CreateClientDto, CreateCompanionDto } from './dto/create-client.dto'
+import { UpdateCompanionDto } from './dto/update-companion.dto'
 import { UpdateClientDto } from './dto/update-client.dto'
 import { RemoveClientBonusDto } from './dto/bonus.dto'
 
@@ -48,6 +50,21 @@ export class ClientsController {
   @Get(':id/credits')
   credits(@Param('id') id: string) {
     return this.clients.credits(id)
+  }
+
+  @Post(':id/companions')
+  @CompanyWrite()
+  createCompanion(@Param('id') id: string, @Body() body: CreateCompanionDto, @Req() request: AuthenticatedRequest) {
+    if (!request.companyScope) throw new ForbiddenException('Cadastro exige sessão de empresa')
+    return this.scopedWrites.createCompanion(request.user.id, request.user.sessionId, id, body)
+  }
+
+  @Patch(':id/companions/:companionId')
+  @CompanyWrite()
+  updateCompanion(@Param('id') id: string, @Param('companionId') companionId: string,
+    @Body() body: UpdateCompanionDto, @Req() request: AuthenticatedRequest) {
+    if (!request.companyScope) throw new ForbiddenException('Cadastro exige sessão de empresa')
+    return this.scopedWrites.updateCompanion(request.user.id, request.user.sessionId, id, companionId, body)
   }
 
   @Post(':id/credits/remove')

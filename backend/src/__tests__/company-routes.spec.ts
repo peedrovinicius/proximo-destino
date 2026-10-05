@@ -217,6 +217,60 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
     assert.equal(response.status, 201); const result = await response.json() as { id: string }; clients.push(result.id)
     assert.equal((await prisma.client.findUniqueOrThrow({ where: { id: result.id } })).companyId, companies[1])
   })
+  it('adds and edits companions only for the matching own-company parent', async () => {
+    const path = `/admin/clients/${clients[0]}/companions`
+    const created = await call(path, tokens[0], 'POST', { fullName: 'Synthetic added', document: 'PRIVATE-ADDED' })
+    assert.equal(created.status, 201)
+    const row = await created.json() as { id: string }
+    assert.equal('document' in row, false)
+    assert.equal((await call(`${path}/${row.id}`, tokens[0], 'PATCH', { fullName: 'Synthetic revised' })).status, 200)
+    assert.equal(revealDocument(await prisma.companion.findUniqueOrThrow({ where: { id: row.id } })), 'PRIVATE-ADDED')
+    for (const parent of [clients[1], clients[2], 'nonexistent']) {
+      assert.equal((await call(`/admin/clients/${parent}/companions/${row.id}`, tokens[0], 'PATCH', { fullName: 'Denied' })).status, 404)
+    }
+    assert.equal((await call(path, tokens[1], 'POST', { fullName: 'Denied' })).status, 404)
+    assert.equal((await call(path, tokens[2], 'POST', { fullName: 'Denied' })).status, 403)
+    assert.equal((await call(path, unboundToken, 'POST', { fullName: 'Denied' })).status, 403)
+    for (const data of [{ fullName: ' ' }, { fullName: null }, { clientId: clients[1] }, { companyId: companies[1] }]) {
+      assert.equal((await call(`${path}/${row.id}`, tokens[0], 'PATCH', data)).status, 400)
+    }
+    assert.equal((await call(`${path}/${row.id}`, tokens[0], 'PATCH', { document: '', relationship: '' })).status, 200)
+    const saved = await prisma.companion.findUniqueOrThrow({ where: { id: row.id } })
+    assert.equal(saved.documentEncrypted, null); assert.equal(saved.documentHash, null)
+    assert.equal(saved.fullName, 'Synthetic revised')
+    const audit = await prisma.authAuditEvent.findMany({ where: { userId: users[0], eventType: { startsWith: 'OPS_COMPANY_COMPANION_' } } })
+    assert.equal(JSON.stringify(audit).includes('PRIVATE-ADDED'), false)
+  })
+  it('serializes concurrent additions at the companion limit', async () => {
+    const existing = await prisma.companion.count({ where: { clientId: clients[0] } })
+    await prisma.companion.createMany({ data: Array.from({ length: 79 - existing }, (_, i) => ({
+      clientId: clients[0], fullName: `Limit synthetic ${suffix} ${i}`,
+    })) })
+    const responses = await Promise.all([0, 1].map(() => call(`/admin/clients/${clients[0]}/companions`, tokens[0], 'POST', {
+      fullName: `Last synthetic ${suffix}`,
+    })))
+    assert.deepEqual(responses.map(r => r.status).sort(), [201, 409])
+    assert.equal(await prisma.companion.count({ where: { clientId: clients[0] } }), 80)
+    await prisma.companion.deleteMany({ where: { clientId: clients[0], fullName: { contains: suffix } } })
+  })
+  it('rolls back companion mutations on audit failure and rechecks revoked authorization', async () => {
+    const service = new CompanyClientsService(prisma, new CompanyScopeService(prisma))
+    const row = await service.createCompanion(users[0], sessions[0], clients[0], { fullName: 'Synthetic rollback original' })
+    const failing = new CompanyClientsService({ $transaction: (callback: (tx: unknown) => Promise<unknown>) =>
+      prisma.$transaction(tx => callback({ $queryRaw: tx.$queryRaw.bind(tx), companion: tx.companion,
+        authAuditEvent: { create: async () => { throw new Error('synthetic companion audit failure') } } }))
+    } as unknown as PrismaService, new CompanyScopeService(prisma))
+    await assert.rejects(failing.updateCompanion(users[0], sessions[0], clients[0], row.id, { fullName: 'Must roll back' }), /synthetic companion audit failure/)
+    assert.equal((await prisma.companion.findUniqueOrThrow({ where: { id: row.id } })).fullName, 'Synthetic rollback original')
+    const count = await prisma.companion.count({ where: { clientId: clients[0] } })
+    await assert.rejects(failing.createCompanion(users[0], sessions[0], clients[0], { fullName: 'Must roll back' }), /synthetic companion audit failure/)
+    assert.equal(await prisma.companion.count({ where: { clientId: clients[0] } }), count)
+    const scope = await new CompanyScopeService(prisma).resolveSession(users[0], sessions[0])
+    const stale = new CompanyClientsService(prisma, { resolveSession: async () => scope } as unknown as CompanyScopeService)
+    await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { isActive: false } })
+    try { await assert.rejects(stale.updateCompanion(users[0], sessions[0], clients[0], row.id, { fullName: 'Denied' }), { status: 403 }) }
+    finally { await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { isActive: true } }) }
+  })
   it('preserves CPF on unrelated edits and clears it only when explicitly requested', async () => {
     await call(`/admin/clients/${clients[2]}`, tokens[0], 'PATCH', { phone: 'synthetic' })
     assert.equal(revealDocument(await prisma.client.findUniqueOrThrow({ where: { id: clients[2] } })), '52998224725')
@@ -258,6 +312,9 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
     try {
       assert.equal((await call('/admin/clients', tokens[0], 'POST', { fullName: 'Denied' })).status, 403)
       assert.equal((await call(`/admin/clients/${clients[2]}`, tokens[0], 'PATCH', { fullName: 'Denied' })).status, 403)
+      assert.equal((await call(`/admin/clients/${clients[0]}/companions`, tokens[0], 'POST', { fullName: 'Denied' })).status, 403)
+      const companion = await prisma.companion.findFirstOrThrow({ where: { clientId: clients[0] } })
+      assert.equal((await call(`/admin/clients/${clients[0]}/companions/${companion.id}`, tokens[0], 'PATCH', { fullName: 'Denied' })).status, 403)
     } finally {
       await prisma.user.update({ where: { id: users[0] }, data: { role: 'ADMIN' } })
       await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { role: 'ADMIN' } })

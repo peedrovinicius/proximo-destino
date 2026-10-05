@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service'
 import { CompanyScopeService } from './company-scope.service'
 import { CreateClientDto, CreateCompanionDto } from '../clients/dto/create-client.dto'
 import { UpdateClientDto } from '../clients/dto/update-client.dto'
+import { UpdateCompanionDto } from '../clients/dto/update-companion.dto'
 import { encryptedDocumentFields, hashSensitive } from '../security/sensitive-data'
 import { lockCompanyWrite } from './company-write-lock'
 
@@ -33,6 +34,47 @@ export class CompanyClientsService {
 
   async update(userId: string, sessionId: string, id: string, data: UpdateClientDto) {
     return this.write(userId, sessionId, data, id)
+  }
+
+  async createCompanion(userId: string, sessionId: string, clientId: string, data: CreateCompanionDto) {
+    return this.writeCompanion(userId, sessionId, clientId, data)
+  }
+
+  async updateCompanion(userId: string, sessionId: string, clientId: string, id: string, data: UpdateCompanionDto) {
+    return this.writeCompanion(userId, sessionId, clientId, data, id)
+  }
+
+  private async writeCompanion(userId: string, sessionId: string, clientId: string, data: UpdateCompanionDto, id?: string) {
+    const scope = await this.scopes.resolveSession(userId, sessionId)
+    if (scope.role === 'FINANCE') throw new ForbiddenException('Perfil sem acesso ao cadastro de clientes')
+    if ((!id || data.fullName !== undefined) && (typeof data.fullName !== 'string' || data.fullName.trim().length < 2)) {
+      throw new BadRequestException('Informe o nome do acompanhante com pelo menos 2 caracteres')
+    }
+    return this.prisma.$transaction(async tx => {
+      await lockCompanyWrite(tx, scope)
+      // Lock the parent against reassignment and serialize the per-client limit.
+      const parent = await tx.$queryRaw<{ id: string }[]>`
+        SELECT "id" FROM "Client" WHERE "id" = ${clientId} AND "companyId" = ${scope.companyId} FOR UPDATE`
+      if (!parent.length) throw new NotFoundException('Cliente não encontrado')
+      if (id && !await tx.companion.findFirst({ where: { id, clientId }, select: { id: true } })) {
+        throw new NotFoundException('Acompanhante não encontrado')
+      }
+      if (!id && await tx.companion.count({ where: { clientId } }) >= 80) {
+        throw new ConflictException('Limite de 80 acompanhantes por cliente atingido')
+      }
+      const values = { fullName: data.fullName?.trim(), birthDate: data.birthDate,
+        relationship: data.relationship === undefined ? undefined : data.relationship?.trim() || null,
+        ...(data.document !== undefined ? encryptedDocumentFields(data.document?.trim() || null) : {}) }
+      const select = { id: true, fullName: true, birthDate: true, relationship: true } as const
+      const result = id
+        ? await tx.companion.update({ where: { id, clientId }, data: values, select })
+        : await tx.companion.create({ data: { ...values, clientId, fullName: data.fullName!.trim() }, select })
+      await tx.authAuditEvent.create({ data: { userId,
+        eventType: id ? 'OPS_COMPANY_COMPANION_UPDATED' : 'OPS_COMPANY_COMPANION_CREATED',
+        metadata: { companyId: scope.companyId, clientId, companionId: result.id,
+          fields: Object.keys(data).filter(key => data[key as keyof UpdateCompanionDto] !== undefined) } } })
+      return result
+    })
   }
 
   private async write(userId: string, sessionId: string, data: UpdateClientDto, id?: string, companions?: CreateCompanionDto[]) {
