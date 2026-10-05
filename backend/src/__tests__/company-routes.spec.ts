@@ -175,12 +175,41 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
     }
     assert.equal((await prisma.client.findUniqueOrThrow({ where: { id: clients[1] } })).fullName, 'Synthetic 1')
   })
-  it('rejects injected ownership, invalid names/CPF and unscoped companion creation', async () => {
+  it('rejects injected ownership, invalid names/CPF and invalid companion inputs', async () => {
     for (const extra of [{ companyId: companies[1] }, { userId: users[1] }, { fullName: '  ' },
-      { document: '11111111111' }, { companions: [{ fullName: 'Synthetic companion' }] }]) {
+      { document: '11111111111' }, { companions: [{ fullName: ' ' }] },
+      { companions: { fullName: 'Not an array' } },
+      { companions: [{ fullName: 'Synthetic', clientId: clients[1] }] },
+      { companions: [{ fullName: 'Synthetic', companyId: companies[1] }] },
+      { companions: Array.from({ length: 81 }, () => ({ fullName: 'Synthetic' })) }]) {
       assert.equal((await call('/admin/clients', tokens[0], 'POST', { fullName: 'Synthetic', ...extra })).status, 400)
     }
     assert.equal((await call(`/admin/clients/${clients[2]}`, tokens[0], 'PATCH', { companyId: companies[1] })).status, 400)
+  })
+  it('creates companions only under the new own-company client and conceals their documents', async () => {
+    const response = await call('/admin/clients', tokens[0], 'POST', {
+      fullName: 'Synthetic family', companions: [{ fullName: ' Synthetic companion ',
+        document: 'COMPANION-PRIVATE-123', relationship: ' Synthetic relation ', birthDate: '2000-01-02' }],
+    })
+    assert.equal(response.status, 201)
+    const client = await response.json() as { id: string }; clients.push(client.id)
+    const saved = await prisma.companion.findFirstOrThrow({ where: { clientId: client.id }, include: { client: true } })
+    assert.equal(saved.client.companyId, companies[0]); assert.equal(saved.fullName, 'Synthetic companion')
+    assert.equal(saved.document, null); assert.equal(revealDocument(saved), 'COMPANION-PRIVATE-123')
+    const detail = await call(`/admin/clients/${client.id}`)
+    assert.equal(detail.status, 200)
+    const data = await detail.json() as { companions: { id: string; fullName: string }[] }
+    assert.deepEqual(data.companions.map(row => row.id), [saved.id])
+    for (const key of ['clientId', 'document', 'documentHash', 'documentEncrypted']) assert.equal(key in data.companions[0], false)
+    assert.equal((await call(`/admin/clients/${client.id}`, tokens[1])).status, 404)
+    assert.equal((await call(`/admin/clients/${client.id}`, tokens[0], 'PATCH', {
+      companions: [{ id: saved.id, fullName: 'Reparent attempt' }],
+    })).status, 400)
+    const audit = await prisma.authAuditEvent.findFirstOrThrow({ where: { userId: users[0],
+      eventType: 'OPS_COMPANY_CLIENT_CREATED', metadata: { path: ['clientId'], equals: client.id } } })
+    assert.equal(JSON.stringify(audit.metadata).includes('COMPANION-PRIVATE-123'), false)
+    assert.equal(JSON.stringify(audit.metadata).includes('Synthetic companion'), false)
+    assert.equal((audit.metadata as { companionCount: number }).companionCount, 1)
   })
   it('checks CPF uniqueness within one company and allows separate private profiles in another', async () => {
     assert.equal((await call('/admin/clients', tokens[0], 'POST', { fullName: 'Duplicate', document: '52998224725' })).status, 409)
@@ -217,8 +246,10 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
       prisma.$transaction(tx => callback({ $queryRaw: tx.$queryRaw.bind(tx), client: tx.client,
         authAuditEvent: { create: async () => { throw new Error('synthetic audit failure') } } }))
     } as unknown as PrismaService, new CompanyScopeService(prisma))
-    await assert.rejects(failing.create(users[0], sessions[0], { fullName: `Rollback ${suffix}` }), /synthetic audit failure/)
+    await assert.rejects(failing.create(users[0], sessions[0], { fullName: `Rollback ${suffix}`,
+      companions: [{ fullName: `Rollback companion ${suffix}` }] }), /synthetic audit failure/)
     assert.equal(await prisma.client.count({ where: { companyId: companies[0], fullName: `Rollback ${suffix}` } }), 0)
+    assert.equal(await prisma.companion.count({ where: { fullName: `Rollback companion ${suffix}` } }), 0)
   })
   it('denies client writes for finance and for managed sessions without a company', async () => {
     assert.equal((await call('/admin/clients', unboundToken, 'POST', { fullName: 'Denied' })).status, 403)

@@ -54,7 +54,10 @@ export class CompanyDataService {
   async client(userId: string, sessionId: string, id: string) {
     const scope = await this.scopes.resolveSession(userId, sessionId)
     if (scope.role === 'FINANCE') throw new ForbiddenException('Perfil sem acesso ao cadastro de clientes')
-    const result = await this.prisma.client.findFirst({ where: { id, companyId: scope.companyId }, select: clientFields })
+    const result = await this.prisma.client.findFirst({ where: { id, companyId: scope.companyId }, select: {
+      ...clientFields, companions: { select: { id: true, fullName: true, birthDate: true, relationship: true },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
+    } })
     if (!result) throw new NotFoundException('Cliente não encontrado')
     return result
   }

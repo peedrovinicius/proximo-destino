@@ -73,8 +73,12 @@ A transação revalida e bloqueia sessão, usuário, empresa e vínculo até o c
 serializa a conferência de CPF na empresa e inclui o evento de auditoria sem
 valores pessoais. IDs externos retornam 404. Respostas mantêm projeção mínima,
 sem notas privadas, documentos, hashes ou credenciais. CPF omitido na edição
-é preservado; vazio explicitamente limpa o campo. Acompanhantes não vazios
-continuam recusados até seu próprio isolamento. Nenhuma conta de cliente ou
+é preservado; vazio explicitamente limpa o campo. No cadastro inicial, até 80
+acompanhantes podem ser criados atomicamente sob o novo cliente da empresa.
+IDs e campos de posse fornecidos pelo navegador são recusados; documentos são
+criptografados. O detalhe do próprio cliente inclui acompanhantes sem documentos,
+hashes ou IDs de posse. Edição/reassociação de acompanhantes ainda não é habilitada.
+Falha de auditoria desfaz cliente e acompanhantes juntos. Nenhuma conta de cliente ou
 sessão de portal é criada por esse cadastro.
 
 POST `/admin/trips` e PATCH `/admin/trips/:id` permitem ADMIN/AGENT cadastrar
