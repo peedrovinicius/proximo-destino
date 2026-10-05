@@ -53,6 +53,9 @@ model Company {
 }
 
 model CompanyMembership {
+  inviteTokenHash String? @unique
+  inviteExpiresAt DateTime?
+  inviteUsedAt DateTime?
   id        String @id @default(cuid())
   companyId String
   userId    String

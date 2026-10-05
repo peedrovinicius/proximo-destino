@@ -178,7 +178,7 @@ rotas públicas, portal, gravações, entidades derivadas e integrações.**
 - Impedir referências cruzadas com restrições compostas e testes negativos.
 - Escopar unicidade de integrações por empresa e vincular webhooks à conexão
   confiável; não aceitar empresa livremente declarada no payload do provedor.
-- Criar convites expirantes de administrador e ativação somente após todos os
+- Concluir MFA dos administradores e ativação somente após todos os
   testes de isolamento ponta a ponta passarem, inclusive dois clientes e duas
   empresas reais em banco isolado.
 
@@ -190,8 +190,7 @@ remover o valor de enum do PostgreSQL durante uma reversão operacional.
 
 ## Preparação dos cinco primeiros itens pendentes
 
-1. Hierarquia: estrutura e rotas do Criador nesta proposta; faltam convite
-   expirante, ativação e aceite ponta a ponta.
+1. Hierarquia: estrutura e rotas do Criador nesta proposta; convite expirante para definição de senha incluído; faltam MFA, ativação e aceite ponta a ponta.
 2. Ativação: diagnóstico de bloqueios, sem atalho para ativar contas.
 3. Isolamento: passageiros e cancelamento preparatório adicionados; portal,
    publicação, assentos, financeiro e integrações ainda impedem ativação.
@@ -214,3 +213,21 @@ backfill/aceite revisado.
 
 Limitações já conhecidas (Mercado Pago/e-mail não ativados e backup externo
 pendente) não são resolvidas nem alteradas por esta mudança.
+
+## Convite para definir senha do ADMIN pendente
+
+O Criador autenticado com MFA gera ou revoga o código no painel de administradores.
+POST `/platform/companies/:id/admins/:membershipId/invitation` emite 32 bytes aleatórios,
+exibidos uma vez, válidos por 24 horas. O banco guarda apenas SHA-256 e validade.
+Reemissão invalida o anterior; revogação limpa o hash. Empresa deve ser DRAFT, conta
+ADMIN gerenciada e inativa, vínculo ADMIN inativo e convite ainda não consumido.
+
+O destinatário abre `?screen=company-invite` e envia código e senha no corpo do
+POST `/company-invitations/accept`, nunca em URL ou armazenamento do navegador.
+O endpoint exige a flag da fundação, valida entrada e limita tentativas. Consumo,
+senha Argon2id e auditoria são atômicos; bloqueios impedem consumo duplo. Respostas
+não permitem cache. Auditoria omite código, hash, senha e dados pessoais.
+
+Não envia e-mail, cria sessão, ativa empresa/usuário/vínculo, configura MFA ou promove
+contas existentes. O acesso permanece bloqueado. O Criador entrega o código por
+canal privado; definição de senha não conclui o onboarding ou o checklist de ativação.

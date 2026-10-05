@@ -106,7 +106,7 @@ export function CreatorWorkspace({ onBack }: { onBack: () => void }) {
       <div className="creator-actions"><button type="button" onClick={onBack}>Voltar ao site</button>
         <button type="button" disabled={saving} onClick={() => { void logoutAdmin(token); setToken(null); setCompanies([]); setFields({ ...emptyFields }); setEditingId(null); setAdminCompany(null); setError(''); setNotice('') }}>Sair</button></div>
     </header>
-    <aside className="creator-warning"><strong>Preparação das empresas</strong><p>Por segurança, novos cadastros ficam em rascunho. A ativação, os convites e o acesso da empresa serão liberados após o isolamento completo de viagens, clientes, reservas, financeiro e integrações.</p></aside>
+    <aside className="creator-warning"><strong>Preparação das empresas</strong><p>Por segurança, novos cadastros ficam em rascunho. Os convites permitem somente definir a senha. A ativação e o acesso da empresa serão liberados após o isolamento completo de viagens, clientes, reservas, financeiro e integrações.</p></aside>
     {error ? <p role="alert" className="admin-login-error">{error}</p> : null}
     {notice ? <p role="status">{notice}</p> : null}
     {adminCompany ? <CompanyAdminForm key={adminCompany.id} companyId={adminCompany.id} companyName={adminCompany.tradeName}

@@ -1,15 +1,29 @@
-import { Body, Controller, Get, Param, Post, Put, Req, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, Header, Param, Post, Put, Req, UseGuards } from '@nestjs/common'
 import { JwtAuthGuard } from '../auth/jwt-auth.guard'
 import type { AuthenticatedRequest } from '../auth/jwt-auth.guard'
 import { CreatorGuard } from './creator.guard'
 import { CompaniesService } from './companies.service'
 import { CreateCompanyDto, CreateCompanyAdminDto } from './company.dto'
+import { CompanyInvitationsService } from './company-invitations.service'
 import { Throttle } from '@nestjs/throttler'
 
 @Controller('platform/companies')
 @UseGuards(JwtAuthGuard, CreatorGuard)
 export class CompaniesController {
-  constructor(private readonly companies: CompaniesService) {}
+  constructor(private readonly companies: CompaniesService, private readonly invitations: CompanyInvitationsService) {}
+
+  @Post(':id/admins/:membershipId/invitation')
+  @Header('Cache-Control', 'no-store')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  issueInvite(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Param('membershipId') membershipId: string) {
+    return this.invitations.issue(request.user.id, request.user.sessionId, id, membershipId)
+  }
+
+  @Post(':id/admins/:membershipId/invitation/revoke')
+  @Header('Cache-Control', 'no-store')
+  revokeInvite(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Param('membershipId') membershipId: string) {
+    return this.invitations.revoke(request.user.id, request.user.sessionId, id, membershipId)
+  }
 
   @Get(':id/readiness')
   readiness(@Param('id') id: string) { return this.companies.readiness(id) }

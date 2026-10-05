@@ -154,6 +154,20 @@ describe('company foundation HTTP boundary (synthetic database adapter)', () => 
     assert.equal(writes.at(-2)!.role, 'ADMIN'); assert.equal(writes.at(-2)!.companyManaged, true)
     assert.equal(writes.at(-1)!.companyId, 'synthetic-company')
   })
+  it('protects invitation issuance and denies public onboarding when disabled', async () => {
+    const url = `${base}/platform/companies/synthetic-company/admins/member/invitation`
+    for (const role of ['ADMIN', 'AGENT', 'FINANCE', 'CLIENT']) {
+      assert.equal((await fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${role}` } })).status, 403)
+    }
+    const accept = (body: object) => fetch(`${base}/company-invitations/accept`, { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    assert.equal((await accept({ token: 'bad', password: 'short' })).status, 400)
+    assert.equal((await accept({ token: 'a'.repeat(43), password: 'synthetic-pending-password-123', isActive: true })).status, 400)
+    enabled = false
+    try {
+      assert.equal((await accept({ token: 'a'.repeat(43), password: 'synthetic-pending-password-123' })).status, 403)
+    } finally { enabled = true }
+  })
   it('rejects short passwords, missing name, invalid email and injected privilege fields', async () => {
     for (const extra of [{ password: 'short' }, { displayName: '' }, { email: 'invalid' },
       { role: 'CREATOR' }, { isActive: true }, { companyId: 'other' }, { companyManaged: false }]) {

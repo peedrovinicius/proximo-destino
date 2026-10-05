@@ -7,6 +7,7 @@ import { HomePage } from './features/home/HomePage'
 import { InstitutionalPage } from './features/home/InstitutionalPage'
 import type { InstitutionalPageKey } from './components/PublicFooter'
 import { logoutAdmin, refreshAdminSession } from './lib/adminAuth'
+import { AcceptCompanyInvite } from './features/creator/AcceptCompanyInvite'
 import { CreatorWorkspace } from './features/creator/CreatorWorkspace'
 
 type Screen =
@@ -17,6 +18,7 @@ type Screen =
   | 'admin-login'
   | 'admin'
   | 'creator'
+  | 'company-invite'
 
 const screens = new Set<Screen>([
   'home',
@@ -26,6 +28,7 @@ const screens = new Set<Screen>([
   'admin-login',
   'admin',
   'creator',
+  'company-invite',
 ])
 
 const institutionalPages = new Set<InstitutionalPageKey>([
@@ -277,6 +280,8 @@ function App() {
       />
     )
   }
+
+  if (screen === 'company-invite') return <AcceptCompanyInvite onBack={() => navigate('home')} />
 
   if (screen === 'creator') {
     return <CreatorWorkspace onBack={() => navigate('home')} />

@@ -35,7 +35,7 @@ export class CompaniesService {
       throw new NotFoundException('Empresa não encontrada')
     }
     return this.prisma.companyMembership.findMany({ where: { companyId, role: 'ADMIN' },
-      select: { id: true, isActive: true, user: { select: {
+      select: { id: true, isActive: true, inviteUsedAt: true, inviteExpiresAt: true, user: { select: {
         id: true, displayName: true, email: true, isActive: true,
       } } }, orderBy: { createdAt: 'desc' }, take: 100 })
   }

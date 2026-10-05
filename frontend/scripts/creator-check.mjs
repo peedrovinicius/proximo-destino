@@ -27,6 +27,9 @@ try {
     const page = await browser.newPage({ viewport: { width, height: 950 } })
     const errors = []; const unexpected = []; const drafts = []; const writes = []; const admins = []
     let authenticated = false
+    let inviteActive = false
+    let accepted = 0
+    const inviteCode = 's'.repeat(43)
     page.on('pageerror', error => errors.push(error.message))
     await page.route('**/*', async route => {
       const url = new URL(route.request().url())
@@ -43,8 +46,26 @@ try {
         return respond(200, { status: 'authenticated', accessToken: 'synthetic-creator-token', user: { id: 'synthetic-creator', role: 'CREATOR', email: 'creator@example.invalid' } })
       }
       if (url.pathname === '/api/v1/auth/logout') { authenticated = false; return route.fulfill({ status: 204, body: '' }) }
+      if (url.pathname === '/api/v1/company-invitations/accept') {
+        assert.equal(request.method(), 'POST')
+        assert.ok(inviteActive)
+        const payload = request.postDataJSON()
+        assert.deepEqual(Object.keys(payload).sort(), ['password', 'token'])
+        assert.equal(payload.token, inviteCode)
+        assert.equal(payload.password, 'Synthetic-invite-password-for-test')
+        inviteActive = false; accepted++
+        return respond(201, { passwordSet: true, activationAllowed: false })
+      }
       if (url.pathname.startsWith('/api/v1/platform/companies')) {
         assert.equal(request.headers().authorization, 'Bearer synthetic-creator-token')
+        if (url.pathname.endsWith('/invitation/revoke')) {
+          assert.equal(request.method(), 'POST'); inviteActive = false
+          return respond(201, { revoked: true, activationAllowed: false })
+        }
+        if (url.pathname.endsWith('/invitation')) {
+          assert.equal(request.method(), 'POST'); inviteActive = true
+          return respond(201, { token: inviteCode, expiresAt: '2026-10-06T15:00:00Z', activationAllowed: false })
+        }
         if (url.pathname.endsWith('/admins')) {
           if (request.method() === 'GET') return respond(200, admins)
           assert.equal(request.method(), 'POST')
@@ -97,12 +118,43 @@ try {
     await page.getByRole('status').filter({ hasText: 'Administrador cadastrado, com acesso inativo' }).waitFor()
     assert.equal(await page.getByLabel('Senha inicial', { exact: true }).inputValue(), '')
     await page.getByText('Acesso inativo', { exact: true }).waitFor()
+    await page.getByRole('button', { name: 'Gerar novo convite para Administrador sintético' }).click()
+    await page.getByLabel('Código exibido somente nesta emissão').waitFor()
+    assert.equal(await page.getByLabel('Código exibido somente nesta emissão').inputValue(), inviteCode)
+    assert.equal(page.url().includes(inviteCode), false)
+    await page.getByRole('button', { name: 'Revogar convite de Administrador sintético' }).click()
+    await page.getByRole('status').filter({ hasText: 'Convite revogado' }).waitFor()
+    assert.equal(await page.getByLabel('Código exibido somente nesta emissão').count(), 0)
+    await page.getByRole('button', { name: 'Gerar novo convite para Administrador sintético' }).click()
+    await page.getByLabel('Código exibido somente nesta emissão').waitFor()
     const storage = await page.evaluate(() => JSON.stringify({ local: { ...localStorage }, session: { ...sessionStorage } }))
     assert.equal(storage.includes('Synthetic-password-only-for-test'), false)
+    assert.equal(storage.includes(inviteCode), false)
     const dimensions = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth }))
     assert.ok(dimensions.scroll <= dimensions.width + 1, `Creator overflow: ${JSON.stringify(dimensions)}`)
     assert.equal(await page.getByRole('button', { name: /Ativar empresa|Enviar convite/ }).count(), 0)
     await page.screenshot({ path: resolve(output, `creator-${width}.png`), fullPage: true })
+    await page.getByRole('link', { name: 'Definir senha da empresa' }).click()
+    await page.getByRole('heading', { name: 'Preparar acesso da empresa' }).waitFor()
+    await page.getByLabel('Código do convite').fill(inviteCode)
+    await page.getByLabel('Nova senha', { exact: true }).fill('Synthetic-invite-password-for-test')
+    await page.getByLabel('Confirmar nova senha').fill('Synthetic-other-password-for-test')
+    await page.getByRole('button', { name: 'Definir minha senha' }).click()
+    await page.getByRole('alert').filter({ hasText: 'As senhas devem ser iguais' }).waitFor()
+    assert.equal(accepted, 0)
+    await page.getByLabel('Confirmar nova senha').fill('Synthetic-invite-password-for-test')
+    await page.getByRole('button', { name: 'Definir minha senha' }).click()
+    await page.getByRole('status').filter({ hasText: 'Seu acesso continua inativo' }).waitFor()
+    assert.equal(accepted, 1)
+    assert.equal(page.url().includes(inviteCode), false)
+    assert.equal(await page.locator('input[type="password"]').count(), 0)
+    const afterStorage = await page.evaluate(() => JSON.stringify({ local: { ...localStorage }, session: { ...sessionStorage } }))
+    assert.equal(afterStorage.includes(inviteCode), false)
+    assert.equal(afterStorage.includes('Synthetic-invite-password-for-test'), false)
+    const inviteDimensions = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth }))
+    assert.ok(inviteDimensions.scroll <= inviteDimensions.width + 1)
+    await page.screenshot({ path: resolve(output, `company-invite-${width}.png`), fullPage: true })
+    await page.goto(`${base}/?screen=creator`)
     await page.reload()
     await page.getByRole('heading', { name: 'Agência sintética revisada', exact: true }).waitFor()
     await page.getByRole('button', { name: 'Sair', exact: true }).click()
@@ -110,5 +162,5 @@ try {
     assert.deepEqual(errors, []); assert.deepEqual(unexpected, [])
     await page.close(); checks++
   }
-  console.log(`Creator: ${checks} responsive flows passed (login + MFA, draft create/edit, pending administrator, cleared password, session restore, logout).`)
+  console.log(`Creator: ${checks} responsive flows passed (login + MFA, draft create/edit, pending administrator, invite issue/revoke, password definition without activation or stored secrets, session restore, logout).`)
 } finally { await browser?.close(); await new Promise(done => server.close(done)) }

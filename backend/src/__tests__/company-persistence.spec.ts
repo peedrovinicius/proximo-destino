@@ -5,10 +5,12 @@ import { PrismaService } from '../prisma/prisma.service'
 import { CompaniesService } from '../companies/companies.service'
 import { CompanyScopeService } from '../tenancy/company-scope.service'
 import argon2 from 'argon2'
+import { CompanyInvitationsService } from '../companies/company-invitations.service'
 
 describe('company additive migration in isolated PostgreSQL', () => {
   const prisma = new PrismaService()
   const service = new CompaniesService(prisma)
+  const invites = new CompanyInvitationsService(prisma)
   const scope = new CompanyScopeService(prisma)
   const suffix = randomUUID()
   const creatorId = `creator-${suffix}`
@@ -142,6 +144,95 @@ describe('company additive migration in isolated PostgreSQL', () => {
     }
     assert.equal(await prisma.company.findUnique({ where: { slug: `denied-${suffix}` } }), null)
     assert.equal(await prisma.user.findUnique({ where: { email: `denied-${suffix}@example.invalid` } }), null)
+  })
+  async function pendingInvite() {
+    const admin = await service.createPendingAdmin(creatorId, creatorSessionId, ids[0], {
+      displayName: 'Synthetic invitee', email: `invite-${randomUUID()}@example.invalid`, password: 'synthetic-initial-password-123',
+    })
+    pendingIds.push(admin.user.id)
+    return admin
+  }
+  it('issues only hashed expiring invites and consumes them exactly once under concurrency', async () => {
+    const admin = await pendingInvite()
+    const invite = await invites.issue(creatorId, creatorSessionId, ids[0], admin.id)
+    assert.equal(invite.token.length, 43); assert.equal(invite.activationAllowed, false)
+    const stored = await prisma.companyMembership.findUniqueOrThrow({ where: { id: admin.id } })
+    assert.notEqual(stored.inviteTokenHash, invite.token); assert.equal(stored.inviteTokenHash?.length, 64)
+    assert.ok(stored.inviteExpiresAt!.getTime() > Date.now())
+    const password = 'synthetic-invite-password-123'
+    const results = await Promise.allSettled([invites.accept(invite.token, password), invites.accept(invite.token, password)])
+    assert.equal(results.filter(r => r.status === 'fulfilled').length, 1)
+    assert.equal(results.filter(r => r.status === 'rejected').length, 1)
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: admin.user.id } })
+    assert.equal(user.isActive, false); assert.ok(await argon2.verify(user.passwordHash, password))
+    const used = await prisma.companyMembership.findUniqueOrThrow({ where: { id: admin.id } })
+    assert.ok(used.inviteUsedAt); assert.equal(used.inviteTokenHash, null); assert.equal(used.isActive, false)
+    assert.equal(await prisma.authSession.count({ where: { userId: user.id } }), 0)
+    await assert.rejects(invites.issue(creatorId, creatorSessionId, ids[0], admin.id), { status: 404 })
+    await assert.rejects(invites.accept(invite.token, password), { status: 400 })
+    const events = await prisma.authAuditEvent.findMany({ where: { eventType: { startsWith: 'PLATFORM_ADMIN_INVITE_' },
+      metadata: { path: ['membershipId'], equals: admin.id } } })
+    assert.equal(events.filter(e => e.eventType === 'PLATFORM_ADMIN_INVITE_ACCEPTED').length, 1)
+    const metadata = JSON.stringify(events.map(e => e.metadata))
+    for (const secret of [invite.token, stored.inviteTokenHash!, password, admin.user.email]) assert.equal(metadata.includes(secret), false)
+  })
+  it('rejects expired, replaced, revoked and foreign-company invites', async () => {
+    const admin = await pendingInvite()
+    const first = await invites.issue(creatorId, creatorSessionId, ids[0], admin.id)
+    const second = await invites.issue(creatorId, creatorSessionId, ids[0], admin.id)
+    await assert.rejects(invites.accept(first.token, 'synthetic-new-password-123'), { status: 400 })
+    await prisma.companyMembership.update({ where: { id: admin.id }, data: { inviteExpiresAt: new Date(0) } })
+    await assert.rejects(invites.accept(second.token, 'synthetic-new-password-123'), { status: 400 })
+    const third = await invites.issue(creatorId, creatorSessionId, ids[0], admin.id)
+    await invites.revoke(creatorId, creatorSessionId, ids[0], admin.id)
+    await assert.rejects(invites.accept(third.token, 'synthetic-new-password-123'), { status: 400 })
+    for (const method of ['issue', 'revoke'] as const) {
+      await assert.rejects(invites[method](creatorId, creatorSessionId, 'foreign-company', admin.id), { status: 404 })
+      await assert.rejects(invites[method](creatorId, 'revoked-session', ids[0], admin.id), { status: 403 })
+    }
+    await assert.rejects(invites.accept('invalid', 'synthetic-new-password-123'), { status: 400 })
+    await assert.rejects(invites.accept('a'.repeat(43), 'short'), { status: 400 })
+  })
+  it('refuses invite acceptance when the company, account or membership is no longer pending', async () => {
+    const admin = await pendingInvite()
+    const invite = await invites.issue(creatorId, creatorSessionId, ids[0], admin.id)
+    const password = 'synthetic-new-password-123'
+    const original = await prisma.user.findUniqueOrThrow({ where: { id: admin.user.id } })
+    try {
+      await prisma.company.update({ where: { id: ids[0] }, data: { status: 'ACTIVE' } })
+      await assert.rejects(invites.accept(invite.token, password), { status: 400 })
+      await prisma.company.update({ where: { id: ids[0] }, data: { status: 'DRAFT' } })
+      await prisma.companyMembership.update({ where: { id: admin.id }, data: { isActive: true } })
+      await assert.rejects(invites.accept(invite.token, password), { status: 400 })
+      await prisma.companyMembership.update({ where: { id: admin.id }, data: { isActive: false } })
+      for (const data of [{ isActive: true }, { role: 'AGENT' as const }, { mfaEnabled: true }]) {
+        await prisma.user.update({ where: { id: admin.user.id }, data })
+        await assert.rejects(invites.accept(invite.token, password), { status: 400 })
+        await prisma.user.update({ where: { id: admin.user.id }, data: { isActive: false, role: 'ADMIN', mfaEnabled: false } })
+      }
+      assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: admin.user.id } })).passwordHash, original.passwordHash)
+      assert.equal((await prisma.companyMembership.findUniqueOrThrow({ where: { id: admin.id } })).inviteUsedAt, null)
+    } finally {
+      await prisma.company.update({ where: { id: ids[0] }, data: { status: 'DRAFT' } })
+      await prisma.companyMembership.update({ where: { id: admin.id }, data: { isActive: false } })
+      await prisma.user.update({ where: { id: admin.user.id }, data: { isActive: false, role: 'ADMIN', mfaEnabled: false } })
+    }
+  })
+  it('rolls back invite issue, revoke and acceptance when auditing fails', async () => {
+    const admin = await pendingInvite()
+    const failing = new CompanyInvitationsService({ $transaction: (callback: (tx: unknown) => Promise<unknown>) =>
+      prisma.$transaction(tx => callback({ $queryRaw: tx.$queryRaw.bind(tx), user: tx.user, companyMembership: tx.companyMembership,
+        authAuditEvent: { create: async () => { throw new Error('synthetic invite audit failure') } } }))
+    } as unknown as PrismaService)
+    await assert.rejects(failing.issue(creatorId, creatorSessionId, ids[0], admin.id), /synthetic invite audit failure/)
+    assert.equal((await prisma.companyMembership.findUniqueOrThrow({ where: { id: admin.id } })).inviteTokenHash, null)
+    const invite = await invites.issue(creatorId, creatorSessionId, ids[0], admin.id)
+    const before = await prisma.user.findUniqueOrThrow({ where: { id: admin.user.id } })
+    await assert.rejects(failing.revoke(creatorId, creatorSessionId, ids[0], admin.id), /synthetic invite audit failure/)
+    await assert.rejects(failing.accept(invite.token, 'synthetic-new-password-123'), /synthetic invite audit failure/)
+    assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: admin.user.id } })).passwordHash, before.passwordHash)
+    assert.equal((await prisma.companyMembership.findUniqueOrThrow({ where: { id: admin.id } })).inviteUsedAt, null)
+    assert.equal((await invites.accept(invite.token, 'synthetic-new-password-123')).activationAllowed, false)
   })
   it('cannot edit or provision active companies through draft endpoints', async () => {
     // Synthetic database fixture only; no API activation route exists.
