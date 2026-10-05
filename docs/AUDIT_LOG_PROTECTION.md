@@ -62,8 +62,16 @@ testar clientes/auditoria, bloqueio de outro papel, DDL, privilégios e recusa d
 papéis inadequados. O script não é idempotente: reaplicação das mesmas políticas
 falha e reverte. A limpeza do teste remove políticas/papéis criados.
 
-**Não aplicado em produção.** Ainda faltam ensaio completo dos fluxos operacionais
-com conexão real desse papel (autenticação, reservas, assentos e financeiro),
+O teste `runtime-operational-flow.spec.ts` abre uma conexão Prisma com LOGIN e
+senha aleatórios exclusivos do PostgreSQL local descartável. Confere current_user
+e session_user e usa os serviços reais, sem mocks: matrícula MFA/TOTP, código de
+recuperação usado uma vez, refresh/logout, reserva/troca/colisão/cancelamento de
+assentos, cotação/aprovação, parcelas, recebimento e estorno. O proprietário só
+prepara o papel e limpa os dados no final. As operações da aplicação usam a conexão
+restrita, incluindo transações e auditoria. Não testa o navegador ou guards HTTP;
+também não cobre todos os módulos/integradores ou concorrência entre processos.
+
+**Não aplicado em produção.** Ainda faltam aceite dos fluxos HTTP com esse papel,
 revisão de privilégios públicos/defaults, separação da conexão de migrations e
 plano de troca/retorno. Só depois preparar LOGIN/credenciais por canal seguro e
 considerar a mudança da conexão runtime. Não alterar o papel proprietário atual.
