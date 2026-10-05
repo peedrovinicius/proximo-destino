@@ -19,6 +19,7 @@ import { CompanyScopeService } from '../tenancy/company-scope.service'
 import { revealDocument } from '../security/sensitive-data'
 import { CompanyTripsService } from '../tenancy/company-trips.service'
 import { listBusTemplates } from '../trips/bus-templates'
+import { CompanyReservationsService } from '../tenancy/company-reservations.service'
 import { ClientsController } from '../clients/clients.controller'
 import { ClientsService } from '../clients/clients.service'
 import { AdminTripsController } from '../trips/admin-trips.controller'
@@ -126,7 +127,7 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
     for (const path of ['/admin/dashboard', `/admin/clients/${clients[0]}/credits`, '/admin/payments/orders']) {
       assert.equal((await call(path)).status, 403)
     }
-    assert.equal((await call('/admin/reservations', tokens[0], 'POST')).status, 403)
+    assert.equal((await call('/admin/reservations', tokens[0], 'POST')).status, 400)
     assert.equal(legacyWrites, 0)
   })
   it('never falls back to legacy routes for an unbound session of a managed user', async () => {
@@ -274,6 +275,78 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
     await prisma.user.update({ where: { id: users[0] }, data: { role: 'FINANCE' } })
     await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { role: 'FINANCE' } })
     try { assert.equal((await call('/admin/trips', tokens[0], 'POST', draft)).status, 403) }
+    finally {
+      await prisma.user.update({ where: { id: users[0] }, data: { role: 'ADMIN' } })
+      await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { role: 'ADMIN' } })
+    }
+  })
+  it('prepares only a pending own-company reservation without checkout, credentials or seats', async () => {
+    const response = await call('/admin/reservations', tokens[0], 'POST', { clientId: clients[2], tripId: trips[2] })
+    assert.equal(response.status, 201); const result = await response.json() as { id: string; status: string; passengerCount: number }
+    reservations.push(result.id); assert.equal(result.status, 'PENDING'); assert.equal(result.passengerCount, 1)
+    const row = await prisma.reservation.findUniqueOrThrow({ where: { id: result.id }, include: { passengers: true } })
+    assert.equal(row.companyId, companies[0]); assert.equal(row.accessCodeHash, null)
+    assert.equal(row.passengers.length, 1); assert.equal(row.passengers[0].isPrimary, true)
+    assert.equal(await prisma.seatAssignment.count({ where: { reservationId: result.id } }), 0)
+    assert.equal(await prisma.financePlan.count({ where: { reservationId: result.id } }), 0)
+    assert.equal(await prisma.purchaseOrder.count({ where: { reservationId: result.id } }), 0)
+    for (const key of ['companyId', 'accessCodeHash', 'passengers', 'documentHash']) assert.equal(key in result, false)
+    assert.equal(legacyWrites, 0)
+  })
+  it('rejects cross-company parents, missing IDs and injected reservation status or ownership', async () => {
+    for (const data of [{ clientId: clients[1], tripId: trips[2] }, { clientId: clients[2], tripId: trips[1] },
+      { clientId: 'nonexistent', tripId: trips[2] }]) assert.equal((await call('/admin/reservations', tokens[0], 'POST', data)).status, 404)
+    for (const extra of [{ companyId: companies[1] }, { status: 'CONFIRMED' }, { passengerCount: 80 }, { accessCodeHash: 'forged' }]) {
+      assert.equal((await call('/admin/reservations', tokens[0], 'POST', { clientId: clients[2], tripId: trips[2], ...extra })).status, 400)
+    }
+    assert.equal((await call('/admin/reservations', tokens[0], 'POST', { clientId: clients[2], tripId: trips[2] })).status, 409)
+  })
+  it('serializes the last available place and accounts for blocked seats', async () => {
+    const trip = await prisma.trip.create({ data: { companyId: companies[0], title: 'Synthetic capacity', origin: 'Synthetic',
+      destination: 'Synthetic', departureDate: new Date('2027-01-01'), capacity: 1 } }); trips.push(trip.id)
+    const responses = await Promise.all([clients[0], clients[2]].map(clientId => call('/admin/reservations', tokens[0], 'POST', { clientId, tripId: trip.id })))
+    for (const response of responses) if (response.status === 201) reservations.push((await response.json() as { id: string }).id)
+    assert.deepEqual(responses.map(row => row.status).sort(), [201, 409])
+    const blocked = await prisma.trip.create({ data: { companyId: companies[0], title: 'Synthetic blocked', origin: 'Synthetic',
+      destination: 'Synthetic', departureDate: new Date('2027-01-01'), capacity: 1, blockedSeats: [1] } }); trips.push(blocked.id)
+    assert.equal((await call('/admin/reservations', tokens[0], 'POST', { clientId: clients[2], tripId: blocked.id })).status, 409)
+  })
+  it('rolls back the reservation and primary passenger when audit fails', async () => {
+    const trip = await prisma.trip.create({ data: { companyId: companies[0], title: 'Synthetic rollback', origin: 'Synthetic',
+      destination: 'Synthetic', departureDate: new Date('2027-01-01'), capacity: 10 } }); trips.push(trip.id)
+    const failing = new CompanyReservationsService({ $transaction: (callback: (tx: unknown) => Promise<unknown>) =>
+      prisma.$transaction(tx => callback({ $queryRaw: tx.$queryRaw.bind(tx), client: tx.client, trip: tx.trip, reservation: tx.reservation,
+        authAuditEvent: { create: async () => { throw new Error('synthetic reservation audit failure') } } }))
+    } as unknown as PrismaService, new CompanyScopeService(prisma))
+    await assert.rejects(failing.create(users[0], sessions[0], { clientId: clients[2], tripId: trip.id }), /synthetic reservation audit failure/)
+    assert.equal(await prisma.reservation.count({ where: { tripId: trip.id } }), 0)
+    assert.equal(await prisma.reservationPassenger.count({ where: { reservation: { tripId: trip.id } } }), 0)
+  })
+  it('keeps confirmation, cancellation, financial and seat actions blocked', async () => {
+    for (const [path, method, body] of [
+      [`/admin/reservations/${reservations[0]}/status`, 'PATCH', { status: 'CONFIRMED' }],
+      [`/admin/reservations/${reservations[0]}/cancel`, 'POST', {}],
+      [`/admin/reservations/${reservations[0]}/finance/manual-payments`, 'POST', {}],
+      [`/admin/trips/${trips[2]}/seats/2/assignment`, 'POST', { clientId: clients[2] }],
+    ] as const) assert.equal((await call(path, tokens[0], method, body)).status, 403)
+    assert.equal((await call('/admin/reservations', unboundToken, 'POST', { clientId: clients[2], tripId: trips[2] })).status, 403)
+  })
+  it('refuses reservation preparation on published or past trips', async () => {
+    const tripId = trips.at(-1)!
+    await prisma.trip.update({ where: { id: tripId }, data: { status: 'ACTIVE' } })
+    assert.equal((await call('/admin/reservations', tokens[0], 'POST', { clientId: clients[2], tripId })).status, 409)
+    await prisma.trip.update({ where: { id: tripId }, data: { status: 'DRAFT', departureDate: new Date('2020-01-01') } })
+    assert.equal((await call('/admin/reservations', tokens[0], 'POST', { clientId: clients[2], tripId })).status, 409)
+  })
+  it('revalidates revoked membership before reserving and denies finance', async () => {
+    const scope = await new CompanyScopeService(prisma).resolveSession(users[0], sessions[0])
+    const service = new CompanyReservationsService(prisma, { resolveSession: async () => scope } as unknown as CompanyScopeService)
+    await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { isActive: false } })
+    try { await assert.rejects(service.create(users[0], sessions[0], { clientId: clients[2], tripId: trips[2] }), { status: 403 }) }
+    finally { await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { isActive: true } }) }
+    await prisma.user.update({ where: { id: users[0] }, data: { role: 'FINANCE' } })
+    await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { role: 'FINANCE' } })
+    try { assert.equal((await call('/admin/reservations', tokens[0], 'POST', { clientId: clients[2], tripId: trips[2] })).status, 403) }
     finally {
       await prisma.user.update({ where: { id: users[0] }, data: { role: 'ADMIN' } })
       await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { role: 'ADMIN' } })

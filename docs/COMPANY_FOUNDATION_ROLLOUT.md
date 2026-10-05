@@ -88,8 +88,18 @@ Gravação e auditoria são atômicas; o bloqueio de autorização transacional 
 compartilhado com o cadastro de clientes. Não existe conta operacional ativa
 criada pelo Criador nesta etapa.
 
+POST `/admin/reservations` permite ADMIN/AGENT preparar uma reserva PENDING
+de um passageiro em viagem futura DRAFT, somente com cliente e viagem da
+mesma empresa. Verifica duplicidade, capacidade e assentos bloqueados, com
+bloqueio dos pais e serialização transacional. Cria passageiro principal sem
+copiar documento ou atribuir assento. Auditoria é atômica. Não gera código de
+portal, pedido de compra, financeiro, documento ou mensagem. Confirmação,
+cancelamento e qualquer movimentação financeira permanecem bloqueados.
+Este registro pendente ainda não é uma compra ou reserva operacional entregue
+ao cliente; é preparação em ambiente isolado.
+
 O guard nega às contas de empresa todas as outras rotas administrativas
-protegidas por ele, incluindo gravações de reservas, publicação de viagens, dashboard e
+protegidas por ele, incluindo confirmação/cancelamento de reservas, publicação de viagens, dashboard e
 financeiro. Consultar/revogar as próprias sessões e logout também permanecem
 disponíveis. O marcador
 persistente `User.companyManaged` é definido pelo vínculo e não pode voltar a
