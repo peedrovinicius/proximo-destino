@@ -19,8 +19,8 @@ export class CompaniesController {
 
   @Post(':id/admins')
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
-  createAdmin(@Param('id') id: string, @Body() body: CreateCompanyAdminDto) {
-    return this.companies.createPendingAdmin(id, body)
+  createAdmin(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: CreateCompanyAdminDto) {
+    return this.companies.createPendingAdmin(request.user.id, request.user.sessionId, id, body)
   }
 
   @Get()
@@ -28,11 +28,11 @@ export class CompaniesController {
 
   @Post()
   create(@Req() request: AuthenticatedRequest, @Body() body: CreateCompanyDto) {
-    return this.companies.create(request.user.id, body)
+    return this.companies.create(request.user.id, request.user.sessionId, body)
   }
 
   @Put(':id')
-  update(@Param('id') id: string, @Body() body: CreateCompanyDto) {
-    return this.companies.updateDraft(id, body)
+  update(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: CreateCompanyDto) {
+    return this.companies.updateDraft(request.user.id, request.user.sessionId, id, body)
   }
 }

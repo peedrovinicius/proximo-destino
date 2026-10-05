@@ -6,6 +6,11 @@
   acesso a viagens, reservas, financeiro, integrações ou privacidade da empresa.
 - Login separado `/auth/creator/login`, MFA obrigatório, bloqueio por tentativas
   reaproveitado e sessão validada no servidor. Não há auto-cadastro do Criador.
+- Cadastro e edição de empresas e provisionamento de ADMIN pendente revalidam o
+  Criador e a sessão MFA dentro da transação, mantendo os bloqueios até o commit.
+  Revogação, expiração, desativação ou mudança de papel/MFA negam a gravação.
+  Auditoria e alteração são atômicas, sem nomes, e-mails ou senhas no evento;
+  falha de auditoria desfaz empresa, conta e vínculo. Isso não ativa empresas.
 - Tabelas `Company` e `CompanyMembership`, com vínculo único usuário/empresa e
   chaves estrangeiras. A migração é aditiva, sem alterar contas ou dados existentes.
 - Tela `?screen=creator`: cadastro e edição de rascunhos, campos comerciais,

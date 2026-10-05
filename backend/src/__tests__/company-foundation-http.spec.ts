@@ -17,6 +17,8 @@ describe('company foundation HTTP boundary (synthetic database adapter)', () => 
   let active = true
   let mfa = true
   let sessionValid = true
+  let transactionAuthorized = true
+  let audits: Record<string, unknown>[] = []
   let writes: Record<string, unknown>[] = []
   const data = { tradeName: 'Empresa fictícia', slug: 'empresa-teste', contactEmail: 'contato@example.invalid',
     responsibleName: 'Responsável fictício', responsibleEmail: 'responsavel@example.invalid' }
@@ -31,7 +33,8 @@ describe('company foundation HTTP boundary (synthetic database adapter)', () => 
     companyMembership: { findMany: async () => [], create: async (query: { data: Record<string, unknown> }) => {
       writes.push(query.data); return { id: 'pending-membership', isActive: query.data.isActive }
     } },
-    $queryRaw: async () => [{ id: 'synthetic-company' }],
+    $queryRaw: async () => transactionAuthorized ? [{ id: 'synthetic-company' }] : [],
+    authAuditEvent: { create: async (query: { data: Record<string, unknown> }) => { audits.push(query.data); return query.data } },
     $transaction: async (callback: (tx: unknown) => Promise<unknown>): Promise<unknown> => callback(database),
     authSession: { findFirst: async (query: { where: Record<string, unknown> }) => {
       assert.equal(query.where.revokedAt, null)
@@ -103,6 +106,17 @@ describe('company foundation HTTP boundary (synthetic database adapter)', () => 
     assert.equal(saved.status, 'DRAFT'); assert.equal(saved.createdById, 'synthetic-user')
     assert.equal(saved.contactEmail, 'contact@example.invalid')
     assert.equal('memberships' in writes.at(-1)!, false)
+  })
+  it('rejects writes when authorization changes after the HTTP guard', async () => {
+    const count = writes.length
+    const auditCount = audits.length
+    transactionAuthorized = false
+    try {
+      assert.equal((await call('CREATOR', data)).status, 403)
+      assert.equal((await call('CREATOR', data, '/synthetic-company')).status, 403)
+      assert.equal((await call('CREATOR', adminData, '/synthetic-company/admins')).status, 403)
+    } finally { transactionAuthorized = true }
+    assert.equal(writes.length, count); assert.equal(audits.length, auditCount)
   })
   it('reports activation blockers without modifying accounts or exposing credentials', async () => {
     const count = writes.length

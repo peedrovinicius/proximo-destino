@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { CreateCompanyDto, CreateCompanyAdminDto } from './company.dto'
 import argon2 from 'argon2'
+import { lockCreatorWrite } from './creator-write-lock'
 
 const fields = {
   id: true, slug: true, tradeName: true, legalName: true, registrationNumber: true,
@@ -39,11 +40,12 @@ export class CompaniesService {
       } } }, orderBy: { createdAt: 'desc' }, take: 100 })
   }
 
-  async createPendingAdmin(companyId: string, body: CreateCompanyAdminDto) {
+  async createPendingAdmin(actorId: string, sessionId: string, companyId: string, body: CreateCompanyAdminDto) {
     const email = body.email.trim().toLowerCase()
     const passwordHash = await argon2.hash(body.password, { type: argon2.argon2id })
     try {
       return await this.prisma.$transaction(async tx => {
+        await lockCreatorWrite(tx, actorId, sessionId)
         // Serialize against company status changes; never provision onto an active company.
         const company = await tx.$queryRaw<{ id: string }[]>`
           SELECT "id" FROM "Company" WHERE "id" = ${companyId} AND "status" = 'DRAFT' FOR UPDATE`
@@ -58,6 +60,8 @@ export class CompaniesService {
         const membership = await tx.companyMembership.create({ data: {
           companyId, userId: user.id, role: 'ADMIN', isActive: false,
         }, select: { id: true, isActive: true } })
+        await tx.authAuditEvent.create({ data: { userId: actorId, eventType: 'PLATFORM_COMPANY_ADMIN_CREATED',
+          metadata: { companyId, targetUserId: user.id, membershipId: membership.id } } })
         return { ...membership, user }
       })
     } catch (error) {
@@ -72,16 +76,21 @@ export class CompaniesService {
     return this.prisma.company.findMany({ select: fields, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 100 })
   }
 
-  async create(actorId: string, body: CreateCompanyDto) {
+  async create(actorId: string, sessionId: string, body: CreateCompanyDto) {
     try {
-      // Deliberately no user creation, membership, email, activation or legacy data reassignment.
-      return await this.prisma.company.create({ data: {
-        slug: body.slug, tradeName: body.tradeName, legalName: body.legalName,
-        registrationNumber: body.registrationNumber, contactEmail: body.contactEmail,
-        contactPhone: body.contactPhone, address: body.address,
-        responsibleName: body.responsibleName, responsibleEmail: body.responsibleEmail,
-        status: 'DRAFT', createdById: actorId,
-      }, select: fields })
+      return await this.prisma.$transaction(async tx => {
+        await lockCreatorWrite(tx, actorId, sessionId)
+        const company = await tx.company.create({ data: {
+          slug: body.slug, tradeName: body.tradeName, legalName: body.legalName,
+          registrationNumber: body.registrationNumber, contactEmail: body.contactEmail,
+          contactPhone: body.contactPhone, address: body.address,
+          responsibleName: body.responsibleName, responsibleEmail: body.responsibleEmail,
+          status: 'DRAFT', createdById: actorId,
+        }, select: fields })
+        await tx.authAuditEvent.create({ data: { userId: actorId, eventType: 'PLATFORM_COMPANY_CREATED',
+          metadata: { companyId: company.id } } })
+        return company
+      })
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         throw new ConflictException('Identificador da empresa já cadastrado')
@@ -90,15 +99,20 @@ export class CompaniesService {
     }
   }
 
-  async updateDraft(id: string, body: CreateCompanyDto) {
+  async updateDraft(actorId: string, sessionId: string, id: string, body: CreateCompanyDto) {
     try {
-      // Status in the update predicate prevents races with a future activation workflow.
-      return await this.prisma.company.update({ where: { id, status: 'DRAFT' }, data: {
-        slug: body.slug, tradeName: body.tradeName, legalName: body.legalName ?? null,
-        registrationNumber: body.registrationNumber ?? null, contactEmail: body.contactEmail,
-        contactPhone: body.contactPhone ?? null, address: body.address ?? null,
-        responsibleName: body.responsibleName, responsibleEmail: body.responsibleEmail,
-      }, select: fields })
+      return await this.prisma.$transaction(async tx => {
+        await lockCreatorWrite(tx, actorId, sessionId)
+        const company = await tx.company.update({ where: { id, status: 'DRAFT' }, data: {
+          slug: body.slug, tradeName: body.tradeName, legalName: body.legalName ?? null,
+          registrationNumber: body.registrationNumber ?? null, contactEmail: body.contactEmail,
+          contactPhone: body.contactPhone ?? null, address: body.address ?? null,
+          responsibleName: body.responsibleName, responsibleEmail: body.responsibleEmail,
+        }, select: fields })
+        await tx.authAuditEvent.create({ data: { userId: actorId, eventType: 'PLATFORM_COMPANY_UPDATED',
+          metadata: { companyId: company.id, fields: Object.keys(body) } } })
+        return company
+      })
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
         if (error.code === 'P2025') throw new NotFoundException('Rascunho de empresa não encontrado')

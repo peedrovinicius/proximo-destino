@@ -12,6 +12,7 @@ describe('company additive migration in isolated PostgreSQL', () => {
   const scope = new CompanyScopeService(prisma)
   const suffix = randomUUID()
   const creatorId = `creator-${suffix}`
+  let creatorSessionId: string
   const adminId = `company-admin-${suffix}`
   const ids: string[] = []
   const pendingIds: string[] = []
@@ -24,9 +25,11 @@ describe('company additive migration in isolated PostgreSQL', () => {
     assert.ok(['localhost', '127.0.0.1', 'postgres'].includes(database.hostname), 'Requires local test database')
     await prisma.$connect(); connected = true
     await prisma.user.createMany({ data: [
-      { id: creatorId, email: `${creatorId}@example.invalid`, passwordHash: 'synthetic-unusable', role: 'CREATOR' },
+      { id: creatorId, email: `${creatorId}@example.invalid`, passwordHash: 'synthetic-unusable', role: 'CREATOR', mfaEnabled: true, mfaEnrolledAt: new Date(Date.now() - 60_000) },
       { id: adminId, email: `${adminId}@example.invalid`, passwordHash: 'synthetic-unusable', role: 'ADMIN' },
     ] })
+    creatorSessionId = (await prisma.authSession.create({ data: { userId: creatorId,
+      refreshTokenHash: 'synthetic-unusable', expiresAt: new Date(Date.now() + 3600_000) } })).id
   })
   after(async () => {
     if (!connected) return
@@ -38,14 +41,14 @@ describe('company additive migration in isolated PostgreSQL', () => {
     } finally { await prisma.$disconnect() }
   })
   it('persists only a draft and leaves responsible account unprovisioned', async () => {
-    const company = await service.create(creatorId, fields); ids.push(company.id)
+    const company = await service.create(creatorId, creatorSessionId, fields); ids.push(company.id)
     assert.equal(company.status, 'DRAFT')
     assert.equal(await prisma.companyMembership.count({ where: { companyId: company.id } }), 0)
     assert.equal(await prisma.user.findUnique({ where: { email: fields.responsibleEmail } }), null)
   })
   it('enforces unique slug and preserves creator on edit', async () => {
-    await assert.rejects(service.create(creatorId, fields), { status: 409 })
-    await service.updateDraft(ids[0], { ...fields, tradeName: 'Synthetic revised' })
+    await assert.rejects(service.create(creatorId, creatorSessionId, fields), { status: 409 })
+    await service.updateDraft(creatorId, creatorSessionId, ids[0], { ...fields, tradeName: 'Synthetic revised' })
     assert.equal((await prisma.company.findUniqueOrThrow({ where: { id: ids[0] } })).createdById, creatorId)
   })
   it('binds company membership through unique and foreign key constraints', async () => {
@@ -55,7 +58,7 @@ describe('company additive migration in isolated PostgreSQL', () => {
   })
   it('creates an inactive managed administrator with hashed password and no session', async () => {
     const password = 'synthetic-pending-password-123'
-    const result = await service.createPendingAdmin(ids[0], { displayName: 'Synthetic admin',
+    const result = await service.createPendingAdmin(creatorId, creatorSessionId, ids[0], { displayName: 'Synthetic admin',
       email: ` PENDING-${suffix}@example.invalid `, password })
     pendingIds.push(result.user.id)
     assert.equal(result.isActive, false); assert.equal(result.user.isActive, false)
@@ -73,7 +76,7 @@ describe('company additive migration in isolated PostgreSQL', () => {
   it('refuses duplicate email and never promotes an existing creator', async () => {
     const count = await prisma.companyMembership.count({ where: { companyId: ids[0] } })
     for (const email of [`${creatorId}@example.invalid`, `PENDING-${suffix}@example.invalid`]) {
-      await assert.rejects(service.createPendingAdmin(ids[0], { displayName: 'Synthetic', email,
+      await assert.rejects(service.createPendingAdmin(creatorId, creatorSessionId, ids[0], { displayName: 'Synthetic', email,
         password: 'synthetic-pending-password-123' }), { status: 409 })
     }
     assert.equal(await prisma.companyMembership.count({ where: { companyId: ids[0] } }), count)
@@ -85,21 +88,72 @@ describe('company additive migration in isolated PostgreSQL', () => {
       prisma.$transaction(tx => callback({ $queryRaw: tx.$queryRaw.bind(tx), user: tx.user,
         companyMembership: { create: async () => { throw new Error('synthetic rollback') } } }))
     } as unknown as PrismaService)
-    await assert.rejects(failing.createPendingAdmin(ids[0], { displayName: 'Synthetic', email,
+    await assert.rejects(failing.createPendingAdmin(creatorId, creatorSessionId, ids[0], { displayName: 'Synthetic', email,
       password: 'synthetic-pending-password-123' }), /synthetic rollback/)
     assert.equal(await prisma.user.findUnique({ where: { email } }), null)
+  })
+  it('audits creator writes without recording personal values or credentials', async () => {
+    const events = await prisma.authAuditEvent.findMany({ where: { userId: creatorId } })
+    for (const type of ['PLATFORM_COMPANY_CREATED', 'PLATFORM_COMPANY_UPDATED', 'PLATFORM_COMPANY_ADMIN_CREATED']) {
+      assert.ok(events.some(event => event.eventType === type))
+    }
+    const serialized = JSON.stringify(events.map(event => event.metadata))
+    for (const secret of [fields.contactEmail, fields.responsibleName, 'synthetic-pending-password-123', 'passwordHash']) {
+      assert.equal(serialized.includes(secret), false)
+    }
+  })
+  it('rolls back draft creation, editing and pending administrator when audit fails', async () => {
+    const failing = new CompaniesService({ $transaction: (callback: (tx: unknown) => Promise<unknown>) =>
+      prisma.$transaction(tx => callback({ $queryRaw: tx.$queryRaw.bind(tx), user: tx.user, company: tx.company,
+        companyMembership: tx.companyMembership, authAuditEvent: { create: async () => { throw new Error('synthetic audit failure') } } }))
+    } as unknown as PrismaService)
+    const slug = `audit-rollback-${suffix}`
+    await assert.rejects(failing.create(creatorId, creatorSessionId, { ...fields, slug }), /synthetic audit failure/)
+    assert.equal(await prisma.company.findUnique({ where: { slug } }), null)
+    const original = await prisma.company.findUniqueOrThrow({ where: { id: ids[0] } })
+    await assert.rejects(failing.updateDraft(creatorId, creatorSessionId, ids[0], { ...fields, tradeName: 'Must rollback' }), /synthetic audit failure/)
+    assert.equal((await prisma.company.findUniqueOrThrow({ where: { id: ids[0] } })).tradeName, original.tradeName)
+    const email = `audit-rollback-${suffix}@example.invalid`
+    await assert.rejects(failing.createPendingAdmin(creatorId, creatorSessionId, ids[0], { displayName: 'Synthetic', email,
+      password: 'synthetic-pending-password-123' }), /synthetic audit failure/)
+    assert.equal(await prisma.user.findUnique({ where: { email } }), null)
+  })
+  it('rechecks creator authorization in every write transaction', async () => {
+    const assertDenied = async () => {
+      await assert.rejects(service.create(creatorId, creatorSessionId, { ...fields, slug: `denied-${suffix}` }), { status: 403 })
+      await assert.rejects(service.updateDraft(creatorId, creatorSessionId, ids[0], fields), { status: 403 })
+      await assert.rejects(service.createPendingAdmin(creatorId, creatorSessionId, ids[0], { displayName: 'Synthetic',
+        email: `denied-${suffix}@example.invalid`, password: 'synthetic-pending-password-123' }), { status: 403 })
+    }
+    const session = await prisma.authSession.findUniqueOrThrow({ where: { id: creatorSessionId } })
+    try {
+      await prisma.authSession.update({ where: { id: creatorSessionId }, data: { revokedAt: new Date() } }); await assertDenied()
+      await prisma.authSession.update({ where: { id: creatorSessionId }, data: { revokedAt: null, expiresAt: new Date(0) } }); await assertDenied()
+      await prisma.authSession.update({ where: { id: creatorSessionId }, data: { expiresAt: session.expiresAt } })
+      for (const data of [{ role: 'ADMIN' as const }, { isActive: false }, { mfaEnabled: false }, { mfaEnrolledAt: new Date(Date.now() + 60_000) }]) {
+        await prisma.user.update({ where: { id: creatorId }, data }); await assertDenied()
+        await prisma.user.update({ where: { id: creatorId }, data: { role: 'CREATOR', isActive: true, mfaEnabled: true,
+          mfaEnrolledAt: new Date(session.createdAt.getTime() - 60_000) } })
+      }
+    } finally {
+      await prisma.authSession.update({ where: { id: creatorSessionId }, data: { revokedAt: null, expiresAt: session.expiresAt } })
+      await prisma.user.update({ where: { id: creatorId }, data: { role: 'CREATOR', isActive: true, mfaEnabled: true,
+        mfaEnrolledAt: new Date(session.createdAt.getTime() - 60_000) } })
+    }
+    assert.equal(await prisma.company.findUnique({ where: { slug: `denied-${suffix}` } }), null)
+    assert.equal(await prisma.user.findUnique({ where: { email: `denied-${suffix}@example.invalid` } }), null)
   })
   it('cannot edit or provision active companies through draft endpoints', async () => {
     // Synthetic database fixture only; no API activation route exists.
     await prisma.company.update({ where: { id: ids[0] }, data: { status: 'ACTIVE' } })
-    await assert.rejects(service.updateDraft(ids[0], fields), { status: 404 })
+    await assert.rejects(service.updateDraft(creatorId, creatorSessionId, ids[0], fields), { status: 404 })
     const email = `active-refused-${suffix}@example.invalid`
-    await assert.rejects(service.createPendingAdmin(ids[0], { displayName: 'Synthetic', email,
+    await assert.rejects(service.createPendingAdmin(creatorId, creatorSessionId, ids[0], { displayName: 'Synthetic', email,
       password: 'synthetic-pending-password-123' }), { status: 404 })
     assert.equal(await prisma.user.findUnique({ where: { email } }), null)
   })
   it('resolves persisted session company and denies another company or another user', async () => {
-    const other = await service.create(creatorId, { ...fields, slug: `second-${suffix}` }); ids.push(other.id)
+    const other = await service.create(creatorId, creatorSessionId, { ...fields, slug: `second-${suffix}` }); ids.push(other.id)
     await prisma.company.update({ where: { id: other.id }, data: { status: 'ACTIVE' } })
     const session = await prisma.authSession.create({ data: {
       userId: adminId, companyId: ids[0], refreshTokenHash: 'synthetic-unusable',
