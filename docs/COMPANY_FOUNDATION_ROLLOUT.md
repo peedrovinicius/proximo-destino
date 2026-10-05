@@ -99,8 +99,13 @@ e editar somente viagens DRAFT da própria empresa. Publicação é recusada;
 editar viagem com reservas ou assentos atribuídos também é recusado. Datas,
 preço, modelo, capacidade, andares, instalações e assentos bloqueados são
 validados. GET `/admin/trips/bus-templates` libera somente o catálogo estático
-de modelos após validação da sessão. Upload, atribuição e movimento de assentos,
-embarque, cancelamento e conclusão continuam bloqueados para contas de empresa.
+de modelos após validação da sessão.
+GET `/admin/trips/:id` disponibiliza detalhe da própria empresa para ADMIN/AGENT;
+lista e detalhe mantêm capacidade, modelo, andares, instalações, layout e assentos
+bloqueados, sem imagem binária, identificadores internos de posse ou passageiros.
+IDs externos ou inexistentes retornam 404. A nova consulta exige sessão de empresa.
+Upload, atribuição e movimento de assentos, embarque, cancelamento e conclusão
+continuam bloqueados para contas de empresa.
 Gravação e auditoria são atômicas; o bloqueio de autorização transacional é
 compartilhado com o cadastro de clientes. Não existe conta operacional ativa
 criada pelo Criador nesta etapa.

@@ -5,6 +5,9 @@ import { CompanyScopeService } from './company-scope.service'
 const clientFields = { id: true, fullName: true, email: true, phone: true, birthDate: true } as const
 const tripFields = { id: true, title: true, origin: true, destination: true,
   departureDate: true, returnDate: true, status: true, priceCents: true } as const
+const tripAdminFields = { ...tripFields, summary: true, imageUrl: true,
+  capacity: true, busTemplate: true, seatLayout: true, deckCount: true,
+  lowerDeckCapacity: true, vehicleFeatures: true, blockedSeats: true } as const
 
 function searchText(query?: string) {
   if (query !== undefined && typeof query !== 'string') throw new BadRequestException('Pesquisa inválida')
@@ -95,14 +98,14 @@ export class CompanyDataService {
     const scope = await this.scopes.resolveSession(userId, sessionId)
     if (scope.role === 'FINANCE') throw new ForbiddenException('Perfil sem acesso ao cadastro de viagens')
     const q = searchText(query)
-    return this.prisma.trip.findMany({ where: { companyId: scope.companyId, ...(q ? tripSearch(q) : {}) }, select: tripFields,
+    return this.prisma.trip.findMany({ where: { companyId: scope.companyId, ...(q ? tripSearch(q) : {}) }, select: tripAdminFields,
       orderBy: [{ departureDate: 'desc' }, { id: 'desc' }], take: 100 })
   }
 
   async trip(userId: string, sessionId: string, id: string) {
     const scope = await this.scopes.resolveSession(userId, sessionId)
     if (scope.role === 'FINANCE') throw new ForbiddenException('Perfil sem acesso ao cadastro de viagens')
-    const result = await this.prisma.trip.findFirst({ where: { id, companyId: scope.companyId }, select: tripFields })
+    const result = await this.prisma.trip.findFirst({ where: { id, companyId: scope.companyId }, select: tripAdminFields })
     if (!result) throw new NotFoundException('Viagem não encontrada')
     return result
   }

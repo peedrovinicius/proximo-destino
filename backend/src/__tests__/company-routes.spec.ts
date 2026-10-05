@@ -369,6 +369,19 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
     assert.deepEqual(row.blockedSeats, [1]); assert.equal(row.lowerDeckCapacity, 8)
     for (const id of [trips[1], 'nonexistent']) assert.equal((await call(`/admin/trips/${id}`, tokens[0], 'PATCH', { title: 'Denied' })).status, 404)
   })
+  it('reads own trip configuration without losing vehicle fields or exposing a foreign draft', async () => {
+    const response = await call(`/admin/trips/${trips[2]}`)
+    assert.equal(response.status, 200)
+    const result = await response.json() as { id: string; capacity: number; blockedSeats: number[]; deckCount: number }
+    assert.equal(result.id, trips[2]); assert.equal(result.capacity, 16)
+    assert.equal(result.deckCount, 2); assert.deepEqual(result.blockedSeats, [1])
+    for (const key of ['companyId', 'imageData', 'imageMimeType', 'reservations', 'seatAssignments']) assert.equal(key in result, false)
+    const listed = await (await call('/admin/trips?q=Synthetic%20revised')).json() as typeof result[]
+    assert.equal(listed[0].capacity, 16); assert.deepEqual(listed[0].blockedSeats, [1])
+    for (const id of [trips[1], 'nonexistent']) assert.equal((await call(`/admin/trips/${id}`)).status, 404)
+    assert.equal((await call(`/admin/trips/${trips[2]}`, tokens[1])).status, 404)
+    assert.equal((await call(`/admin/trips/${trips[2]}`, unboundToken)).status, 403)
+  })
   it('rejects ownership injection, publication and invalid dates, prices or bus configuration', async () => {
     for (const extra of [{ companyId: companies[1] }, { status: 'ACTIVE' }, { status: 'SCHEDULED' },
       { title: ' ' }, { returnDate: '2026-01-01' }, { priceCents: 2147483648 }, { blockedSeats: [17] },

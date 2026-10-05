@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  ForbiddenException,
   Param,
   Patch,
   ParseIntPipe,
@@ -229,5 +230,13 @@ export class AdminTripsController {
   ) {
     if (request.companyScope) return this.scopedWrites.update(request.user.id, request.user.sessionId, id, body)
     return this.trips.update(id, body, request.user.id)
+  }
+
+  @Get(':id')
+  @CompanyRead()
+  @Roles(...OPERATIONS_ROLES)
+  detail(@Param('id') id: string, @Req() request: AuthenticatedRequest) {
+    if (!request.companyScope) throw new ForbiddenException('Consulta exige sessão de empresa')
+    return this.scoped.trip(request.user.id, request.user.sessionId, id)
   }
 }
