@@ -101,4 +101,17 @@ describe('papel runtime sem bypass em PostgreSQL isolado', () => {
     `
     assert.equal(privilege.allowed, false)
   })
+  it('diagnóstico somente leitura distingue papel restrito e proprietário sem conceder permissões', async () => {
+    const check = (target?: string) => execFileSync('psql', [database.toString(), '-X', '-A', '-t',
+      '--set=ON_ERROR_STOP=1', ...(target ? [`--command=SET ROLE "${target}"`] : []),
+      '--file=scripts/security/check-runtime.sql'], { encoding: 'utf8', stdio: 'pipe' })
+    const restricted = check(role)
+    assert.ok(restricted.split('\n').includes('t|f|t|t|t|t|t|t'), restricted)
+    assert.ok(restricted.split('\n').includes('12'), restricted)
+    const owner = check()
+    assert.equal(owner.split('\n').includes('t|f|t|t|t|t|t|t'), false)
+    const [access] = await prisma.$queryRaw<Array<{ forbidden: boolean }>>`
+      SELECT has_table_privilege(${role}, 'public."AuthAuditEvent"', 'UPDATE') AS forbidden`
+    assert.equal(access.forbidden, false)
+  })
 })
