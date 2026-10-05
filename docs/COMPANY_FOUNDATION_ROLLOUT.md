@@ -58,8 +58,14 @@ Constraints adiáveis, null-safe e com bloqueio de leitura dos pais impedem
 referências inconsistentes e permitem um futuro backfill transacional revisado.
 As listas GET `/admin/clients`, `/admin/trips`, `/admin/reservations` e o detalhe
 GET `/admin/clients/:id` usam esses leitores para sessões de empresa. Contas
-legadas sem vínculo preservam o comportamento anterior. A busca textual de
-viagens ainda não é aplicada ao leitor de empresa.
+legadas sem vínculo preservam o comportamento anterior. O filtro `q` de viagens
+consulta título, origem e destino somente da própria empresa.
+GET `/admin/search` pesquisa clientes (nome/e-mail/telefone), viagens e reservas
+somente da empresa da sessão, verificando também os pais das reservas. ADMIN e
+AGENT recebem até oito resultados por categoria, sem documentos, notas, hashes
+ou códigos de acesso. FINANCE não acessa essa busca operacional. Pesquisa com
+menos de dois caracteres retorna listas vazias; filtro tem limite de 160
+caracteres e rejeita formatos não textuais. Contas legadas mantêm a busca anterior.
 
 POST `/admin/clients` e PATCH `/admin/clients/:id` também recebem escopo de empresa
 para ADMIN/AGENT. Campos de posse são rejeitados pelo DTO. CPF é validado,

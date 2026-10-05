@@ -49,10 +49,12 @@ export class AdminController {
   }
 
   @Get('search')
+  @CompanyRead()
   search(
     @Query('q') query = '',
     @Req() request: AuthenticatedRequest,
   ) {
+    if (request.companyScope) return this.scoped.search(request.user.id, request.user.sessionId, query)
     return this.admin.search(query, request.user.role)
   }
 

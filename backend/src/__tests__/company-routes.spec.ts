@@ -124,6 +124,34 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
     assert.equal((await call(`/admin/clients/${clients[1]}`)).status, 404)
     assert.equal((await call(`/admin/clients/${clients[0]}`, tokens[1])).status, 404)
   })
+  it('searches own clients, trips and reservations without foreign identities or secrets', async () => {
+    const response = await call('/admin/search?q=SYNTHETIC')
+    assert.equal(response.status, 200)
+    const result = await response.json() as { clients: { id: string }[]; trips: { id: string }[]; reservations: { id: string }[] }
+    assert.deepEqual(result.clients.map(r => r.id), [clients[0]])
+    assert.deepEqual(result.trips.map(r => r.id), [trips[0]])
+    assert.deepEqual(result.reservations.map(r => r.id), [reservations[0]])
+    for (const field of ['documentEncrypted', 'documentHash', 'accessCodeHash', 'notes', 'companyId']) {
+      assert.equal(JSON.stringify(result).includes(`"${field}"`), false)
+    }
+    for (const query of ['Synthetic 1', 'x', '   ']) {
+      const empty = await call(`/admin/search?q=${encodeURIComponent(query)}`)
+      assert.equal(empty.status, 200)
+      assert.deepEqual(await empty.json(), { clients: [], trips: [], reservations: [] })
+    }
+    assert.equal((await call('/admin/search?q=Synthetic', unboundToken)).status, 403)
+    for (const path of ['/admin/search', '/admin/trips', '/admin/clients']) {
+      assert.equal((await call(`${path}?q=one&q=two`)).status, 400)
+    }
+  })
+  it('filters company trips by title, origin and destination', async () => {
+    for (const q of ['synthetic 0', ' fortaleza ', 'RECIFE']) {
+      const response = await call(`/admin/trips?q=${encodeURIComponent(q)}`)
+      assert.equal(response.status, 200)
+      assert.deepEqual((await response.json() as { id: string }[]).map(r => r.id), [trips[0]])
+    }
+    assert.deepEqual(await (await call('/admin/trips?q=Synthetic%201')).json(), [])
+  })
   it('blocks company sessions from unscoped credit, finance and writes', async () => {
     for (const path of [`/admin/clients/${clients[0]}/credits`, '/admin/payments/orders']) {
       assert.equal((await call(path)).status, 403)
@@ -311,6 +339,7 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
     await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { role: 'FINANCE' } })
     try {
       assert.equal((await call('/admin/clients', tokens[0], 'POST', { fullName: 'Denied' })).status, 403)
+      assert.equal((await call('/admin/search?q=Synthetic')).status, 403)
       assert.equal((await call(`/admin/clients/${clients[2]}`, tokens[0], 'PATCH', { fullName: 'Denied' })).status, 403)
       assert.equal((await call(`/admin/clients/${clients[0]}/companions`, tokens[0], 'POST', { fullName: 'Denied' })).status, 403)
       const companion = await prisma.companion.findFirstOrThrow({ where: { clientId: clients[0] } })
