@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service'
 import { CompanyScopeService } from './company-scope.service'
 import { lockCompanyWrite } from './company-write-lock'
 import { CreateTripDto, UpdateTripDto, VehicleFeatureDto } from '../trips/dto/admin-trip.dto'
-import { resolveBusTemplate } from '../trips/bus-templates'
+import { describeBus, resolveBusTemplate } from '../trips/bus-templates'
 
 const fields = { id: true, title: true, origin: true, destination: true,
   departureDate: true, returnDate: true, status: true, priceCents: true, summary: true,
@@ -17,9 +17,37 @@ export class CompanyTripsService {
   create(userId: string, sessionId: string, data: CreateTripDto) { return this.write(userId, sessionId, data) }
   update(userId: string, sessionId: string, id: string, data: UpdateTripDto) { return this.write(userId, sessionId, data, id) }
 
-  private async write(userId: string, sessionId: string, data: UpdateTripDto, id?: string) {
+  async seatMap(userId: string, sessionId: string, id: string) {
+    const scope = await this.scopes.resolveSession(userId, sessionId)
+    if (scope.role !== 'ADMIN') throw new ForbiddenException('Perfil sem acesso ao mapa de assentos')
+    const trip = await this.prisma.trip.findFirst({ where: { id, companyId: scope.companyId },
+      select: { ...fields, _count: { select: { seatAssignments: true } } } })
+    if (!trip) throw new NotFoundException('Viagem não encontrada')
+    if (trip.status !== 'DRAFT' || trip._count.seatAssignments) {
+      throw new ConflictException('Mapa operacional ainda não habilitado para empresas')
+    }
+    const enabled = trip.capacity !== null && trip.capacity >= 1 && trip.capacity <= 80
+    const blockedSeats = enabled ? trip.blockedSeats.filter(s => s >= 1 && s <= trip.capacity!) : []
+    return { enabled, trip: { id: trip.id, title: trip.title, origin: trip.origin,
+      destination: trip.destination, departureDate: trip.departureDate }, capacity: trip.capacity,
+      busLabel: describeBus(trip.busTemplate, trip.capacity), seatLayout: trip.seatLayout ?? 'TWO_BY_TWO',
+      deckCount: trip.deckCount ?? 1, lowerDeckCapacity: trip.lowerDeckCapacity,
+      vehicleFeatures: trip.vehicleFeatures ?? [], blockedSeats, occupiedSeats: [], assignments: [],
+      availableCount: enabled ? trip.capacity! - new Set(blockedSeats).size : trip.capacity }
+  }
+
+  setSeatBlocked(userId: string, sessionId: string, id: string, seatNumber: number, blocked: boolean) {
+    if (!Number.isInteger(seatNumber) || seatNumber < 1 || seatNumber > 80 || typeof blocked !== 'boolean') {
+      throw new BadRequestException('Assento ou bloqueio inválido')
+    }
+    return this.write(userId, sessionId, {}, id, { seatNumber, blocked })
+  }
+
+  private async write(userId: string, sessionId: string, data: UpdateTripDto, id?: string,
+    seatChange?: { seatNumber: number; blocked: boolean }) {
     const scope = await this.scopes.resolveSession(userId, sessionId)
     if (scope.role === 'FINANCE') throw new ForbiddenException('Perfil sem acesso ao cadastro de viagens')
+    if (seatChange && scope.role !== 'ADMIN') throw new ForbiddenException('Perfil sem acesso ao bloqueio de assentos')
     if (data.status !== undefined && data.status !== 'DRAFT') throw new BadRequestException('Publicação de viagens ainda não habilitada para empresas')
     try {
       return await this.prisma.$transaction(async tx => {
@@ -32,6 +60,15 @@ export class CompanyTripsService {
           throw new ConflictException('Somente rascunhos sem reservas ou assentos atribuídos podem ser editados nesta etapa')
         }
         const provided = Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined))
+        if (seatChange) {
+          const seats = new Set(existing!.blockedSeats)
+          if (seatChange.blocked) seats.add(seatChange.seatNumber)
+          else seats.delete(seatChange.seatNumber)
+          provided.blockedSeats = [...seats]
+          if (existing!.capacity === null || seatChange.seatNumber > existing!.capacity) {
+            throw new BadRequestException('Assento fora da capacidade da viagem')
+          }
+        }
         const target = { ...existing, ...provided } as UpdateTripDto
         for (const key of ['title', 'origin', 'destination'] as const) {
           if (!target[key]?.trim()) throw new BadRequestException('Informe título, origem e destino')

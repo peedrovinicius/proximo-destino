@@ -106,8 +106,10 @@ export class AdminTripsController {
   }
 
   @Get(':id/seats')
+  @CompanyRead()
   @Roles(...ADMIN_ONLY_ROLES)
-  seatMap(@Param('id') id: string) {
+  seatMap(@Param('id') id: string, @Req() request: AuthenticatedRequest) {
+    if (request.companyScope) return this.scopedWrites.seatMap(request.user.id, request.user.sessionId, id)
     return this.trips.findAdminSeatMap(id)
   }
 
@@ -139,6 +141,7 @@ export class AdminTripsController {
   }
 
   @Patch(':id/seats/:seatNumber')
+  @CompanyWrite()
   @Roles(...ADMIN_ONLY_ROLES)
   updateSeat(
     @Param('id') id: string,
@@ -146,6 +149,7 @@ export class AdminTripsController {
     @Body() body: UpdateSeatBlockDto,
     @Req() request: AuthenticatedRequest,
   ) {
+    if (request.companyScope) return this.scopedWrites.setSeatBlocked(request.user.id, request.user.sessionId, id, seatNumber, body.blocked)
     return this.trips.setSeatBlocked(
       id,
       seatNumber,

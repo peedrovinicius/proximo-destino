@@ -104,6 +104,13 @@ GET `/admin/trips/:id` disponibiliza detalhe da própria empresa para ADMIN/AGEN
 lista e detalhe mantêm capacidade, modelo, andares, instalações, layout e assentos
 bloqueados, sem imagem binária, identificadores internos de posse ou passageiros.
 IDs externos ou inexistentes retornam 404. A nova consulta exige sessão de empresa.
+ADMIN pode consultar GET `/admin/trips/:id/seats` somente em viagem DRAFT da própria
+empresa sem atribuições. O mapa contém configuração, bloqueios e disponibilidade,
+sem identidades de passageiros. PATCH `/admin/trips/:id/seats/:seatNumber` bloqueia
+ou libera assento somente em rascunho sem reservas nem atribuições, com autorização
+e viagem bloqueadas na transação. Concorrência preserva ambos os bloqueios; falha de
+auditoria desfaz a alteração. Este mapa preparatório não habilita escolha/atribuição
+operacional de assentos ou publicação.
 Upload, atribuição e movimento de assentos, embarque, cancelamento e conclusão
 continuam bloqueados para contas de empresa.
 Gravação e auditoria são atômicas; o bloqueio de autorização transacional é

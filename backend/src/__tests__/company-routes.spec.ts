@@ -391,6 +391,60 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
     assert.equal((await call(`/admin/trips/${trips[2]}`, tokens[0], 'PATCH', { status: 'ACTIVE' })).status, 400)
     assert.equal((await call(`/admin/trips/${trips[2]}`, tokens[0], 'PATCH', { departureDate: '2027-02-01' })).status, 400)
   })
+  it('reads and blocks only own empty draft seats, preserving concurrent changes', async () => {
+    const service = new CompanyTripsService(prisma, new CompanyScopeService(prisma))
+    const trip = await service.create(users[0], sessions[0], { title: 'Synthetic seat draft', origin: 'Synthetic',
+      destination: 'Synthetic', departureDate: new Date('2027-01-01'), busTemplate: 'CUSTOM', capacity: 4 })
+    trips.push(trip.id)
+    const mapPath = `/admin/trips/${trip.id}/seats`
+    const initial = await call(mapPath); assert.equal(initial.status, 200)
+    const map = await initial.json() as { availableCount: number; assignments: unknown[] }
+    assert.equal(map.availableCount, 4); assert.deepEqual(map.assignments, [])
+    const concurrent = await Promise.all([1, 2].map(n => call(`${mapPath}/${n}`, tokens[0], 'PATCH', { blocked: true })))
+    assert.deepEqual(concurrent.map(r => r.status), [200, 200])
+    assert.deepEqual((await prisma.trip.findUniqueOrThrow({ where: { id: trip.id } })).blockedSeats, [1, 2])
+    assert.equal((await call(`${mapPath}/1`, tokens[0], 'PATCH', { blocked: false })).status, 200)
+    const changed = await (await call(mapPath)).json() as { blockedSeats: number[]; availableCount: number }
+    assert.deepEqual(changed.blockedSeats, [2]); assert.equal(changed.availableCount, 3)
+    for (const n of [0, 5, 81]) assert.equal((await call(`${mapPath}/${n}`, tokens[0], 'PATCH', { blocked: true })).status, 400)
+    for (const id of [trips[1], 'nonexistent']) {
+      assert.equal((await call(`/admin/trips/${id}/seats`)).status, 404)
+      assert.equal((await call(`/admin/trips/${id}/seats/1`, tokens[0], 'PATCH', { blocked: true })).status, 404)
+    }
+    const reservation = await prisma.reservation.create({ data: { companyId: companies[0], clientId: clients[0], tripId: trip.id } })
+    reservations.push(reservation.id)
+    assert.equal((await call(`${mapPath}/3`, tokens[0], 'PATCH', { blocked: true })).status, 409)
+    await prisma.trip.update({ where: { id: trip.id }, data: { status: 'ACTIVE' } })
+    assert.equal((await call(mapPath)).status, 409)
+    assert.equal((await call(`${mapPath}/3`, tokens[0], 'PATCH', { blocked: true })).status, 409)
+  })
+  it('rolls back seat blocking on audit failure and rejects stale authorization', async () => {
+    const trip = await new CompanyTripsService(prisma, new CompanyScopeService(prisma)).create(users[0], sessions[0], {
+      title: 'Synthetic seat rollback', origin: 'Synthetic', destination: 'Synthetic', departureDate: new Date('2027-01-01'),
+      busTemplate: 'CUSTOM', capacity: 4,
+    }); trips.push(trip.id)
+    const failing = new CompanyTripsService({ $transaction: (callback: (tx: unknown) => Promise<unknown>) =>
+      prisma.$transaction(tx => callback({ $queryRaw: tx.$queryRaw.bind(tx), trip: tx.trip,
+        reservation: tx.reservation, seatAssignment: tx.seatAssignment,
+        authAuditEvent: { create: async () => { throw new Error('synthetic seat audit failure') } } }))
+    } as unknown as PrismaService, new CompanyScopeService(prisma))
+    await assert.rejects(failing.setSeatBlocked(users[0], sessions[0], trip.id, 1, true), /synthetic seat audit failure/)
+    assert.deepEqual((await prisma.trip.findUniqueOrThrow({ where: { id: trip.id } })).blockedSeats, [])
+    const scope = await new CompanyScopeService(prisma).resolveSession(users[0], sessions[0])
+    const stale = new CompanyTripsService(prisma, { resolveSession: async () => scope } as unknown as CompanyScopeService)
+    await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { isActive: false } })
+    try { await assert.rejects(stale.setSeatBlocked(users[0], sessions[0], trip.id, 1, true), { status: 403 }) }
+    finally { await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { isActive: true } }) }
+    await prisma.user.update({ where: { id: users[0] }, data: { role: 'AGENT' } })
+    await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { role: 'AGENT' } })
+    try {
+      assert.equal((await call(`/admin/trips/${trip.id}/seats`)).status, 403)
+      assert.equal((await call(`/admin/trips/${trip.id}/seats/1`, tokens[0], 'PATCH', { blocked: true })).status, 403)
+    } finally {
+      await prisma.user.update({ where: { id: users[0] }, data: { role: 'ADMIN' } })
+      await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { role: 'ADMIN' } })
+    }
+  })
   it('refuses editing a non-draft or a draft with reservations', async () => {
     await prisma.trip.update({ where: { id: trips[2] }, data: { status: 'ACTIVE' } })
     assert.equal((await call(`/admin/trips/${trips[2]}`, tokens[0], 'PATCH', { title: 'Denied' })).status, 409)
