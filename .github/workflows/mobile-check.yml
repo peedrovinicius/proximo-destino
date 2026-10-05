@@ -34,7 +34,7 @@ jobs:
         run: node scripts/session-check.mjs
       - name: Save synthetic browser evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: synthetic-mobile-browser-evidence
           path: frontend/mobile-check-results/
