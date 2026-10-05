@@ -68,11 +68,25 @@ e session_user e usa os serviços reais, sem mocks: matrícula MFA/TOTP, código
 recuperação usado uma vez, refresh/logout, reserva/troca/colisão/cancelamento de
 assentos, cotação/aprovação, parcelas, recebimento e estorno. O proprietário só
 prepara o papel e limpa os dados no final. As operações da aplicação usam a conexão
-restrita, incluindo transações e auditoria. Não testa o navegador ou guards HTTP;
-também não cobre todos os módulos/integradores ou concorrência entre processos.
+restrita, incluindo transações e auditoria.
 
-**Não aplicado em produção.** Ainda faltam aceite dos fluxos HTTP com esse papel,
-revisão de privilégios públicos/defaults, separação da conexão de migrations e
+O mesmo teste também inicia `dist/main.js` em processo separado com apenas a URL
+runtime, porta local e segredos sintéticos. Por HTTP, verifica readiness e o
+diagnóstico de privilégios, MFA, refresh em cookie HttpOnly/SameSite=Strict sem
+refreshToken no JSON, acesso anônimo e token de cliente recusados no Admin,
+origem inválida, campo inesperado, reserva/login do cliente, troca de assento,
+recebimento/estorno e revogação no logout. Não cobre navegador, cookies Secure em
+HTTPS de produção, todos os módulos/integradores ou concorrência entre processos.
+
+`npm run prisma:deploy:isolated` exige MIGRATION_DATABASE_URL explícita e passa
+essa conexão somente ao subprocesso Prisma; nunca usa DATABASE_URL como fallback.
+O ensaio executa migrations com essa conexão administrativa enquanto DATABASE_URL
+aponta ao papel restrito, e recusa execução sem a URL administrativa. O comando
+existente `prisma:deploy` e o predeploy atual permanecem como estão. A URL de
+migrations não deve ser disponibilizada no ambiente do processo API.
+
+**Não aplicado em produção.** Ainda faltam revisão de privilégios públicos/defaults,
+provisionamento seguro e separação efetiva da execução de migrations e
 plano de troca/retorno. Só depois preparar LOGIN/credenciais por canal seguro e
 considerar a mudança da conexão runtime. Não alterar o papel proprietário atual.
 

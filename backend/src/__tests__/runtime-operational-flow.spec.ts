@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import { before, after, describe, it } from 'node:test'
 import { randomUUID, createHash, createHmac } from 'node:crypto'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
+import { once } from 'node:events'
+import { createServer } from 'node:net'
 import { ConfigService } from '@nestjs/config'
 import { JwtService } from '@nestjs/jwt'
 import { ConflictException, UnauthorizedException } from '@nestjs/common'
@@ -44,6 +46,9 @@ describe('fluxos reais com conexão PostgreSQL runtime restrita', () => {
   let runtime: PrismaService | undefined
   let reservationId: string
   let clientId: string
+  let runtimeUrl: string
+  let migrationUrl: string
+  let httpRecoveryCode: string
   const config = new ConfigService({
     JWT_ACCESS_SECRET: `synthetic-access-${suffix}`, JWT_REFRESH_SECRET: `synthetic-refresh-${suffix}`,
     JWT_MFA_SECRET: `synthetic-mfa-${suffix}`, AUDIT_HASH_KEY: `synthetic-audit-${suffix}`,
@@ -65,6 +70,7 @@ describe('fluxos reais com conexão PostgreSQL runtime restrita', () => {
     roleCreated = true
     const psqlUrl = new URL(database)
     psqlUrl.searchParams.delete('schema')
+    migrationUrl = database.toString()
     execFileSync('psql', [psqlUrl.toString(), '-X', '--set=ON_ERROR_STOP=1',
       `--set=runtime_role=${role}`, '--file=scripts/security/rehearse-runtime.sql'], { stdio: 'pipe' })
     // Generated UUID credentials are confined to the disposable local database.
@@ -72,6 +78,7 @@ describe('fluxos reais com conexão PostgreSQL runtime restrita', () => {
     await owner.$executeRawUnsafe(`ALTER ROLE "${role}" LOGIN PASSWORD '${dbPassword}'`)
     database.username = role
     database.password = dbPassword
+    runtimeUrl = database.toString()
     runtime = new PrismaService({ datasourceUrl: database.toString() })
     await runtime.$connect()
     const [identity] = await runtime.$queryRaw<Array<{ current: string; session: string }>>`
@@ -128,6 +135,7 @@ describe('fluxos reais com conexão PostgreSQL runtime restrita', () => {
     const signed = await service.confirmMfaSetup(challenge.challengeToken, totp(setup.manualKey), {})
     assert.equal(signed.status, 'authenticated')
     assert.ok(signed.recoveryCodes.length)
+    httpRecoveryCode = signed.recoveryCodes[1]
     const next = await service.loginAdmin(actorEmail, password, {})
     assert.equal(next.status, 'mfa_required')
     assert.ok('challengeToken' in next)
@@ -178,5 +186,110 @@ describe('fluxos reais com conexão PostgreSQL runtime restrita', () => {
       eventType: { in: ['OPS_MANUAL_PAYMENT_RECEIVED', 'OPS_MANUAL_PAYMENT_REVERSED'] } } }), 2)
     await assert.rejects(db().authAuditEvent.deleteMany({ where: { userId: actorId } }))
     assert.equal(restrictedAuditWriter(await readDatabaseSecurityState(db())), true)
+  })
+
+  it('migrations exigem conexão explícita separada e não usam a credencial runtime', () => {
+    const env = { ...process.env, DATABASE_URL: runtimeUrl, MIGRATION_DATABASE_URL: migrationUrl }
+    const output = execFileSync(process.execPath, ['scripts/migrate-isolated.mjs'], { env, encoding: 'utf8', stdio: 'pipe' })
+    assert.match(output, /No pending migrations/)
+    const missing = { ...env }
+    delete (missing as NodeJS.ProcessEnv).MIGRATION_DATABASE_URL
+    assert.throws(() => execFileSync(process.execPath, ['scripts/migrate-isolated.mjs'], { env: missing, stdio: 'pipe' }),
+      (error: unknown) => (error as { status: number }).status === 2)
+  })
+
+  it('bootstrap real por HTTP valida MFA, cookies, guards, assentos e financeiro com runtime', { timeout: 60000 }, async () => {
+    const probe = createServer()
+    probe.listen(0, '127.0.0.1')
+    await once(probe, 'listening')
+    const address = probe.address()
+    assert.ok(address && typeof address === 'object')
+    const port = address.port
+    await new Promise<void>((resolve, reject) => probe.close(error => error ? reject(error) : resolve()))
+    const env: NodeJS.ProcessEnv = { ...process.env, DATABASE_URL: runtimeUrl,
+      NODE_ENV: 'test', PORT: String(port), FRONTEND_ORIGIN: 'http://localhost:5173',
+      JWT_ACCESS_SECRET: config.getOrThrow('JWT_ACCESS_SECRET'),
+      JWT_REFRESH_SECRET: config.getOrThrow('JWT_REFRESH_SECRET'),
+      JWT_MFA_SECRET: config.getOrThrow('JWT_MFA_SECRET'),
+      AUDIT_HASH_KEY: config.getOrThrow('AUDIT_HASH_KEY'),
+      MFA_ENCRYPTION_KEY: config.getOrThrow('MFA_ENCRYPTION_KEY') }
+    delete env.MIGRATION_DATABASE_URL
+    const child = spawn(process.execPath, ['dist/main.js'], { env, stdio: ['ignore', 'pipe', 'pipe'] })
+    let restrictedDiagnostic = false
+    child.stdout.on('data', data => {
+      if (String(data).includes('"restrictedAuditWriter":true')) restrictedDiagnostic = true
+    })
+    child.stderr.resume()
+    let spawnFailed = false
+    child.on('error', () => { spawnFailed = true })
+    const base = `http://127.0.0.1:${port}/api/v1`
+    const request = async (path: string, method = 'GET', body?: unknown, token?: string, cookie?: string, origin = 'http://localhost:5173') => {
+      const response = await fetch(base + path, { method, signal: AbortSignal.timeout(5000), headers: {
+        Origin: origin, ...(body ? { 'Content-Type': 'application/json' } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(cookie ? { Cookie: cookie } : {}),
+      }, ...(body ? { body: JSON.stringify(body) } : {}) })
+      const text = await response.text()
+      return { status: response.status, headers: response.headers, body: text ? JSON.parse(text) : null }
+    }
+    try {
+      let ready = false
+      for (let attempt = 0; attempt < 50; attempt++) {
+        if (spawnFailed || child.exitCode !== null) break
+        try { if ((await request('/readiness')).status === 200) { ready = true; break } } catch { /* startup */ }
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+      assert.ok(ready, 'API with restricted database login must become ready')
+      assert.ok(restrictedDiagnostic, 'Startup must attest restricted audit privileges')
+      assert.equal((await request('/admin/reservations')).status, 401)
+      assert.equal((await request('/auth/admin/login', 'POST', { email: actorEmail, password }, undefined, undefined, 'https://wrong.example')).status, 403)
+      const login = await request('/auth/admin/login', 'POST', { email: actorEmail, password })
+      assert.equal(login.status, 200)
+      assert.equal(login.body.status, 'mfa_required')
+      const verified = await request('/auth/mfa/verify', 'POST', { challengeToken: login.body.challengeToken, code: httpRecoveryCode })
+      assert.equal(verified.status, 200)
+      assert.equal(verified.body.refreshToken, undefined)
+      let token = verified.body.accessToken as string
+      const setCookie = verified.headers.get('set-cookie')!
+      assert.match(setCookie, /HttpOnly/i)
+      assert.match(setCookie, /SameSite=Strict/i)
+      let cookie = setCookie.split(';')[0]
+      assert.equal((await request('/auth/admin/me', 'GET', undefined, token)).status, 200)
+      const refreshed = await request('/auth/refresh', 'POST', undefined, undefined, cookie)
+      assert.equal(refreshed.status, 200)
+      token = refreshed.body.accessToken
+      cookie = refreshed.headers.get('set-cookie')!.split(';')[0]
+      const invalid = await request('/public/reservations/request', 'POST', { tripId, fullName: 'Synthetic HTTP',
+        email: otherEmail, phone: '85888888888', passengerCount: 1, selectedSeats: [3], unexpectedField: true })
+      assert.equal(invalid.status, 400)
+      const reserved = await request('/public/reservations/request', 'POST', { tripId, fullName: 'Synthetic HTTP',
+        email: otherEmail, phone: '85888888888', passengerCount: 1, selectedSeats: [3] })
+      assert.equal(reserved.status, 201)
+      const id = reserved.body.reservation.id as string
+      const clientLogin = await request('/client/login', 'POST', { email: otherEmail, code: reserved.body.accessCode })
+      assert.equal(clientLogin.status, 201)
+      const clientToken = clientLogin.body.accessToken as string
+      assert.equal((await request('/admin/reservations', 'GET', undefined, clientToken)).status, 401)
+      const seats = await request('/client/seats', 'PATCH', { selectedSeats: [4] }, clientToken)
+      assert.equal(seats.status, 200)
+      const finance = await request(`/admin/reservations/${id}/finance/manual-payments`, 'POST',
+        { amountCents: 10000, method: 'CASH' }, token)
+      assert.equal(finance.status, 201)
+      assert.equal(finance.body.summary.netPaidCents, 10000)
+      const paymentId = finance.body.manualPayments[0].id
+      const reversed = await request(`/admin/reservations/${id}/finance/manual-payments/${paymentId}/reverse`, 'POST',
+        { reason: 'Synthetic HTTP reversal' }, token)
+      assert.equal(reversed.status, 201)
+      assert.equal(reversed.body.summary.netPaidCents, 0)
+      assert.equal((await request('/auth/logout', 'POST', undefined, token, cookie)).status, 204)
+      assert.equal((await request('/auth/admin/me', 'GET', undefined, token)).status, 401)
+      assert.equal((await request('/auth/refresh', 'POST', undefined, undefined, cookie)).status, 401)
+    } finally {
+      if (child.exitCode === null) {
+        const exited = once(child, 'exit')
+        child.kill('SIGTERM')
+        const force = setTimeout(() => child.kill('SIGKILL'), 5000)
+        try { await exited } finally { clearTimeout(force) }
+      }
+    }
   })
 })
