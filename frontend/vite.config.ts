@@ -1,9 +1,16 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), 'VITE_')
+  const configuredApi = process.env.AUTH_API_ORIGIN || env.VITE_API_URL
+  const api = new URL(configuredApi?.startsWith('http') ? configuredApi : 'https://proximo-destino-api-production.up.railway.app')
+  if (!['http:', 'https:'].includes(api.protocol) || api.username || api.password) throw new Error('Origem da API inválida')
+  return {
   plugins: [react()],
   preview: {
+    // Fixed server-configured destination. Never derive the target from a request.
+    proxy: { '/api/v1/auth': { target: api.origin, changeOrigin: true } },
     allowedHosts: ['proximo-destino-web-production.up.railway.app'],
     headers: {
       'Strict-Transport-Security': 'max-age=31536000',
@@ -40,4 +47,5 @@ export default defineConfig({
       },
     },
   },
+  }
 })

@@ -30,6 +30,8 @@ jobs:
         run: npm run build
       - name: Check mobile layouts, seat maps and keyboard navigation
         run: node scripts/mobile-check.mjs
+      - name: Verify first-party session restoration through preview proxy
+        run: node scripts/session-check.mjs
       - name: Save synthetic browser evidence
         if: always()
         uses: actions/upload-artifact@v4
