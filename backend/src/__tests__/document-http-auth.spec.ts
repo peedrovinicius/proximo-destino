@@ -65,8 +65,9 @@ describe('autorização HTTP dos documentos e configurações de provedores', ()
   const prisma = {
     reservation: {
       findFirst: async ({ where }: { where: { id: string; clientId: string; companyId: null; client: { companyId: null }; trip: { companyId: null } } }) =>
-        where.id === 'reservation' && where.clientId === 'client-a' && where.companyId === null &&
-        where.client.companyId === null && where.trip.companyId === null ? { id: 'reservation' } : null,
+        ((where.clientId === 'client-a' && ['reservation', 'other-reservation'].includes(where.id)) ||
+          (where.clientId === 'client-b' && where.id === 'reservation-b')) && where.companyId === null &&
+        where.client.companyId === null && where.trip.companyId === null ? { id: where.id } : null,
     },
     user: {
       findUnique: async ({ where }: { where: { id: string } }) =>
@@ -237,7 +238,7 @@ describe('autorização HTTP dos documentos e configurações de provedores', ()
   }
 
   it('nega PDF pertencente a outro cliente', async () => {
-    assert.equal((await clientPdf('client-b', 'reservation')).status, 404)
+    assert.equal((await clientPdf('client-b', 'reservation-b')).status, 404)
   })
 
   it('nega PDF de outra reserva mesmo para o mesmo cliente', async () => {
