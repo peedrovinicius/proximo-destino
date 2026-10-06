@@ -217,18 +217,23 @@ export class PortalService {
     const accessCode = this.generateAccessCode()
     const accessCodeHash = await argon2.hash(accessCode)
 
-    const client = await this.prisma.client.upsert({
-      where: { email },
-      update: {
-        fullName: data.fullName.trim(),
-        phone: data.phone.trim(),
-      },
-      create: {
-        fullName: data.fullName.trim(),
-        email,
-        phone: data.phone.trim(),
-      },
-      select: { id: true },
+    const client = await this.prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT "id" FROM "Client" WHERE "email" = ${email} FOR UPDATE`
+      const existingClient = await tx.client.findUnique({ where: { email }, select: { companyId: true } })
+      if (existingClient?.companyId) throw new ConflictException('Não foi possível concluir a solicitação com estes dados')
+      return tx.client.upsert({
+        where: { email, companyId: null },
+        update: {
+          fullName: data.fullName.trim(),
+          phone: data.phone.trim(),
+        },
+        create: {
+          fullName: data.fullName.trim(),
+          email,
+          phone: data.phone.trim(),
+        },
+        select: { id: true },
+      })
     })
 
     const existing = await this.prisma.reservation.findUnique({
@@ -832,7 +837,9 @@ export class PortalService {
     const email = data.email.trim().toLowerCase()
     const reservations = await this.prisma.reservation.findMany({
       where: {
-        client: { email },
+        companyId: null,
+        client: { email, companyId: null },
+        trip: { companyId: null },
         accessCodeHash: { not: null },
       },
       select: {

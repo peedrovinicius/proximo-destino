@@ -320,3 +320,20 @@ A tela não solicita dados pessoais nem chama pagamentos, portal ou gravações.
 Não usa identidade/contatos/marca da agência legada como se fossem da empresa.
 Imagem binária por empresa, compra, portal do cliente, ativação e validação
 operacional continuam pendentes. Esta interface permanece fora de produção.
+
+## Pré-requisito de reservas e portal: impedir reutilização legada
+
+A solicitação anônima legada bloqueia a linha do cliente encontrado por e-mail
+antes de conferir seu companyId e atualizar dados. Cliente vinculado a empresa
+é recusado com mensagem genérica, sem alterar nome/telefone ou criar reserva,
+assento ou compra. O upsert exige companyId null; a unicidade global do e-mail
+permanece, não foi afrouxada para habilitar reservas de empresas.
+
+Login legado por e-mail/código consulta somente reserva, cliente e viagem sem
+empresa. O guard de todas as rotas do portal legado verifica esses três vínculos
+no banco em cada requisição; um JWT assinado com IDs de empresa ou cliente/reserva
+incompatíveis é recusado. Não transforma token legado em sessão de empresa.
+Esses bloqueios não implementam o novo portal nem sua autorização transacional.
+Reserva pública por empresa ainda exige identidade verificada, unicidade de
+contato por escopo, proteção contra abuso e gravações/auditoria atômicas, além
+dos gates operacionais. Nenhuma reserva por empresa foi habilitada nesta etapa.

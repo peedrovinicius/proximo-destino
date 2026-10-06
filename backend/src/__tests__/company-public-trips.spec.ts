@@ -2,7 +2,8 @@ import 'reflect-metadata'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { before, after, describe, it } from 'node:test'
-import type { INestApplication } from '@nestjs/common'
+import { Controller, Get, UseGuards, type INestApplication } from '@nestjs/common'
+import * as argon2 from 'argon2'
 import { ConfigService } from '@nestjs/config'
 import { JwtService } from '@nestjs/jwt'
 import { Test } from '@nestjs/testing'
@@ -12,15 +13,24 @@ import { CompanyPublicTripsController } from '../trips/company-public-trips.cont
 import { TripsService } from '../trips/trips.service'
 import { TripsController } from '../trips/trips.controller'
 import { PortalService } from '../portal/portal.service'
+import { ClientPortalGuard } from '../portal/client-portal.guard'
+
+@Controller('test-legacy-portal')
+class LegacyPortalProbe {
+  @Get()
+  @UseGuards(ClientPortalGuard)
+  read() { return { legacy: true } }
+}
 
 describe('company public catalogs in isolated PostgreSQL', () => {
   const prisma = new PrismaService(), suffix = randomUUID()
-  const config = new ConfigService({ COMPANY_FOUNDATION_ENABLED: 'true' })
+  const config = new ConfigService({ COMPANY_FOUNDATION_ENABLED: 'true', JWT_ACCESS_SECRET: 'synthetic-public-portal-test-secret' })
+  const jwt = new JwtService()
   const owner = `public-owner-${suffix}`
   const companies = ['a', 'b', 'draft', 'suspended'].map(s => `public-company-${s}-${suffix}`)
   const ids = ['a', 'b', 'draft-company', 'suspended-company', 'draft-trip', 'past', 'cancelled', 'legacy'].map(s => `public-trip-${s}-${suffix}`)
-  const clients = [0, 1].map(i => `public-client-${i}-${suffix}`)
-  const reservations = [0, 1].map(i => `public-reservation-${i}-${suffix}`)
+  const clients = [0, 1, 2].map(i => `public-client-${i}-${suffix}`)
+  const reservations = [0, 1, 2].map(i => `public-reservation-${i}-${suffix}`)
   let app: INestApplication | undefined, base: string
   const get = (path: string) => fetch(`${base}${path}`)
   before(async () => {
@@ -37,13 +47,16 @@ describe('company public catalogs in isolated PostgreSQL', () => {
       title: `Synthetic public ${i}`, origin: 'Fortaleza', destination: 'Recife', status: i === 4 ? 'DRAFT' : i === 6 ? 'CANCELLED' : 'SCHEDULED',
       departureDate: i === 5 ? new Date('2020-01-01') : new Date('2027-01-01'), capacity: 4, busTemplate: 'CUSTOM',
       seatLayout: 'TWO_BY_TWO', blockedSeats: [4], vehicleFeatures: [{ type: 'RESTROOM', position: 'REAR', side: 'RIGHT', deck: 1, secret: 'private-feature' }] })) })
-    for (let i = 0; i < 2; i++) {
-      await prisma.client.create({ data: { id: clients[i], companyId: companies[i], fullName: 'private-passenger', email: `${clients[i]}@example.invalid` } })
-      await prisma.reservation.create({ data: { id: reservations[i], companyId: companies[i], clientId: clients[i], tripId: ids[i] } })
+    for (let i = 0; i < 3; i++) {
+      const companyId = i < 2 ? companies[i] : null
+      await prisma.client.create({ data: { id: clients[i], companyId, fullName: 'private-passenger', email: `${clients[i]}@example.invalid` } })
+      await prisma.reservation.create({ data: { id: reservations[i], companyId, clientId: clients[i], tripId: i < 2 ? ids[i] : ids[7],
+        accessCodeHash: await argon2.hash('SYNTHETIC-CODE') } })
     }
     await prisma.seatAssignment.create({ data: { tripId: ids[0], reservationId: reservations[0], seatNumber: 1 } })
-    const module = await Test.createTestingModule({ controllers: [CompanyPublicTripsController, TripsController],
-      providers: [CompanyPublicTripsService, TripsService, { provide: PrismaService, useValue: prisma }, { provide: ConfigService, useValue: config }] }).compile()
+    const module = await Test.createTestingModule({ controllers: [CompanyPublicTripsController, TripsController, LegacyPortalProbe],
+      providers: [CompanyPublicTripsService, TripsService, ClientPortalGuard, { provide: JwtService, useValue: jwt },
+        { provide: PrismaService, useValue: prisma }, { provide: ConfigService, useValue: config }] }).compile()
     app = module.createNestApplication({ logger: false }); await app.listen(0, '127.0.0.1'); base = await app.getUrl()
   })
   after(async () => {
@@ -117,5 +130,31 @@ describe('company public catalogs in isolated PostgreSQL', () => {
       assert.equal(body.limit, 100); assert.equal(body.hasMore, true)
       assert.deepEqual(body.trips.map(row => row.id), extra.slice(0, 100))
     } finally { await prisma.trip.deleteMany({ where: { id: { in: extra } } }) }
+  })
+  it('never overwrites a company client through a legacy anonymous reservation', async () => {
+    const portal = new PortalService(prisma, jwt, config)
+    const before = await prisma.client.findUniqueOrThrow({ where: { id: clients[0] } })
+    await assert.rejects(portal.requestReservation({ tripId: ids[7], fullName: 'Anonymous overwrite attempt',
+      email: `${clients[0]}@example.invalid`, phone: '85999999999', passengerCount: 1, selectedSeats: [2] }), { status: 409 })
+    assert.deepEqual(await prisma.client.findUniqueOrThrow({ where: { id: clients[0] } }), before)
+    assert.equal(await prisma.reservation.count({ where: { tripId: ids[7] } }), 1)
+    assert.equal(await prisma.seatAssignment.count({ where: { tripId: ids[7] } }), 0)
+  })
+  it('excludes company codes from legacy login while preserving unassigned reservations', async () => {
+    const portal = new PortalService(prisma, jwt, config)
+    for (const client of clients.slice(0, 2)) {
+      await assert.rejects(portal.login({ email: `${client}@example.invalid`, code: 'SYNTHETIC-CODE' }), { status: 401 })
+    }
+    const result = await portal.login({ email: `${clients[2]}@example.invalid`, code: 'SYNTHETIC-CODE' })
+    assert.equal((await fetch(`${base}/test-legacy-portal`, { headers: { Authorization: `Bearer ${result.accessToken}` } })).status, 200)
+  })
+  it('denies company, mismatched and missing reservations even with correctly signed legacy tokens', async () => {
+    for (const [clientId, reservationId] of [[clients[0], reservations[0]], [clients[1], reservations[1]],
+      [clients[2], reservations[0]], [clients[0], reservations[2]], [clients[2], 'missing-reservation']]) {
+      const token = await jwt.signAsync({ sub: clientId, rid: reservationId, type: 'client_portal', companyId: null },
+        { secret: config.getOrThrow<string>('JWT_ACCESS_SECRET'), expiresIn: '1m' })
+      const response = await fetch(`${base}/test-legacy-portal`, { headers: { Authorization: `Bearer ${token}` } })
+      assert.equal(response.status, 401)
+    }
   })
 })

@@ -63,6 +63,11 @@ describe('autorização HTTP dos documentos e configurações de provedores', ()
     (!query.where.reservation || query.where.reservation.clientId === 'client-a'),
   )
   const prisma = {
+    reservation: {
+      findFirst: async ({ where }: { where: { id: string; clientId: string; companyId: null; client: { companyId: null }; trip: { companyId: null } } }) =>
+        where.id === 'reservation' && where.clientId === 'client-a' && where.companyId === null &&
+        where.client.companyId === null && where.trip.companyId === null ? { id: 'reservation' } : null,
+    },
     user: {
       findUnique: async ({ where }: { where: { id: string } }) =>
         roles[where.id]
@@ -94,6 +99,7 @@ describe('autorização HTTP dos documentos e configurações de provedores', ()
         ClientPortalGuard,
         { provide: JwtService, useValue: jwt },
         { provide: ConfigService, useValue: config },
+        { provide: PrismaService, useValue: prisma },
         { provide: PortalService, useValue: {} },
         { provide: PaymentConnectionService, useValue: providerMock },
         { provide: EmailAutomationService, useValue: providerMock },
