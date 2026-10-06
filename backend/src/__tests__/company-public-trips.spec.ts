@@ -38,7 +38,7 @@ describe('company public catalogs in isolated PostgreSQL', () => {
       departureDate: i === 5 ? new Date('2020-01-01') : new Date('2027-01-01'), capacity: 4, busTemplate: 'CUSTOM',
       seatLayout: 'TWO_BY_TWO', blockedSeats: [4], vehicleFeatures: [{ type: 'BATHROOM', position: 'REAR', side: 'RIGHT', deck: 1, secret: 'private-feature' }] })) })
     for (let i = 0; i < 2; i++) {
-      await prisma.client.create({ data: { id: clients[i], companyId: companies[i], fullName: 'private-passenger', email: 'private-passenger@example.invalid' } })
+      await prisma.client.create({ data: { id: clients[i], companyId: companies[i], fullName: 'private-passenger', email: `${clients[i]}@example.invalid` } })
       await prisma.reservation.create({ data: { id: reservations[i], companyId: companies[i], clientId: clients[i], tripId: ids[i] } })
     }
     await prisma.seatAssignment.create({ data: { tripId: ids[0], reservationId: reservations[0], seatNumber: 1 } })
