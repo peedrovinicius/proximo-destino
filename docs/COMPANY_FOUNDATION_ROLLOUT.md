@@ -293,3 +293,21 @@ preparação anterior; cinco erros de senha bloqueiam a conta por 15 minutos, co
 serializado e auditoria sem dados pessoais. O Criador pode revogar a preparação pendente.
 Endpoints exigem a flag, limitam tentativas e enviam Cache-Control no-store. Segredos não
 entram em URLs, storage ou auditoria. MFA legado de contas ativas permanece separado.
+
+## Catálogo público por empresa (API somente leitura)
+
+GET `/public/companies/:slug/trips`, `/:id` e `/:id/seats` exigem a flag estritamente
+habilitada, empresa ACTIVE e viagem da mesma empresa ACTIVE/SCHEDULED e futura.
+Respostas usam Cache-Control no-store e snapshot RepeatableRead, mantendo o estado
+da empresa por bloqueio SELECT. Não ativam empresas ou viagens e não gravam eventos.
+O catálogo aceita origem, destino e data UTC válida; retorna até 100 viagens,
+ordenação estável e hasMore explícito. Empresa expõe somente slug e nome comercial.
+Disponibilidade expõe números e configuração pública do veículo, nunca ocupantes,
+contatos ou IDs de reservas. Vínculos incoerentes de ocupação resultam em 409.
+
+As rotas públicas legadas de catálogo, detalhe, imagem e assentos agora atendem
+somente viagens sem companyId. A solicitação anônima legada de reserva também
+recusa viagens de empresa, inclusive na revalidação antes da gravação.
+Não equivale à conclusão do isolamento de todo o portal ou das compras.
+Integração dessas APIs à interface pública, imagem binária por empresa, compra,
+portal do cliente, ativação e validação operacional continuam pendentes.

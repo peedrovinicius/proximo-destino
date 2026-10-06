@@ -118,6 +118,7 @@ export class PortalService {
     const trip = await this.prisma.trip.findFirst({
       where: {
         id: data.tripId,
+        companyId: null,
         status: { in: [TripStatus.ACTIVE, TripStatus.SCHEDULED] },
         departureDate: { gte: new Date() },
       },
@@ -250,7 +251,7 @@ export class PortalService {
       reservation = await this.prisma.$transaction(async (tx) => {
         if (seatSelectionEnabled) {
           const latestTrip = await tx.trip.findUnique({
-            where: { id: trip.id },
+            where: { id: trip.id, companyId: null },
             select: { capacity: true, blockedSeats: true },
           })
 
