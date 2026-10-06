@@ -337,3 +337,37 @@ Esses bloqueios não implementam o novo portal nem sua autorização transaciona
 Reserva pública por empresa ainda exige identidade verificada, unicidade de
 contato por escopo, proteção contra abuso e gravações/auditoria atômicas, além
 dos gates operacionais. Nenhuma reserva por empresa foi habilitada nesta etapa.
+
+## Portal do cliente por empresa: API de consulta
+
+As rotas `/public/companies/:slug/client/login`, `/portal` e `/logout` exigem
+COMPANY_FOUNDATION_ENABLED=true e COMPANY_CLIENT_PORTAL_ENABLED=true exatamente.
+A segunda flag fica desabilitada por padrão. Login recebe reservationId, e-mail
+e código da reserva no corpo, com DTO fechado; não aceita companyId ou clientId.
+Exige empresa ACTIVE, cliente/viagem/reserva próprios e código existente; recusa
+reserva CANCELLED e viagem DRAFT/CANCELLED. Não gera códigos, reservas ou clientes.
+
+Sessão opaca de 32 bytes aleatórios vale 30 minutos. Banco guarda apenas SHA-256,
+empresa/cliente/reserva e versão derivada do hash do código; não é JWT legado.
+Novo login revoga sessões anteriores dessa reserva. Logout persistido invalida
+o token. Cinco falhas serializadas por reserva bloqueiam por 15 minutos, mesmo
+entre IPs. Falhas, login e logout são auditados sem códigos, tokens ou contatos;
+falha de auditoria reverte contadores, emissão e revogação na mesma transação.
+Throttle por IP complementa o bloqueio persistido. Respostas usam no-store.
+
+Cada leitura mantém bloqueios da empresa, reserva, cliente, viagem e sessão
+até terminar e revalida status, vínculos, validade, revogação e versão do código.
+O token vai somente em Authorization Bearer. Retorna nome comercial/slug,
+status/quantidade da própria reserva, descrição/datas da viagem e números das
+poltronas. Não retorna nomes/documentos/contatos de passageiros, financeiro,
+IDs internos, hashes ou outros dados da empresa. Não permite alterar assentos,
+passageiros, cancelamento, documentos ou pagamentos. Sessões legadas não servem
+nesse portal, e seus tokens não servem nas rotas legadas.
+
+Migration aditiva cria CompanyClientPortalSession com RLS e política PUBLIC
+deny-all, além dos contadores na reserva. Não foi aplicada em produção. O papel
+restrito efetivo precisa de concessões/política revisadas para esta tabela antes
+da ativação; não concede privilégios automaticamente. Interface de login/portal,
+provisionamento seguro do código e reserva pública com identidade verificada
+continuam pendentes. O e-mail informado e o código não equivalem à verificação
+da posse da caixa de e-mail para um cadastro público novo.

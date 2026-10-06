@@ -350,6 +350,9 @@ model Reservation {
   status         ReservationStatus @default(PENDING)
   passengerCount Int               @default(1)
   accessCodeHash String?
+  companyPortalFailedAttempts Int @default(0)
+  companyPortalLockedUntil DateTime?
+  companyPortalSessions CompanyClientPortalSession[]
   cancellationRequestStatus CancellationRequestStatus?
   cancellationRequestedAt DateTime?
   cancellationRequestReason String?
@@ -374,6 +377,20 @@ model Reservation {
   @@unique([clientId, tripId])
   @@index([companyId, createdAt])
   @@index([tripId, status])
+}
+
+model CompanyClientPortalSession {
+  id String @id @default(cuid())
+  tokenHash String @unique
+  companyId String
+  clientId String
+  reservationId String
+  credentialVersion String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  @@index([reservationId, createdAt])
 }
 
 model ReservationPassenger {
