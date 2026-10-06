@@ -8,7 +8,7 @@ const date = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'long', timeStyle: 's
 const tripFromLocation = () => new URLSearchParams(window.location.search).get('trip') || ''
 const emptyFilters = { origin: '', destination: '', departureDate: '' }
 
-export function CompanyCatalogPage({ slug }: { slug: string }) {
+export function CompanyCatalogPage({ slug, onClientAccess }: { slug: string; onClientAccess: () => void }) {
   const [tripId, setTripId] = useState(tripFromLocation)
   const [filters, setFilters] = useState(emptyFilters)
   const [query, setQuery] = useState(emptyFilters)
@@ -74,8 +74,9 @@ export function CompanyCatalogPage({ slug }: { slug: string }) {
     <header className="company-catalog-heading">
       <span>Catálogo de viagens</span>
       <h1>{company?.tradeName ?? 'Consulte as viagens da empresa'}</h1>
-      <p>Consulta somente leitura. Reservas, compras e acesso do viajante por empresa ainda não estão disponíveis.</p>
+      <p>Consulta somente leitura. Novas reservas e compras por empresa ainda não estão disponíveis.</p>
       <button type="button" onClick={() => setRevision(value => value + 1)} disabled={loading}>Atualizar consulta</button>
+      {company ? <button type="button" onClick={onClientAccess}>Acessar minha reserva</button> : null}
     </header>
     {tripId ? <button type="button" onClick={() => navigate('')}>Voltar ao catálogo da empresa</button> :
       <form className="company-catalog-filters" onSubmit={search}>

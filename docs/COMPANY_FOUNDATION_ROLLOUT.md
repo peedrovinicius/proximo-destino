@@ -367,7 +367,25 @@ nesse portal, e seus tokens não servem nas rotas legadas.
 Migration aditiva cria CompanyClientPortalSession com RLS e política PUBLIC
 deny-all, além dos contadores na reserva. Não foi aplicada em produção. O papel
 restrito efetivo precisa de concessões/política revisadas para esta tabela antes
-da ativação; não concede privilégios automaticamente. Interface de login/portal,
-provisionamento seguro do código e reserva pública com identidade verificada
+da ativação; não concede privilégios automaticamente. Provisionamento seguro
+do código e reserva pública com identidade verificada
 continuam pendentes. O e-mail informado e o código não equivalem à verificação
 da posse da caixa de e-mail para um cadastro público novo.
+
+## Interface do portal por empresa
+
+`?screen=company-client&company=<slug>` apresenta login com identificador da
+reserva, e-mail e código. O catálogo oferece "Acessar minha reserva" preservando
+empresa. Código é enviado no corpo e limpo ao enviar; token só em memória e no
+header Authorization, sem URL, localStorage ou sessionStorage. Recarregar ou sair
+da tela exige novo login, informado na interface. Não há restauração de sessão
+do cliente neste bloco; a sessão administrativa existente não foi alterada.
+
+Consulta mostra apenas a projeção autorizada da própria reserva. Atualização
+remove dados anteriores; erro transitório permite repetir a consulta. 401/404
+ou expiração local removem token e dados. Logout espera revogação confirmada;
+falha transitória mantém somente a capacidade de tentar sair/atualizar novamente
+e informa que a saída não foi confirmada. Sucesso limpa os campos. AbortController
+impede respostas antigas após saída da tela; botões impedem ações simultâneas.
+Não há alteração de poltronas, passageiros, pagamentos ou cancelamento.
+Interface segue fora de produção e a API conserva as duas flags obrigatórias.

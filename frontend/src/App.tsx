@@ -10,6 +10,7 @@ import { logoutAdmin, refreshAdminSession } from './lib/adminAuth'
 import { AcceptCompanyInvite } from './features/creator/AcceptCompanyInvite'
 import { CreatorWorkspace } from './features/creator/CreatorWorkspace'
 import { CompanyCatalogPage } from './features/home/CompanyCatalogPage'
+import { CompanyClientPortal } from './features/client/CompanyClientPortal'
 
 type Screen =
   | 'home'
@@ -21,6 +22,7 @@ type Screen =
   | 'creator'
   | 'company-invite'
   | 'company'
+  | 'company-client'
 
 const screens = new Set<Screen>([
   'home',
@@ -32,6 +34,7 @@ const screens = new Set<Screen>([
   'creator',
   'company-invite',
   'company',
+  'company-client',
 ])
 
 const institutionalPages = new Set<InstitutionalPageKey>([
@@ -272,7 +275,8 @@ function App() {
     }
   }, [])
 
-  if (screen === 'company') return <CompanyCatalogPage key={companySlug} slug={companySlug} />
+  if (screen === 'company-client') return <CompanyClientPortal key={companySlug} slug={companySlug} onBack={() => navigate('company')} />
+  if (screen === 'company') return <CompanyCatalogPage key={companySlug} slug={companySlug} onClientAccess={() => navigate('company-client')} />
 
   if (screen === 'home') {
     return (
