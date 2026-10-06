@@ -1072,6 +1072,7 @@ function PaymentsWorkspace({ accessToken }: { accessToken: string }) {
 
       {error ? <div className="admin-error" role="alert">{error}</div> : null}
 
+      {error && data?.summaryOnly ? <p role="status">Os valores abaixo são do último resumo carregado e não foram atualizados. Tente novamente antes de utilizá-los.</p> : null}
       <div className="admin-payment-metrics">
         <article>
           <small>Recebido</small>

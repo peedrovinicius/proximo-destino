@@ -228,6 +228,8 @@ ou acesso ao provedor. A resposta marca summaryOnly e coverage ONLINE_AND_MANUAL
 não inclui contatos, IDs de pedidos, identificadores do provedor ou notas.
 Totais incluem recebimentos e reversões manuais, sem o corte de 200 registros.
 Saldos de crédito e parcelas em aberto não estão incluídos, e a interface informa isso.
+Se uma atualização falhar, a tela identifica os números mantidos como o último
+resumo carregado, não atualizado; o aviso desaparece após uma consulta bem-sucedida.
 Detalhes, lançamentos, conciliação e estornos permanecem bloqueados para empresas.
 
 GET `/admin/trips/:id/audit` permite somente ADMIN consultar criação/configuração

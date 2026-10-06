@@ -34,6 +34,7 @@ try {
         blockedSeats: [4], vehicleFeatures: [], imageUrl: null, hasUploadedImage: false, imageUpdatedAt: null, _count: { reservations: 1 } }
       let assignments = []
       let assignmentFailure = true; let releaseFailure = true
+      let financialRequests = 0
       const map = () => ({ ...trip, enabled: true, preparatory: true, trip, busLabel: 'Synthetic bus',
         occupiedSeats: assignments.map(row => row.seatNumber), assignments, availableCount: 3 - assignments.length })
       page.on('pageerror', error => errors.push(error.message))
@@ -51,10 +52,14 @@ try {
         if (path === '/admin/trips') return respond(200, [trip])
         if (path === '/admin/clients') return respond(200, [client])
         if (path === '/admin/reservations') return respond(200, [])
-        if (path === '/admin/payments/orders') return respond(200, { summaryOnly: true, coverage: 'ONLINE_AND_MANUAL_PAYMENTS',
+        if (path === '/admin/payments/orders') {
+          financialRequests++
+          if (financialRequests === 2) return respond(409, { message: 'Synthetic financial inconsistency' })
+          return respond(200, { summaryOnly: true, coverage: 'ONLINE_AND_MANUAL_PAYMENTS',
           summary: { totalOrders: 206, paidOrders: 202, pendingOrders: 1, refundedOrders: 1, cancelledOrders: 1, expiredOrders: 1,
             paidCents: 30900, pendingCents: 500, refundedCents: 550, manualReceivedCount: 1, manualReceivedCents: 10000,
             manualReversedCount: 1, manualReversedCents: 50 }, orders: [], manualPayments: [] })
+        }
         if (path === '/admin/trips/bus-templates') return respond(200, [])
         if (path === `/admin/trips/${trip.id}/audit`) return respond(200, { trip, preparatory: true, limit: 100, hasMore: true,
           events: [{ id: `event-${company}`, eventType: 'OPS_COMPANY_DRAFT_SEAT_MOVE', createdAt: '2026-10-05T12:00:00Z',
@@ -138,10 +143,18 @@ try {
         assert.equal(await page.locator('.admin-payment-filters').count(), 0)
         await page.getByText(/309,00/).waitFor()
         assert.equal((await page.locator('.admin-payments-workspace').innerText()).includes('1 manual(is)'), true)
+        await page.getByRole('button', { name: 'Atualizar', exact: true }).click()
+        await page.getByRole('alert').filter({ hasText: 'Synthetic financial inconsistency' }).waitFor()
+        await page.getByRole('status').filter({ hasText: 'último resumo carregado e não foram atualizados' }).waitFor()
+        assert.equal((await page.locator('.admin-payments-workspace').innerText()).includes('309,00'), true)
+        await page.getByRole('button', { name: 'Atualizar', exact: true }).click()
+        await page.getByRole('alert').filter({ hasText: 'Synthetic financial inconsistency' }).waitFor({ state: 'hidden' })
+        assert.equal(await page.getByRole('status').filter({ hasText: 'último resumo carregado' }).count(), 0)
+        assert.equal(financialRequests, 3)
         assert.deepEqual(writes.map(row => row.method), ['POST', 'POST', 'PATCH', 'DELETE', 'DELETE'])
         assert.deepEqual(errors, []); assert.deepEqual(unexpected, [])
         await page.screenshot({ path: `${output}/company-seats-${company}-${width}.png`, fullPage: true })
-        console.log(`PASS company-seats-${company}-${width}: seats, preparatory audit, online/manual financial summary with blocked details`)
+        console.log(`PASS company-seats-${company}-${width}: seats, audit, online/manual summary, stale-value warning and refresh recovery`)
       } catch (error) {
         await page.screenshot({ path: `${output}/company-seats-${company}-${width}-failed.png`, fullPage: true }).catch(() => {})
         throw error
