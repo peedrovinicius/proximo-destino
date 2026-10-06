@@ -309,5 +309,14 @@ As rotas públicas legadas de catálogo, detalhe, imagem e assentos agora atende
 somente viagens sem companyId. A solicitação anônima legada de reserva também
 recusa viagens de empresa, inclusive na revalidação antes da gravação.
 Não equivale à conclusão do isolamento de todo o portal ou das compras.
-Integração dessas APIs à interface pública, imagem binária por empresa, compra,
-portal do cliente, ativação e validação operacional continuam pendentes.
+A interface `?screen=company&company=<slug>` consulta essas APIs sem cookies,
+cache ou fallback global. Cards abrem detalhes por `&trip=<id>`, preservando
+empresa em links, recarregamento e navegação pelo histórico. Filtros de origem,
+destino e data UTC são enviados ao servidor; hasMore orienta a refinar a consulta.
+Poltronas são uma lista de disponibilidade somente leitura, não uma seleção ou
+garantia de reserva. Falha de atualização remove valores anteriores; falha no
+mapa não inventa disponibilidade. Empresa indisponível não mostra viagens globais.
+A tela não solicita dados pessoais nem chama pagamentos, portal ou gravações.
+Não usa identidade/contatos/marca da agência legada como se fossem da empresa.
+Imagem binária por empresa, compra, portal do cliente, ativação e validação
+operacional continuam pendentes. Esta interface permanece fora de produção.

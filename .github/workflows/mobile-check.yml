@@ -34,6 +34,8 @@ jobs:
         run: node scripts/creator-check.mjs
       - name: Check preparatory company seat assignment, movement and release
         run: node scripts/company-seat-check.mjs
+      - name: Check company public catalog read-only story
+        run: node scripts/company-public-check.mjs
       - name: Verify first-party session restoration through preview proxy
         run: node scripts/session-check.mjs
       - name: Save synthetic browser evidence

@@ -9,6 +9,7 @@ import type { InstitutionalPageKey } from './components/PublicFooter'
 import { logoutAdmin, refreshAdminSession } from './lib/adminAuth'
 import { AcceptCompanyInvite } from './features/creator/AcceptCompanyInvite'
 import { CreatorWorkspace } from './features/creator/CreatorWorkspace'
+import { CompanyCatalogPage } from './features/home/CompanyCatalogPage'
 
 type Screen =
   | 'home'
@@ -19,6 +20,7 @@ type Screen =
   | 'admin'
   | 'creator'
   | 'company-invite'
+  | 'company'
 
 const screens = new Set<Screen>([
   'home',
@@ -29,6 +31,7 @@ const screens = new Set<Screen>([
   'admin',
   'creator',
   'company-invite',
+  'company',
 ])
 
 const institutionalPages = new Set<InstitutionalPageKey>([
@@ -95,6 +98,7 @@ function updateLocation(
 
 function App() {
   const [screen, setScreen] = useState<Screen>(() => screenFromLocation())
+  const [companySlug, setCompanySlug] = useState(() => new URLSearchParams(window.location.search).get('company') || '')
   const [adminAccessToken, setAdminAccessToken] = useState<string | null>(null)
   const [clientAccessToken, setClientAccessToken] = useState<string | null>(null)
   const [institutionalPage, setInstitutionalPage] =
@@ -137,6 +141,7 @@ function App() {
   useEffect(() => {
     function onPopState() {
       setScreen(screenFromLocation())
+      setCompanySlug(new URLSearchParams(window.location.search).get('company') || '')
       setInstitutionalPage(institutionalFromLocation())
     }
 
@@ -266,6 +271,8 @@ function App() {
       window.setTimeout(() => window.close(), 250)
     }
   }, [])
+
+  if (screen === 'company') return <CompanyCatalogPage key={companySlug} slug={companySlug} />
 
   if (screen === 'home') {
     return (
