@@ -36,7 +36,7 @@ describe('company public catalogs in isolated PostgreSQL', () => {
     await prisma.trip.createMany({ data: ids.map((id, i) => ({ id, companyId: i === 7 ? null : companies[i < 4 ? i : 0],
       title: `Synthetic public ${i}`, origin: 'Fortaleza', destination: 'Recife', status: i === 4 ? 'DRAFT' : i === 6 ? 'CANCELLED' : 'SCHEDULED',
       departureDate: i === 5 ? new Date('2020-01-01') : new Date('2027-01-01'), capacity: 4, busTemplate: 'CUSTOM',
-      seatLayout: 'TWO_BY_TWO', blockedSeats: [4], vehicleFeatures: [{ type: 'BATHROOM', position: 'REAR', side: 'RIGHT', deck: 1, secret: 'private-feature' }] })) })
+      seatLayout: 'TWO_BY_TWO', blockedSeats: [4], vehicleFeatures: [{ type: 'RESTROOM', position: 'REAR', side: 'RIGHT', deck: 1, secret: 'private-feature' }] })) })
     for (let i = 0; i < 2; i++) {
       await prisma.client.create({ data: { id: clients[i], companyId: companies[i], fullName: 'private-passenger', email: `${clients[i]}@example.invalid` } })
       await prisma.reservation.create({ data: { id: reservations[i], companyId: companies[i], clientId: clients[i], tripId: ids[i] } })
@@ -87,7 +87,7 @@ describe('company public catalogs in isolated PostgreSQL', () => {
     const response = await get(path); assert.equal(response.status, 200)
     const body = await response.json() as { occupiedSeats: number[]; blockedSeats: number[]; availableCount: number; vehicleFeatures: object[] }
     assert.deepEqual(body.occupiedSeats, [1]); assert.deepEqual(body.blockedSeats, [4]); assert.equal(body.availableCount, 2)
-    assert.deepEqual(body.vehicleFeatures, [{ type: 'BATHROOM', position: 'REAR', side: 'RIGHT', deck: 1 }])
+    assert.deepEqual(body.vehicleFeatures, [{ type: 'RESTROOM', position: 'REAR', side: 'RIGHT', deck: 1 }])
     const text = JSON.stringify(body)
     for (const field of ['private', 'client', 'passenger', 'companyId', 'reservationId', 'assignments']) assert.equal(text.includes(field), false)
     assert.equal((await get(`/public/companies/${companies[1]}/trips/${ids[0]}/seats`)).status, 404)
