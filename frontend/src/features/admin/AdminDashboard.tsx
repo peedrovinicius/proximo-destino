@@ -1063,7 +1063,7 @@ function PaymentsWorkspace({ accessToken }: { accessToken: string }) {
         <div>
           <span className="eyebrow">Financeiro integrado</span>
           <h2>Pagamentos</h2>
-          <p>{data?.summaryOnly ? 'Resumo somente leitura dos pedidos online da própria empresa. Não inclui recebimentos manuais; detalhes e alterações permanecem bloqueados.' : 'PIX, cartão, dinheiro, transferência e boleto em uma única visão.'}</p>
+          <p>{data?.summaryOnly ? 'Resumo somente leitura dos pedidos online e recebimentos manuais da própria empresa. Não inclui saldos de crédito ou parcelas em aberto; detalhes e alterações permanecem bloqueados.' : 'PIX, cartão, dinheiro, transferência e boleto em uma única visão.'}</p>
         </div>
         <button type="button" onClick={() => void load()} disabled={loading}>
           {loading ? 'Atualizando...' : 'Atualizar'}
@@ -1077,7 +1077,7 @@ function PaymentsWorkspace({ accessToken }: { accessToken: string }) {
           <small>Recebido</small>
           <strong>{money.format((summary?.paidCents ?? 0) / 100)}</strong>
           <span>
-            {summary?.paidOrders ?? 0} online{data?.summaryOnly ? '' : ` · ${summary?.manualReceivedCount ?? 0} manual(is)`}
+            {summary?.paidOrders ?? 0} online · {summary?.manualReceivedCount ?? 0} manual(is)
           </span>
         </article>
         <article>
@@ -1094,7 +1094,7 @@ function PaymentsWorkspace({ accessToken }: { accessToken: string }) {
           <small>Estornado</small>
           <strong>{money.format((summary?.refundedCents ?? 0) / 100)}</strong>
           <span>
-            {summary?.refundedOrders ?? 0} online{data?.summaryOnly ? '' : ` · ${summary?.manualReversedCount ?? 0} manual(is)`}
+            {summary?.refundedOrders ?? 0} online · {summary?.manualReversedCount ?? 0} manual(is)
           </span>
         </article>
       </div>

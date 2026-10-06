@@ -83,7 +83,7 @@ export class AdminController {
   @CompanyRead()
   @Roles(...FINANCE_ROLES)
   payments(@Req() request: AuthenticatedRequest) {
-    if (request.companyScope) return this.scoped.onlinePaymentsSummary(request.user.id, request.user.sessionId)
+    if (request.companyScope) return this.scoped.paymentsSummary(request.user.id, request.user.sessionId)
     return this.admin.paymentsDashboard()
   }
 

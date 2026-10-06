@@ -160,7 +160,7 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
     assert.equal((await call('/admin/reservations', tokens[0], 'POST')).status, 400)
     assert.equal(legacyWrites, 0)
   })
-  it('aggregates every own online order without details or manual payments and denies invalid totals', async () => {
+  it('aggregates every own online order and manual receipt without details and denies invalid totals', async () => {
     const data = [
       ...Array.from({ length: 201 }, () => ({ status: 'PAID' as const, totalCents: 100, refundedCents: 0 })),
       { status: 'PARTIALLY_REFUNDED' as const, totalCents: 1000, refundedCents: 200 },
@@ -181,15 +181,19 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
       unitPriceCents: 999999, totalCents: 999999, status: 'PAID' } })
     const manual = await prisma.manualPayment.create({ data: { reservationId: reservations[0], method: 'CASH', amountCents: 777777,
       paidAt: new Date(), note: 'private-note' } })
+    const reversed = await prisma.manualPayment.create({ data: { reservationId: reservations[0], method: 'TRANSFER',
+      status: 'REVERSED', amountCents: 50, paidAt: new Date(), reversedReason: 'private-reason' } })
+    const foreignManual = await prisma.manualPayment.create({ data: { reservationId: reservations[1], method: 'CASH',
+      amountCents: 888, paidAt: new Date(), note: 'foreign-private' } })
     try {
       const before = await prisma.authAuditEvent.count({ where: { userId: { in: users } } })
       const response = await call('/admin/payments/orders'); assert.equal(response.status, 200)
       assert.equal(response.headers.get('cache-control'), 'no-store')
       const body = await response.json()
-      assert.deepEqual(body, { summaryOnly: true, coverage: 'ONLINE_ORDERS', summary: {
+      assert.deepEqual(body, { summaryOnly: true, coverage: 'ONLINE_AND_MANUAL_PAYMENTS', summary: {
         totalOrders: 206, paidOrders: 202, pendingOrders: 1, refundedOrders: 1, cancelledOrders: 1, expiredOrders: 1,
-        paidCents: 20900, pendingCents: 500, refundedCents: 500,
-        manualReceivedCount: 0, manualReceivedCents: 0, manualReversedCount: 0, manualReversedCents: 0,
+        paidCents: 798677, pendingCents: 500, refundedCents: 550,
+        manualReceivedCount: 1, manualReceivedCents: 777777, manualReversedCount: 1, manualReversedCents: 50,
       }, orders: [], manualPayments: [] })
       assert.equal(await prisma.authAuditEvent.count({ where: { userId: { in: users } } }), before)
       await prisma.purchaseOrder.update({ where: { id: orderIds[0] }, data: { refundedCents: 101 } })
@@ -197,9 +201,9 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
       await prisma.purchaseOrder.update({ where: { id: orderIds[0] }, data: { refundedCents: 0 } })
       const other = await call('/admin/payments/orders', tokens[1]); assert.equal(other.status, 200)
       const otherBody = await other.json() as { summary: { totalOrders: number; paidCents: number } }
-      assert.equal(otherBody.summary.totalOrders, 1); assert.equal(otherBody.summary.paidCents, 999999)
+      assert.equal(otherBody.summary.totalOrders, 1); assert.equal(otherBody.summary.paidCents, 1000887)
     } finally {
-      await prisma.manualPayment.delete({ where: { id: manual.id } })
+      await prisma.manualPayment.deleteMany({ where: { id: { in: [manual.id, reversed.id, foreignManual.id] } } })
       await prisma.purchaseOrder.deleteMany({ where: { id: { in: [...orderIds, foreign.id] } } })
       // Keep later scenarios independent of these synthetic reservation/trip fixtures.
       await prisma.reservation.deleteMany({ where: { id: { in: reservationIds } } })
@@ -210,7 +214,7 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
     const scopes = new CompanyScopeService(prisma), scope = await scopes.resolveSession(users[0], sessions[0])
     const stale = new CompanyDataService(prisma, { resolveSession: async () => scope } as unknown as CompanyScopeService)
     await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { isActive: false } })
-    try { await assert.rejects(stale.onlinePaymentsSummary(users[0], sessions[0]), { status: 403 }) }
+    try { await assert.rejects(stale.paymentsSummary(users[0], sessions[0]), { status: 403 }) }
     finally { await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { isActive: true } }) }
     for (const role of ['AGENT', 'FINANCE'] as const) {
       await prisma.user.update({ where: { id: users[0] }, data: { role } })
@@ -223,6 +227,36 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
     }
     assert.equal((await call(`/admin/reservations/${reservations[0]}/finance`)).status, 403)
     assert.equal((await call(`/admin/reservations/${reservations[0]}/finance/reconcile`, tokens[0], 'POST')).status, 403)
+  })
+  it('refuses manual receipts linked to another reservation through plans, installments or quotes', async () => {
+    const quotes = await Promise.all([0, 1].map(i => prisma.quote.create({ data: {
+      reservationId: reservations[i], revision: 1, title: 'Synthetic financial quote' } })))
+    const plans = await Promise.all([0, 1].map(i => prisma.financePlan.create({ data: {
+      reservationId: reservations[i], quoteId: quotes[i].id, totalCents: 100, installmentCount: 1 } })))
+    const installments = await Promise.all(plans.map(plan => prisma.installment.create({ data: {
+      financePlanId: plan.id, sequence: 1, dueDate: new Date(), amountCents: 100 } })))
+    const receipt = await prisma.manualPayment.create({ data: { reservationId: reservations[0], method: 'CASH',
+      financePlanId: plans[0].id, installmentId: installments[0].id, amountCents: 100, paidAt: new Date() } })
+    const extraQuote = await prisma.quote.create({ data: { reservationId: reservations[1], revision: 2, title: 'Synthetic incompatible quote' } })
+    try {
+      const good = await call('/admin/payments/orders'); assert.equal(good.status, 200)
+      assert.equal((await good.json() as { summary: { manualReceivedCents: number } }).summary.manualReceivedCents, 100)
+      await prisma.manualPayment.update({ where: { id: receipt.id }, data: { financePlanId: plans[1].id } })
+      assert.equal((await call('/admin/payments/orders')).status, 409)
+      await prisma.manualPayment.update({ where: { id: receipt.id }, data: { financePlanId: null, installmentId: installments[1].id } })
+      assert.equal((await call('/admin/payments/orders')).status, 409)
+      await prisma.manualPayment.update({ where: { id: receipt.id }, data: { financePlanId: plans[0].id, installmentId: installments[0].id } })
+      await prisma.financePlan.update({ where: { id: plans[0].id }, data: { quoteId: extraQuote.id } })
+      assert.equal((await call('/admin/payments/orders')).status, 409)
+      await prisma.financePlan.update({ where: { id: plans[0].id }, data: { quoteId: quotes[0].id } })
+      await prisma.manualPayment.update({ where: { id: receipt.id }, data: { amountCents: -1 } })
+      assert.equal((await call('/admin/payments/orders')).status, 409)
+    } finally {
+      await prisma.manualPayment.delete({ where: { id: receipt.id } })
+      await prisma.installment.deleteMany({ where: { id: { in: installments.map(row => row.id) } } })
+      await prisma.financePlan.deleteMany({ where: { id: { in: plans.map(row => row.id) } } })
+      await prisma.quote.deleteMany({ where: { id: { in: [...quotes.map(row => row.id), extraQuote.id] } } })
+    }
   })
   it('serves company dashboard metrics without invoking the legacy global reader', async () => {
     for (const token of [tokens[0], tokens[1]]) {

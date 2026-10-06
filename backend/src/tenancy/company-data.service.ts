@@ -26,7 +26,7 @@ function tripSearch(query: string) {
 export class CompanyDataService {
   constructor(private readonly prisma: PrismaService, private readonly scopes: CompanyScopeService) {}
 
-  async onlinePaymentsSummary(userId: string, sessionId: string) {
+  async paymentsSummary(userId: string, sessionId: string) {
     const scope = await this.scopes.resolveSession(userId, sessionId)
     if (scope.role === 'AGENT') throw new ForbiddenException('Perfil sem acesso ao resumo financeiro')
     return this.prisma.$transaction(async tx => {
@@ -54,10 +54,39 @@ export class CompanyDataService {
         else if (row.status === 'CANCELLED') summary.cancelledOrders += count
         else if (row.status === 'EXPIRED') summary.expiredOrders += count
       }
+      const manual = await tx.$queryRaw<{ status: string; count: bigint; amount: bigint; invalid: bigint }[]>`
+        SELECT m."status"::text AS status, COUNT(*) AS count, SUM(m."amountCents") AS amount,
+          COUNT(*) FILTER (WHERE m."amountCents" < 0
+            OR (m."financePlanId" IS NOT NULL AND (p."reservationId" IS DISTINCT FROM m."reservationId"
+              OR pq."reservationId" IS DISTINCT FROM m."reservationId"))
+            OR (m."installmentId" IS NOT NULL AND (ip."reservationId" IS DISTINCT FROM m."reservationId"
+              OR iq."reservationId" IS DISTINCT FROM m."reservationId"
+              OR (m."financePlanId" IS NOT NULL AND i."financePlanId" IS DISTINCT FROM m."financePlanId")))) AS invalid
+        FROM "ManualPayment" m
+        JOIN "Reservation" r ON r."id" = m."reservationId"
+        JOIN "Client" c ON c."id" = r."clientId"
+        JOIN "Trip" t ON t."id" = r."tripId"
+        LEFT JOIN "FinancePlan" p ON p."id" = m."financePlanId"
+        LEFT JOIN "Quote" pq ON pq."id" = p."quoteId"
+        LEFT JOIN "Installment" i ON i."id" = m."installmentId"
+        LEFT JOIN "FinancePlan" ip ON ip."id" = i."financePlanId"
+        LEFT JOIN "Quote" iq ON iq."id" = ip."quoteId"
+        WHERE r."companyId" = ${scope.companyId} AND c."companyId" = ${scope.companyId} AND t."companyId" = ${scope.companyId}
+        GROUP BY m."status"`
+      for (const row of manual) {
+        if (row.invalid > 0n) throw new ConflictException('Recebimentos com valores ou vínculos inconsistentes impedem o resumo financeiro')
+        const count = Number(row.count), amount = Number(row.amount)
+        if (!Number.isSafeInteger(count) || !Number.isSafeInteger(amount)) throw new ConflictException('Resumo financeiro excede o limite seguro')
+        if (row.status === 'RECEIVED') {
+          summary.manualReceivedCount += count; summary.manualReceivedCents += amount; summary.paidCents += amount
+        } else if (row.status === 'REVERSED') {
+          summary.manualReversedCount += count; summary.manualReversedCents += amount; summary.refundedCents += amount
+        }
+      }
       if (Object.values(summary).some(value => !Number.isSafeInteger(value))) {
         throw new ConflictException('Valores excedem o limite seguro do resumo financeiro')
       }
-      return { summaryOnly: true, coverage: 'ONLINE_ORDERS' as const, summary, orders: [], manualPayments: [] }
+      return { summaryOnly: true, coverage: 'ONLINE_AND_MANUAL_PAYMENTS' as const, summary, orders: [], manualPayments: [] }
     }, { isolationLevel: 'RepeatableRead' })
   }
 
