@@ -13,9 +13,14 @@ const { assertHttpRehearsalTarget } = require('../dist/security/http-rehearsal-t
 const name = `validation_pr34_http_${randomBytes(12).toString('hex')}`
 let admin, created = false, stage = 'validar configuração', exitCode = 1
 try {
-  const url = new URL(process.env.NEON_HTTP_OWNER_URL || 'invalid')
+  stage = 'validar presença do segredo NEON_HTTP_OWNER_URL'
+  if (!process.env.NEON_HTTP_OWNER_URL?.trim()) throw new Error('Ausente')
+  stage = 'validar formato PostgreSQL do segredo (sem comando psql ou aspas externas)'
+  const url = new URL(process.env.NEON_HTTP_OWNER_URL.trim())
+  stage = 'validar banco base neondb'
   if (url.pathname !== '/neondb') throw new Error('Base inválida')
   const target = new URL(url); target.pathname = '/' + name
+  stage = 'validar hostname, TLS, parâmetros e expiração da branch temporária'
   assertHttpRehearsalTarget(target)
   admin = new PrismaClient({ datasourceUrl: url.toString(), log: [], errorFormat: 'minimal' })
   stage = 'conectar à branch temporária'

@@ -11,8 +11,9 @@ export function assertHttpRehearsalTarget(database: URL, now = Date.now()) {
     database.username !== 'neondb_owner' || !database.password || database.hash ||
     (database.port !== '' && database.port !== '5432') ||
     !['require', 'verify-ca', 'verify-full'].includes(database.searchParams.get('sslmode') || '') ||
-    [...database.searchParams.keys()].some(key => !['sslmode', 'schema', 'connect_timeout'].includes(key) ||
+    [...database.searchParams.keys()].some(key => !['sslmode', 'schema', 'connect_timeout', 'channel_binding'].includes(key) ||
       database.searchParams.getAll(key).length !== 1) ||
+    (database.searchParams.has('channel_binding') && database.searchParams.get('channel_binding') !== 'require') ||
     (database.searchParams.has('schema') && database.searchParams.get('schema') !== 'public')) {
     throw new Error('Destino HTTP isolado inválido ou expirado; nenhuma operação autorizada')
   }

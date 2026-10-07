@@ -2,6 +2,7 @@ name: Isolated Neon HTTP rehearsal
 
 # Temporary opt-in rehearsal authorized by the owner. Only changes to this
 # workflow on the draft feature branch trigger it; main/production are excluded.
+# Retry after accepting the standard Neon channel_binding=require parameter.
 on:
   push:
     branches: [feat/company-foundation]
