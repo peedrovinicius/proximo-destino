@@ -200,6 +200,28 @@ remover o valor de enum do PostgreSQL durante uma reversão operacional.
    concede permissões. Executar psql `-v ON_ERROR_STOP=1 -f` com conexão pelo
    canal seguro/ambiente, nunca senha em argumento. Doze tabelas com RLS não
    comprovam isolamento entre empresas; validar API/políticas com duas empresas.
+**RLS por sessão persistida (preparado, não publicado):** a migração
+`202610071900_session_backed_tenant_rls` adiciona
+`company_tenant_authorized(companyId)`, uma função `SECURITY DEFINER`
+fail-closed que só autoriza quando `app.company_id`, `app.user_id` e
+`app.session_id` correspondem a uma `AuthSession` ativa e não expirada,
+usuário ativo e marcado como company-managed, vínculo ativo com o mesmo papel
+e empresa ACTIVE. Conhecer ou trocar apenas o ID da empresa não concede acesso.
+
+As políticas cobrem `Client`, `Companion`, `Trip`, `Reservation`,
+`ReservationPassenger`, `SeatAssignment`, `PurchaseOrder`, `Quote`,
+`QuoteItem`, `ReservationService`, `FinancePlan`, `Installment`,
+`TravelDocument`, `ManualPayment` e `ClientCreditTransaction`. O ensaio
+com LOGIN PostgreSQL restrito valida isolamento A/B, escrita cruzada negada e
+revogação/expiração de sessão. Essas alterações permanecem fora de produção.
+
+**Separação de backfill PII:** a API não executa mais reescrita histórica de
+documentos sensíveis por padrão no startup. `PII_BACKFILL_ON_STARTUP=true`
+é um opt-in operacional e **não deve existir no runtime normal da API**.
+Isso evita conceder ao login runtime privilégios de migração apenas para
+converter registros antigos. O backfill real continua sujeito ao ensaio em
+clone sanitizado, revisão humana e credencial separada de migração.
+
 **Contexto transacional derivado da sessão (preparado, não publicado):**
 `company-db-context.ts` instala `app.company_id`, `app.user_id` e
 `app.session_id` com `set_config(..., true)`, portanto os valores existem
