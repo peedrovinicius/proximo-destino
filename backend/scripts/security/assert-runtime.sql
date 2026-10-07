@@ -8,7 +8,7 @@ BEGIN READ ONLY;
 DO $gate$
 DECLARE
   expected_tables TEXT[] := ARRAY[
-    'Client', 'Companion', 'Reservation', 'ReservationPassenger',
+    'Client', 'Companion', 'Trip', 'Reservation', 'ReservationPassenger',
     'SeatAssignment', 'PurchaseOrder', 'Quote', 'FinancePlan',
     'Installment', 'TravelDocument', 'ManualPayment', 'ClientCreditTransaction'
   ];
