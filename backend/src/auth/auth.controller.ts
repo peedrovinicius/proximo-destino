@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   HttpCode,
   Param,
   Post,
@@ -23,6 +24,7 @@ import { JwtAuthGuard, type AuthenticatedRequest } from './jwt-auth.guard'
 import { Roles } from './roles.decorator'
 import { RolesGuard } from './roles.guard'
 import { OwnSessionAccess } from '../tenancy/company-access.decorator'
+import { PasswordChangeDto } from './dto/password-change.dto'
 
 const REFRESH_COOKIE = 'pd_refresh'
 
@@ -131,6 +133,15 @@ export class AuthController {
       this.context(request),
     )
     response.clearCookie(REFRESH_COOKIE, this.cookieOptions())
+  }
+
+  @Post('password/change') @OwnSessionAccess() @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } }) @HttpCode(200) @Header('Cache-Control', 'no-store')
+  async changePassword(@Body() body: PasswordChangeDto, @Req() request: AuthenticatedRequest,
+    @Res({ passthrough: true }) response: Response) {
+    const result = await this.auth.changePassword(request.user.id, request.user.sessionId, body.currentPassword, body.newPassword)
+    response.clearCookie(REFRESH_COOKIE, this.cookieOptions())
+    return result
   }
 
   @Get('sessions')

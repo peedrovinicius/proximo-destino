@@ -3,6 +3,7 @@ import { AdminLogin } from '../admin/AdminLogin'
 import { logoutAdmin, refreshAdminSession } from '../../lib/adminAuth'
 import './creator.css'
 import { CompanyAdminForm } from './CompanyAdminForm'
+import { ChangePasswordDialog } from '../admin/ChangePasswordDialog'
 
 type CompanyFields = {
   tradeName: string; slug: string; legalName: string; registrationNumber: string;
@@ -30,6 +31,7 @@ const API_BASE = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '')
 async function companyRequest(token: string, path = '', body?: CompanyFields): Promise<Company | Company[]> {
   const response = await fetch(`${API_BASE}/platform/companies${path}`, {
     method: body ? (path ? 'PUT' : 'POST') : 'GET',
+    cache: 'no-store', credentials: 'omit',
     headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
     ...(body ? { body: JSON.stringify(body) } : {}),
   })
@@ -51,6 +53,8 @@ export function CreatorWorkspace({ onBack }: { onBack: () => void }) {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [adminCompany, setAdminCompany] = useState<Company | null>(null)
+  const [guided, setGuided] = useState(false)
+  const [changingPassword, setChangingPassword] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -91,6 +95,7 @@ export function CreatorWorkspace({ onBack }: { onBack: () => void }) {
     try {
       const company = await companyRequest(token, editingId ? `/${encodeURIComponent(editingId)}` : '', fields) as Company
       setCompanies(current => [company, ...current.filter(item => item.id !== company.id)].slice(0, 100))
+      if (!editingId) { setAdminCompany(company); setGuided(true) }
       setEditingId(null); setFields({ ...emptyFields })
       setNotice('Empresa salva em rascunho. Nenhum acesso operacional foi ativado.')
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Falha ao salvar empresa.') }
@@ -103,16 +108,21 @@ export function CreatorWorkspace({ onBack }: { onBack: () => void }) {
   return <main className="creator-workspace">
     <header className="creator-heading">
       <div><span className="eyebrow">Próximo Destino · Criador</span><h1>Empresas da plataforma</h1><p>Cadastre quem vai usar o sistema, com dados e responsável próprios.</p></div>
-      <div className="creator-actions"><button type="button" onClick={onBack}>Voltar ao site</button>
+      <div className="creator-actions"><button type="button" disabled={saving} onClick={onBack}>Voltar ao site</button>
+        <button type="button" disabled={saving} onClick={() => setChangingPassword(true)}>Alterar minha senha</button>
         <button type="button" disabled={saving} onClick={() => { void logoutAdmin(token); setToken(null); setCompanies([]); setFields({ ...emptyFields }); setEditingId(null); setAdminCompany(null); setError(''); setNotice('') }}>Sair</button></div>
     </header>
-    <aside className="creator-warning"><strong>Preparação das empresas</strong><p>Por segurança, novos cadastros ficam em rascunho. Os convites permitem somente definir a senha. A ativação e o acesso da empresa serão liberados após o isolamento completo de viagens, clientes, reservas, financeiro e integrações.</p></aside>
+    {changingPassword ? <ChangePasswordDialog token={token} onClose={() => setChangingPassword(false)}
+      onChanged={() => { setChangingPassword(false); setToken(null); setCompanies([]); setFields({ ...emptyFields }); setAdminCompany(null); setEditingId(null); setGuided(false); setError(''); setNotice('') }} /> : null}
+    <aside className="creator-warning"><strong>Acesso pendente de ativação</strong><p>Você pode cadastrar a empresa e preparar o acesso do administrador. O convite permite definir a senha e configurar o autenticador; o uso da empresa ainda depende da ativação.</p></aside>
     {error ? <p role="alert" className="admin-login-error">{error}</p> : null}
     {notice ? <p role="status">{notice}</p> : null}
     {adminCompany ? <CompanyAdminForm key={adminCompany.id} companyId={adminCompany.id} companyName={adminCompany.tradeName}
-      token={token} onClose={() => setAdminCompany(null)} /> : null}
+      token={token} guided={guided} defaultName={adminCompany.responsibleName} defaultEmail={adminCompany.responsibleEmail}
+      onBusyChange={setSaving} onClose={() => { setAdminCompany(null); setGuided(false) }} /> : null}
     <div className="creator-columns">
-      <section className="creator-panel" aria-labelledby="company-form-title"><h2 id="company-form-title">{editingId ? 'Editar rascunho' : 'Cadastrar empresa'}</h2>
+      {!adminCompany ? <section className="creator-panel" aria-labelledby="company-form-title"><h2 id="company-form-title">{editingId ? 'Editar rascunho' : 'Cadastrar empresa'}</h2>
+        {!editingId ? <p className="creator-help">Etapa 1 de 3 · Empresa. Depois, cadastre o administrador e prepare o convite.</p> : null}
         <form onSubmit={save}><fieldset disabled={saving} className="creator-fields">
           {(Object.keys(labels) as (keyof CompanyFields)[]).map(key => <label key={key}>{labels[key]}{requiredFields.has(key) ? ' *' : ''}
             <input type={key === 'contactEmail' || key === 'responsibleEmail' ? 'email' : 'text'}
@@ -122,19 +132,20 @@ export function CreatorWorkspace({ onBack }: { onBack: () => void }) {
               title={key === 'slug' ? 'Use letras minúsculas, números e hífens; exemplo: agencia-sol' : undefined}
               onChange={event => setFields(current => ({ ...current, [key]: event.target.value }))} />
           </label>)}
-          <p className="creator-help">* Obrigatório. O responsável ainda não recebe convite nem conta de acesso.</p>
-          <button type="submit">{saving ? 'Salvando…' : 'Salvar rascunho'}</button>
+          <p className="creator-help">* Obrigatório. Salvar a empresa não cria uma conta nem envia mensagens. Você poderá continuar o cadastro do administrador na próxima etapa.</p>
+          <button type="submit">{saving ? 'Salvando…' : editingId ? 'Salvar rascunho' : 'Salvar empresa e continuar'}</button>
           {editingId ? <button type="button" onClick={() => { setEditingId(null); setFields({ ...emptyFields }) }}>Cancelar edição</button> : null}
         </fieldset></form>
-      </section>
+      </section> : null}
       <section className="creator-panel" aria-labelledby="companies-list-title"><h2 id="companies-list-title">Cadastros recentes</h2>
         {loading ? <p role="status">Carregando empresas…</p> : companies.length === 0 ? <p>Nenhuma empresa cadastrada.</p> : <ul className="creator-company-list">
           {companies.map(company => <li key={company.id}><h3>{company.tradeName}</h3><span>{statuses[company.status]}</span>
             <p>{company.slug} · {company.contactEmail}</p><p>Responsável: {company.responsibleName}</p>
             {company.status === 'DRAFT' ? <button type="button" disabled={saving} onClick={() => {
+              setAdminCompany(null); setGuided(false)
               setEditingId(company.id); setNotice(''); setFields(Object.fromEntries(Object.keys(labels).map(key => [key, company[key as keyof CompanyFields] ?? ''])) as CompanyFields)
             }}>Editar rascunho de {company.tradeName}</button> : null}
-            {company.status === 'DRAFT' ? <button type="button" onClick={() => setAdminCompany(company)}>Administradores de {company.tradeName}</button> : null}
+            {company.status === 'DRAFT' ? <button type="button" disabled={saving} onClick={() => { setAdminCompany(company); setGuided(false) }}>Administradores de {company.tradeName}</button> : null}
           </li>)}
         </ul>}
       </section>

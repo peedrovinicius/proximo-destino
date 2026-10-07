@@ -186,6 +186,7 @@ model User {
   isActive                  Boolean   @default(true)
   companyManaged            Boolean   @default(false)
   failedLoginAttempts       Int       @default(0)
+  authVersion               Int       @default(0)
   lockedUntil               DateTime?
   lastLoginAt               DateTime?
   mfaEnabled                Boolean   @default(false)

@@ -1,3 +1,4 @@
+import { ChangePasswordDialog } from './ChangePasswordDialog'
 import {
   ArrowLeft,
   Bell,
@@ -63,6 +64,7 @@ type AdminDashboardProps = {
   accessToken: string
   onExitToSite: () => void
   onLogout: () => void
+  onPasswordChanged?: () => void
 }
 
 type Tab =
@@ -124,6 +126,7 @@ export function AdminDashboard({
   accessToken,
   onExitToSite,
   onLogout,
+  onPasswordChanged,
 }: AdminDashboardProps) {
   const [tab, setTab] = useState<Tab>(() => tabFromLocation())
   const [dashboard, setDashboard] = useState<DashboardData | null>(null)
@@ -136,6 +139,7 @@ export function AdminDashboard({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
+  const [changingPassword, setChangingPassword] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [notificationFeed, setNotificationFeed] =
     useState<AdminNotificationFeed | null>(null)
@@ -630,6 +634,7 @@ export function AdminDashboard({
                   Voltar ao site
                   <small>Sem encerrar a sessão</small>
                 </button>
+                <button type="button" role="menuitem" onClick={() => { setAccountMenuOpen(false); setChangingPassword(true) }}>Alterar minha senha</button>
                 {isAdmin ? (
                   <button
                     type="button"
@@ -811,6 +816,7 @@ export function AdminDashboard({
           <PaymentSettings accessToken={accessToken} />
         ) : null}
       </main>
+      {changingPassword ? <ChangePasswordDialog token={accessToken} onClose={() => setChangingPassword(false)} onChanged={onPasswordChanged || onLogout} /> : null}
     </div>
   )
 }

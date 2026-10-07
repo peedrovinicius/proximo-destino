@@ -365,6 +365,7 @@ function App() {
       <AdminDashboard
         accessToken={adminAccessToken}
         onExitToSite={() => navigate('home')}
+        onPasswordChanged={() => { setAdminAccessToken(null); navigate('admin', { replace: true }) }}
         onLogout={() => {
           void logoutAdmin(adminAccessToken)
           setAdminAccessToken(null)

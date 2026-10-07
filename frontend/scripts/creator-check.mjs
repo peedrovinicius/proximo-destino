@@ -27,6 +27,7 @@ try {
     const page = await browser.newPage({ viewport: { width, height: 950 } })
     const errors = []; const unexpected = []; const drafts = []; const writes = []; const admins = []
     let authenticated = false
+    let adminFails = true, passwordCalls = 0
     let inviteActive = false
     let accepted = 0
     const inviteCode = 's'.repeat(43)
@@ -49,6 +50,16 @@ try {
         return respond(200, { status: 'authenticated', accessToken: 'synthetic-creator-token', user: { id: 'synthetic-creator', role: 'CREATOR', email: 'creator@example.invalid' } })
       }
       if (url.pathname === '/api/v1/auth/logout') { authenticated = false; return route.fulfill({ status: 204, body: '' }) }
+      if (url.pathname === '/api/v1/auth/password/change') {
+        assert.equal(request.method(), 'POST'); assert.equal(request.headers().authorization, 'Bearer synthetic-creator-token')
+        passwordCalls++
+        const payload = request.postDataJSON()
+        assert.deepEqual(Object.keys(payload).sort(), ['currentPassword', 'newPassword'])
+        if (payload.currentPassword === 'Synthetic-wrong-password') return respond(401, { message: 'Confira a senha atual.' })
+        assert.equal(payload.currentPassword, 'Synthetic-password-only-for-test')
+        assert.equal(payload.newPassword, 'Synthetic-new-password-for-test')
+        authenticated = false; return respond(200, { passwordChanged: true, allSessionsRevoked: true })
+      }
       if (url.pathname === '/api/v1/company-invitations/accept') {
         assert.equal(request.method(), 'POST')
         assert.ok(inviteActive)
@@ -90,6 +101,7 @@ try {
           const payload = request.postDataJSON()
           assert.deepEqual(Object.keys(payload).sort(), ['displayName', 'email', 'password'])
           assert.ok(payload.password.length >= 16)
+          if (adminFails) { adminFails = false; return respond(503, { message: 'Falha sintética. Tente novamente.' }) }
           const admin = { id: 'synthetic-membership', isActive: false,
             user: { id: 'synthetic-admin', displayName: payload.displayName, email: payload.email, isActive: false } }
           admins.push(admin)
@@ -120,21 +132,34 @@ try {
       ['E-mail de contato', 'contato@example.invalid'], ['Nome do responsável', 'Responsável sintético'],
       ['E-mail do responsável', 'responsavel@example.invalid'],
     ]) await page.getByLabel(label, { exact: false }).fill(value)
-    await page.getByRole('button', { name: 'Salvar rascunho' }).click()
+    await page.getByRole('button', { name: 'Salvar empresa e continuar' }).click()
     await page.getByRole('status').filter({ hasText: 'Empresa salva em rascunho' }).waitFor()
+    await page.getByRole('heading', { name: 'Cadastrar administrador de Agência sintética' }).waitFor()
+    assert.equal(await page.getByLabel('Nome do administrador', { exact: true }).inputValue(), 'Responsável sintético')
+    assert.equal(await page.getByLabel('E-mail de acesso', { exact: true }).inputValue(), 'responsavel@example.invalid')
+    assert.equal(await page.locator('#company-admin-title').evaluate(el => document.activeElement === el), true)
+    await page.getByLabel('Senha inicial', { exact: true }).fill('Synthetic-password-only-for-test')
+    await page.getByRole('button', { name: 'Cadastrar administrador pendente' }).click()
+    await page.getByRole('alert').filter({ hasText: 'Falha sintética' }).waitFor()
+    assert.equal(await page.getByLabel('Senha inicial', { exact: true }).inputValue(), '')
+    assert.equal(writes.length, 1); assert.equal(admins.length, 0)
+    await page.getByLabel('Nome do administrador', { exact: true }).fill('Administrador sintético')
+    await page.getByLabel('E-mail de acesso', { exact: true }).fill('admin@example.invalid')
+    await page.getByLabel('Senha inicial', { exact: true }).fill('Synthetic-password-only-for-test')
+    await page.getByRole('button', { name: 'Cadastrar administrador pendente' }).click()
+    await page.getByRole('heading', { name: 'Preparar convite de Agência sintética' }).waitFor()
+    assert.equal(admins.length, 1); assert.equal(writes.length, 1)
+    assert.equal(await page.getByLabel('Senha inicial', { exact: true }).count(), 0)
+    assert.equal(inviteActive, false)
+    await page.screenshot({ path: resolve(output, `creator-guided-${width}.png`), fullPage: true })
+    await page.getByRole('button', { name: 'Concluir preparação' }).click()
     await page.getByRole('button', { name: 'Editar rascunho de Agência sintética' }).click()
     await page.getByLabel('Nome da empresa', { exact: false }).fill('Agência sintética revisada')
     await page.getByRole('button', { name: 'Salvar rascunho' }).click()
     await page.getByRole('heading', { name: 'Agência sintética revisada', exact: true }).waitFor()
     assert.equal(writes.length, 2)
     await page.getByRole('button', { name: 'Administradores de Agência sintética revisada' }).click()
-    await page.getByText('Nenhum administrador cadastrado.').waitFor()
-    await page.getByLabel('Nome do administrador', { exact: true }).fill('Administrador sintético')
-    await page.getByLabel('E-mail de acesso', { exact: true }).fill('admin@example.invalid')
-    await page.getByLabel('Senha inicial', { exact: true }).fill('Synthetic-password-only-for-test')
-    await page.getByRole('button', { name: 'Cadastrar administrador pendente' }).click()
-    await page.getByRole('status').filter({ hasText: 'Administrador cadastrado, com acesso inativo' }).waitFor()
-    assert.equal(await page.getByLabel('Senha inicial', { exact: true }).inputValue(), '')
+    await page.getByText('Administrador sintético', { exact: true }).waitFor()
     await page.getByText('Acesso inativo', { exact: true }).waitFor()
     await page.getByRole('button', { name: 'Gerar novo convite para Administrador sintético' }).click()
     await page.getByLabel('Código exibido somente nesta emissão').waitFor()
@@ -193,10 +218,34 @@ try {
     await page.goto(`${base}/?screen=creator`)
     await page.reload()
     await page.getByRole('heading', { name: 'Agência sintética revisada', exact: true }).waitFor()
-    await page.getByRole('button', { name: 'Sair', exact: true }).click()
+    await page.getByRole('button', { name: 'Alterar minha senha', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: 'Alterar minha senha' })
+    await dialog.waitFor()
+    await dialog.getByLabel('Senha atual', { exact: true }).fill('Synthetic-password-only-for-test')
+    await dialog.getByLabel('Nova senha', { exact: true }).fill('Synthetic-new-password-for-test')
+    await dialog.getByLabel('Confirmar nova senha', { exact: true }).fill('Synthetic-different-password-for-test')
+    await dialog.getByRole('button', { name: 'Alterar senha e encerrar sessões' }).click()
+    await dialog.getByRole('alert').filter({ hasText: 'devem ser iguais' }).waitFor(); assert.equal(passwordCalls, 0)
+    await dialog.getByLabel('Senha atual', { exact: true }).fill('Synthetic-wrong-password')
+    await dialog.getByLabel('Confirmar nova senha', { exact: true }).fill('Synthetic-new-password-for-test')
+    await dialog.getByRole('button', { name: 'Alterar senha e encerrar sessões' }).click()
+    await dialog.getByRole('alert').filter({ hasText: 'Confira a senha atual' }).waitFor()
+    assert.equal(await dialog.getByLabel('Senha atual', { exact: true }).inputValue(), '')
+    await dialog.getByLabel('Senha atual', { exact: true }).fill('Synthetic-password-only-for-test')
+    await dialog.getByLabel('Nova senha', { exact: true }).fill('Synthetic-new-password-for-test')
+    await dialog.getByLabel('Confirmar nova senha', { exact: true }).fill('Synthetic-new-password-for-test')
+    await dialog.getByRole('button', { name: 'Alterar senha e encerrar sessões' }).click()
+    await dialog.getByRole('status').filter({ hasText: 'Senha alterada' }).waitFor()
+    assert.equal(passwordCalls, 2); assert.equal(await dialog.locator('input').count(), 0)
+    const passwordStorage = await page.evaluate(() => JSON.stringify({ local: { ...localStorage }, session: { ...sessionStorage } }))
+    for (const secret of ['Synthetic-password-only-for-test', 'Synthetic-new-password-for-test']) {
+      assert.equal(passwordStorage.includes(secret), false); assert.equal(page.url().includes(secret), false)
+    }
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1))
+    await page.getByRole('button', { name: 'Entrar novamente', exact: true }).click()
     await page.getByRole('heading', { name: 'Área exclusiva do Criador' }).waitFor()
     assert.deepEqual(errors, []); assert.deepEqual(unexpected, [])
     await page.close(); checks++
   }
-  console.log(`Creator: ${checks} responsive flows passed (login + MFA, draft create/edit, pending administrator, invite issue/revoke, password definition + resumed MFA enrollment and recovery codes without activation or stored secrets, session restore, logout).`)
+  console.log(`Creator: ${checks} responsive flows passed (guided company/admin preparation with failure recovery, login + MFA, draft edit, invite issue/revoke, password definition + MFA enrollment, self-service password change, no activation or stored secrets, session restore).`)
 } finally { await browser?.close(); await new Promise(done => server.close(done)) }

@@ -2,6 +2,16 @@ const API_BASE = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '')
 // Keep the HttpOnly refresh cookie first-party in production (including Safari).
 const AUTH_BASE = import.meta.env.PROD ? '/api/v1' : API_BASE
 
+export async function changeAdminPassword(token: string, currentPassword: string, newPassword: string) {
+  const response = await fetch(`${AUTH_BASE}/auth/password/change`, {
+    method: 'POST', credentials: 'include', cache: 'no-store',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ currentPassword, newPassword }),
+  })
+  if (!response.ok) throw new Error(await parseError(response))
+  return response.json() as Promise<{ passwordChanged: true; allSessionsRevoked: true }>
+}
+
 type AdminUser = {
   id: string
   email: string

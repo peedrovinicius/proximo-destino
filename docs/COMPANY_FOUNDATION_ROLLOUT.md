@@ -419,3 +419,31 @@ corpo registra intenção, não comprova identidade ou recebimento. Se a respost
 de emissão se perder, reemitir invalida o código anterior. Interface para essa
 entrega, ativação controlada e concessões do papel de banco seguem pendentes;
 nenhuma migration, flag ou serviço foi alterado em produção.
+
+## Cadastro guiado e alteração da própria senha
+
+O Criador segue três etapas: empresa, administrador e convite. Salvar uma nova
+empresa abre imediatamente o formulário do administrador com nome/e-mail do
+responsável para revisão; edição de rascunho não cria outro administrador.
+Empresa e administrador são salvos separadamente. Falha no segundo cadastro
+preserva a empresa; tentar novamente não repete a criação da empresa. Continuar
+depois mantém o cadastro salvo e pode ser retomado pelo botão Administradores.
+Após cadastrar o administrador, a tela orienta gerar e entregar o convite por
+canal privado; não gera/envia automaticamente nem ativa conta/empresa.
+
+Criador e funcionários autenticados têm Alterar minha senha. A rota própria
+`POST /auth/password/change` aceita somente currentPassword/newPassword, exige
+Bearer e sessão persistida própria vigente, usuário ativo e senha atual. Recusa
+CLIENT, senha nova igual à atual e nova senha fora de 16–128 caracteres. Cinco
+erros da senha atual persistem bloqueio de 15 minutos por usuário; throttle por
+IP complementa. Alteração de hash Argon2, incremento de authVersion, revogação
+de todas as sessões e auditoria são atômicos. Falha de auditoria reverte também
+contadores e revogações. Eventos não contêm senhas ou hashes. MFA é preservado.
+
+Access, refresh e desafios MFA novos carregam authVersion. Tokens antigos sem
+versão são compatíveis somente com versão zero; após trocar a senha, eles e
+desafios anteriores são inválidos, inclusive para sessão criada tardiamente por
+login em andamento. A resposta apaga o cookie de refresh; UI limpa os campos,
+confirma o encerramento das sessões e oferece entrar novamente. Senhas não
+entram em estado React, URL, storage ou notificações. Cancelar não altera senha.
+Migration aditiva e telas permanecem somente no PR, fora de produção.

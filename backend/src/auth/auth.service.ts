@@ -1,5 +1,6 @@
 import {
   ForbiddenException,
+  BadRequestException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common'
@@ -126,7 +127,7 @@ export class AuthService {
     }
 
     if ((user.role === UserRole.ADMIN || user.role === UserRole.CREATOR) && !user.mfaEnabled) {
-      const challengeToken = await this.signMfaChallenge(user.id, 'setup')
+      const challengeToken = await this.signMfaChallenge(user.id, 'setup', user.authVersion)
       await this.audit.record('MFA_SETUP_REQUIRED', {
         userId: user.id,
         email: user.email,
@@ -136,7 +137,7 @@ export class AuthService {
     }
 
     if (user.mfaEnabled) {
-      const challengeToken = await this.signMfaChallenge(user.id, 'verify')
+      const challengeToken = await this.signMfaChallenge(user.id, 'verify', user.authVersion)
       await this.audit.record('MFA_REQUIRED', {
         userId: user.id,
         email: user.email,
@@ -145,7 +146,7 @@ export class AuthService {
       return { status: 'mfa_required' as const, challengeToken }
     }
 
-    return this.completeLogin(user.id, user.email, user.role, context)
+    return this.completeLogin(user.id, user.email, user.role, context, user.authVersion)
   }
 
   async beginMfaSetup(challengeToken: string) {
@@ -175,6 +176,7 @@ export class AuthService {
       user.email,
       user.role,
       context,
+      payload.authVersion ?? 0,
     )
 
     await this.audit.record('MFA_ENROLLED', {
@@ -209,6 +211,7 @@ export class AuthService {
       user.email,
       user.role,
       context,
+      payload.authVersion ?? 0,
     )
     await this.audit.record('MFA_SUCCESS', {
       userId: user.id,
@@ -233,6 +236,7 @@ export class AuthService {
     }
 
     const user = await this.requireActiveUser(payload.sub)
+    if ((payload.authVersion ?? 0) !== user.authVersion) throw new UnauthorizedException('Sessão inválida')
     await this.sessions.verify(payload.sid, rawRefreshToken, user.id)
 
     const tokens = await this.issueTokens(
@@ -240,6 +244,7 @@ export class AuthService {
       user.email,
       user.role,
       payload.sid,
+      user.authVersion,
     )
     await this.sessions.rotate(payload.sid, tokens.refreshToken)
     await this.audit.record('SESSION_REFRESHED', {
@@ -258,6 +263,34 @@ export class AuthService {
   async logout(userId: string, sessionId: string, context: RequestContext) {
     await this.sessions.revoke(sessionId, userId)
     await this.audit.record('LOGOUT', { userId, context })
+  }
+
+  async changePassword(userId: string, sessionId: string, currentPassword: string, newPassword: string) {
+    if (newPassword.length < 16 || newPassword.length > 128 || currentPassword.length > 128) throw new BadRequestException('Senha inválida')
+    const changed = await this.prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${userId} FOR UPDATE`
+      const user = await tx.user.findUnique({ where: { id: userId } })
+      const now = new Date()
+      if (!user?.isActive || user.role === 'CLIENT' || (user.lockedUntil && user.lockedUntil > now)) throw new UnauthorizedException('Não foi possível alterar a senha')
+      await tx.$queryRaw`SELECT "id" FROM "AuthSession" WHERE "id" = ${sessionId} AND "userId" = ${userId} FOR UPDATE`
+      const session = await tx.authSession.findFirst({ where: { id: sessionId, userId, revokedAt: null, expiresAt: { gt: now } } })
+      if (!session) throw new UnauthorizedException('Sessão inválida')
+      if (!(await argon2.verify(user.passwordHash, currentPassword))) {
+        const attempts = (user.lockedUntil ? 0 : user.failedLoginAttempts) + 1
+        await tx.user.update({ where: { id: userId }, data: { failedLoginAttempts: attempts >= 5 ? 0 : attempts,
+          lockedUntil: attempts >= 5 ? new Date(now.getTime() + 15 * 60_000) : null } })
+        await tx.authAuditEvent.create({ data: { userId, eventType: 'PASSWORD_CHANGE_FAILED', metadata: { locked: attempts >= 5 } } })
+        return false
+      }
+      if (currentPassword === newPassword) throw new BadRequestException('A nova senha deve ser diferente da atual')
+      await tx.user.update({ where: { id: userId }, data: { passwordHash: await argon2.hash(newPassword),
+        authVersion: { increment: 1 }, refreshTokenHash: null, failedLoginAttempts: 0, lockedUntil: null } })
+      await tx.authSession.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: now } })
+      await tx.authAuditEvent.create({ data: { userId, eventType: 'PASSWORD_CHANGED', metadata: { allSessionsRevoked: true } } })
+      return true
+    })
+    if (!changed) throw new UnauthorizedException('Não foi possível alterar a senha. Confira a senha atual ou tente mais tarde.')
+    return { passwordChanged: true, allSessionsRevoked: true }
   }
 
   async revokeSession(
@@ -294,9 +327,9 @@ export class AuthService {
       const user = await this.prisma.user.findUnique({
         where: { id: payload.sub },
         select: { id: true, email: true, role: true, isActive: true,
-          companyManaged: true },
+          companyManaged: true, authVersion: true },
       })
-      if (!user?.isActive) {
+      if (!user?.isActive || (payload.authVersion ?? 0) !== (user.authVersion ?? 0)) {
         throw new UnauthorizedException('Token inválido')
       }
 
@@ -330,9 +363,10 @@ export class AuthService {
     email: string,
     role: UserRole,
     context: RequestContext,
+    authVersion = 0,
   ) {
     const sessionId = randomUUID()
-    const tokens = await this.issueTokens(userId, email, role, sessionId)
+    const tokens = await this.issueTokens(userId, email, role, sessionId, authVersion)
     await this.sessions.create(sessionId, userId, tokens.refreshToken, context)
     await this.prisma.user.update({
       where: { id: userId },
@@ -352,8 +386,10 @@ export class AuthService {
     email: string,
     role: UserRole,
     sessionId: string,
+    authVersion = 0,
   ) {
     const accessPayload: AccessTokenPayload = {
+      authVersion,
       sub: userId,
       email,
       role,
@@ -361,6 +397,7 @@ export class AuthService {
       type: 'access',
     }
     const refreshPayload: RefreshTokenPayload = {
+      authVersion,
       sub: userId,
       sid: sessionId,
       type: 'refresh',
@@ -384,8 +421,10 @@ export class AuthService {
   private async signMfaChallenge(
     userId: string,
     mode: MfaChallengePayload['mode'],
+    authVersion = 0,
   ) {
     const payload: MfaChallengePayload = {
+      authVersion,
       sub: userId,
       mode,
       type: 'mfa_challenge',
@@ -407,6 +446,8 @@ export class AuthService {
       if (payload.type !== 'mfa_challenge' || payload.mode !== expectedMode) {
         throw new UnauthorizedException('Desafio inválido')
       }
+      const user = await this.requireActiveUser(payload.sub)
+      if ((payload.authVersion ?? 0) !== (user.authVersion ?? 0)) throw new UnauthorizedException('Desafio inválido')
       return payload
     } catch {
       throw new UnauthorizedException('Desafio inválido ou expirado')
