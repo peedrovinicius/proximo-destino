@@ -78,3 +78,40 @@ privilégios e políticas. Não trocar DATABASE_URL por esse papel.
 O backup externo real, retenção independente, custódia de todas as chaves e
 restauração de um objeto real continuam pendentes. A branch temporária não
 substitui backup externo nem aprova publicação ou ativação de empresas.
+
+## Executor HTTP independente preparado
+
+scripts/neon-http-rehearsal.mjs prepara o ensaio com uma conexão PostgreSQL real.
+Requer build do backend e NEON_HTTP_OWNER_URL da branch temporária, banco neondb,
+papel neondb_owner, conexão direta e TLS. A URL deve ser fornecida apenas no
+ambiente do terminal seguro, nunca em argumento de comando, Git ou chat.
+
+O executor fixa o hostname confirmado dessa branch e sua expiração; nenhuma
+flag aceita um hostname alternativo. Recusa produção, pooler, database operacional,
+parâmetros de redirecionamento, TLS desabilitado, parâmetros duplicados ou branch
+expirada. Depois de validar, cria um banco vazio validation_pr34_http_<aleatório>,
+aplica migrations com Prisma e executa somente company-restricted-http.spec.js.
+Esse teste cria um login independente, valida os fluxos HTTP A/B com Prisma sob
+esse login e remove as fixtures e o papel. O executor descarta exclusivamente o
+banco que acabou de criar; falha no descarte é informada e invalida o resultado.
+
+Em máquina com acesso PostgreSQL ao Neon, dentro de backend:
+
+```sh
+npm install
+npm run prisma:generate
+npm run build
+# Fornecer NEON_HTTP_OWNER_URL no ambiente por canal seguro antes desta linha.
+node scripts/neon-http-rehearsal.mjs
+```
+
+O processo não herda segredos de provedores, chaves reais de PII ou flags de
+backfill; usa segredos fictícios próprios e captura saída dos subprocessos sem
+publicá-la. A execução remota está preparada, mas não foi concluída: em
+2026-10-07 o ambiente de execução disponível não resolve o hostname PostgreSQL
+da branch (gaierror). O conector SQL não oferece seleção de credencial/runtime.
+Não foi criada senha ou login remoto desnecessário, nem aberto acesso de rede.
+Os testes do guard local passaram; isso não comprova execução HTTP no Neon.
+
+Para ensaio após a expiração, primeiro criar/verificar outra branch pelo conector
+e revisar o hostname e prazo fixos no guard. Não apontar esse script à produção.

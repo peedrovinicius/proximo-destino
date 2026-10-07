@@ -23,6 +23,7 @@ import { AdminService } from '../admin/admin.service'
 import { CompanyClientsService } from '../tenancy/company-clients.service'
 import { CompanyScopeService } from '../tenancy/company-scope.service'
 import { CompanyReservationsService } from '../tenancy/company-reservations.service'
+import { assertRestrictedHttpTestTarget } from '../security/http-rehearsal-target'
 
 describe('company HTTP A/B isolation using the restricted PostgreSQL runtime login', () => {
   const owner = new PrismaService()
@@ -49,9 +50,7 @@ describe('company HTTP A/B isolation using the restricted PostgreSQL runtime log
 
   before(async () => {
     const database = new URL(process.env.DATABASE_URL ?? 'http://missing')
-    assert.equal(process.env.NODE_ENV, 'test')
-    assert.ok(['localhost', '127.0.0.1', 'postgres'].includes(database.hostname),
-      'Never run restricted HTTP tenant proof against production')
+    assertRestrictedHttpTestTarget(database)
     await owner.$connect()
     connected = true
 
