@@ -1,4 +1,5 @@
 -- Somente ensaio isolado. Fora das migrations/deploy; não cria login nem senha.
+-- Políticas USING(true) servem APENAS aos testes sintéticos: nunca usar em produção.
 \if :{?runtime_role}
 \else
   \quit 3
@@ -49,7 +50,7 @@ GRANT SELECT, INSERT, UPDATE ON TABLE public."ManualPayment" TO :"runtime_role";
 DO $$
 DECLARE target TEXT := current_setting('security.runtime_role'); table_name TEXT;
 BEGIN
-  FOREACH table_name IN ARRAY ARRAY['Client','Companion','Reservation','ReservationPassenger','SeatAssignment','PurchaseOrder','Quote','FinancePlan','Installment','TravelDocument','ManualPayment','ClientCreditTransaction'] LOOP
+  FOREACH table_name IN ARRAY ARRAY['Client','Companion','Trip','Reservation','ReservationPassenger','SeatAssignment','PurchaseOrder','Quote','FinancePlan','Installment','TravelDocument','ManualPayment','ClientCreditTransaction'] LOOP
     IF NOT (SELECT relrowsecurity FROM pg_class WHERE oid=to_regclass(format('public.%I',table_name))) THEN
       RAISE EXCEPTION 'RLS ausente: %', table_name;
     END IF;
