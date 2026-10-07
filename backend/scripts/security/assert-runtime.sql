@@ -9,7 +9,7 @@ DO $gate$
 DECLARE
   expected_tables TEXT[] := ARRAY[
     'Client', 'Companion', 'Trip', 'Reservation', 'ReservationPassenger',
-    'SeatAssignment', 'PurchaseOrder', 'Quote', 'FinancePlan',
+    'SeatAssignment', 'PurchaseOrder', 'Quote', 'QuoteItem', 'ReservationService', 'FinancePlan',
     'Installment', 'TravelDocument', 'ManualPayment', 'ClientCreditTransaction'
   ];
 BEGIN
