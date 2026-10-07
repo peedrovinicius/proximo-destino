@@ -523,3 +523,20 @@ login em andamento. A resposta apaga o cookie de refresh; UI limpa os campos,
 confirma o encerramento das sessões e oferece entrar novamente. Senhas não
 entram em estado React, URL, storage ou notificações. Cancelar não altera senha.
 Migration aditiva e telas permanecem somente no PR, fora de produção.
+
+## Prova de gravações preparatórias com login restrito
+
+O teste HTTP de duas empresas também cria viagens DRAFT e reservas PENDING de
+um passageiro sob o login PostgreSQL descartável, NOSUPERUSER/NOBYPASSRLS e sem
+UPDATE em User/AuthSession/Company/CompanyMembership. A autorização da gravação
+usa company_write_authorized e o contexto transacional vem da sessão persistida,
+mesmo quando o JWT informa outra empresa. O teste concede apenas SELECT/INSERT
+em ReservationPassenger para a criação preparatória; não altera papel real.
+
+Edição de IDs externos e reserva com cliente/viagem de empresas diferentes
+devem retornar 404 nos dois sentidos sem gravação parcial. Falha induzida de
+auditoria precisa desfazer cliente, reserva e passageiro. Uma sessão revogada
+depois de resolver o escopo precisa falhar na revalidação dentro da transação.
+Essas verificações usam somente dados fictícios e um login criado/destruído no
+banco isolado do CI. Não comprovam concessões efetivas, disponibilidade ou
+isolamento da conexão de produção; ativação e publicação continuam pendentes.

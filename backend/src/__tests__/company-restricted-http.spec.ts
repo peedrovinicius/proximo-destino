@@ -20,6 +20,9 @@ import { AdminTripsController } from '../trips/admin-trips.controller'
 import { TripsService } from '../trips/trips.service'
 import { AdminController } from '../admin/admin.controller'
 import { AdminService } from '../admin/admin.service'
+import { CompanyClientsService } from '../tenancy/company-clients.service'
+import { CompanyScopeService } from '../tenancy/company-scope.service'
+import { CompanyReservationsService } from '../tenancy/company-reservations.service'
 
 describe('company HTTP A/B isolation using the restricted PostgreSQL runtime login', () => {
   const owner = new PrismaService()
@@ -96,6 +99,7 @@ describe('company HTTP A/B isolation using the restricted PostgreSQL runtime log
       await owner.$executeRawUnsafe(`GRANT SELECT ON TABLE public."${table}" TO "${role}"`)
     }
     await owner.$executeRawUnsafe(`GRANT SELECT ON TABLE public."Companion" TO "${role}"`)
+    await owner.$executeRawUnsafe(`GRANT SELECT, INSERT ON TABLE public."ReservationPassenger" TO "${role}"`)
     for (const table of ['Client', 'Trip', 'Reservation']) {
       await owner.$executeRawUnsafe(
         `GRANT SELECT, INSERT, UPDATE ON TABLE public."${table}" TO "${role}"`)
@@ -200,6 +204,78 @@ describe('company HTTP A/B isolation using the restricted PostgreSQL runtime log
     const saved = await owner.client.findUniqueOrThrow({ where: { id: body.id } })
     assert.equal(saved.companyId, companies[0])
     assert.equal(saved.fullName, 'Restricted HTTP created')
+  })
+
+  const draft = { title: 'Restricted preparatory journey', origin: 'Fortaleza', destination: 'Recife',
+    departureDate: '2027-06-01', returnDate: '2027-06-03', busTemplate: 'CUSTOM', capacity: 4,
+    priceCents: 10000, blockedSeats: [4] }
+
+  it('creates draft trips and pending reservations in both tenants without identity-table write privileges', async () => {
+    for (let i = 0; i < 2; i++) {
+      const response = await call('/admin/trips', tokens[i], 'POST', draft)
+      assert.equal(response.status, 201)
+      const trip = await response.json() as { id: string; status: string }
+      trips.push(trip.id); assert.equal(trip.status, 'DRAFT')
+      assert.equal((await owner.trip.findUniqueOrThrow({ where: { id: trip.id } })).companyId, companies[i])
+      const booking = await call('/admin/reservations', tokens[i], 'POST', { clientId: clients[i], tripId: trip.id })
+      assert.equal(booking.status, 201)
+      const result = await booking.json() as { id: string; status: string; passengerCount: number }
+      reservations.push(result.id); assert.equal(result.status, 'PENDING'); assert.equal(result.passengerCount, 1)
+      const saved = await owner.reservation.findUniqueOrThrow({ where: { id: result.id }, include: { passengers: true } })
+      assert.equal(saved.companyId, companies[i]); assert.equal(saved.clientId, clients[i]); assert.equal(saved.tripId, trip.id)
+      assert.equal(saved.accessCodeHash, null); assert.equal(saved.passengers.length, 1)
+      assert.equal(saved.passengers[0].fullName, `HTTP client ${i}`)
+      assert.equal((await call(`/admin/trips/${trip.id}`, tokens[1 - i])).status, 404)
+    }
+    for (const table of ['User', 'AuthSession', 'Company', 'CompanyMembership']) {
+      const [result] = await runtime!.$queryRawUnsafe<Array<{ allowed: boolean }>>(
+        `SELECT has_table_privilege(current_user, 'public."${table}"', 'UPDATE') AS allowed`)
+      assert.equal(result.allowed, false)
+    }
+  })
+
+  it('refuses foreign edits and mixed-parent bookings in both directions without partial writes', async () => {
+    const count = await owner.reservation.count({ where: { companyId: { in: companies } } })
+    for (let i = 0; i < 2; i++) {
+      const other = 1 - i
+      assert.equal((await call(`/admin/clients/${clients[other]}`, tokens[i], 'PATCH', { fullName: 'Must not change' })).status, 404)
+      assert.equal((await call(`/admin/trips/${trips[other]}`, tokens[i], 'PATCH', { title: 'Must not change' })).status, 404)
+      for (const body of [{ clientId: clients[other], tripId: trips[i] }, { clientId: clients[i], tripId: trips[other] }]) {
+        assert.equal((await call('/admin/reservations', tokens[i], 'POST', body)).status, 404)
+      }
+      assert.equal((await owner.client.findUniqueOrThrow({ where: { id: clients[other] } })).fullName, `HTTP client ${other}`)
+      assert.equal((await owner.trip.findUniqueOrThrow({ where: { id: trips[other] } })).title, `HTTP trip ${other}`)
+    }
+    assert.equal(await owner.reservation.count({ where: { companyId: { in: companies } } }), count)
+  })
+
+  it('rolls back client and reservation inserts after audit failure under the restricted login', async () => {
+    const failing = { $transaction: (callback: (tx: unknown) => Promise<unknown>) => runtime!.$transaction(tx =>
+      callback(new Proxy(tx, { get: (target, key) => key === 'authAuditEvent'
+        ? { create: async () => { throw new Error('synthetic restricted audit failure') } } : Reflect.get(target, key) }))),
+    } as unknown as PrismaService
+    const scopes = new CompanyScopeService(runtime!)
+    const before = await owner.client.count({ where: { companyId: companies[0] } })
+    await assert.rejects(new CompanyClientsService(failing, scopes).create(users[0], sessions[0], { fullName: 'Must roll back' }), /synthetic restricted audit failure/)
+    assert.equal(await owner.client.count({ where: { companyId: companies[0] } }), before)
+    await owner.trip.update({ where: { id: trips[0] }, data: { capacity: 4 } })
+    const createdClient = clients[2]
+    const bookings = await owner.reservation.count({ where: { tripId: trips[0] } })
+    const passengers = await owner.reservationPassenger.count({ where: { reservation: { tripId: trips[0] } } })
+    await assert.rejects(new CompanyReservationsService(failing, scopes).create(users[0], sessions[0],
+      { clientId: createdClient, tripId: trips[0] }), /synthetic restricted audit failure/)
+    assert.equal(await owner.reservation.count({ where: { tripId: trips[0] } }), bookings)
+    assert.equal(await owner.reservationPassenger.count({ where: { reservation: { tripId: trips[0] } } }), passengers)
+  })
+
+  it('revalidates authorization inside restricted writes after the scope was already resolved', async () => {
+    const scope = await new CompanyScopeService(runtime!).resolveSession(users[0], sessions[0])
+    const stale = new CompanyClientsService(runtime!, { resolveSession: async () => scope } as unknown as CompanyScopeService)
+    const before = await owner.client.count({ where: { companyId: companies[0] } })
+    await owner.authSession.update({ where: { id: sessions[0] }, data: { revokedAt: new Date() } })
+    try { await assert.rejects(stale.create(users[0], sessions[0], { fullName: 'Revoked session must fail' }), { status: 403 }) }
+    finally { await owner.authSession.update({ where: { id: sessions[0] }, data: { revokedAt: null } }) }
+    assert.equal(await owner.client.count({ where: { companyId: companies[0] } }), before)
   })
 
   it('fails closed immediately after membership revocation', async () => {
