@@ -112,9 +112,13 @@ describe('tenant A/B RLS proof with a restricted PostgreSQL login', () => {
   it('has no visible client or reservation without a tenant context', async () => {
     await asCompany(null, async tx => {
       assert.deepEqual(await tx.client.findMany({ select: { id: true } }), [])
-      await assert.rejects(tx.trip.findMany({ select: { id: true } }), /permission denied|P1010|P2010/i)
       assert.deepEqual(await tx.reservation.findMany({ select: { id: true } }), [])
     })
+  })
+
+  it('denies direct Trip access until a scoped production RLS policy exists', async () => {
+    await assert.rejects(asCompany(companies[0], tx => tx.trip.findMany()),
+      /permission denied|P1010|P2010/i)
   })
 
   it('isolates read access in both directions without relying on API filters', async () => {
