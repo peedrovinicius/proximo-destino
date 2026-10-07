@@ -344,7 +344,7 @@ As rotas `/public/companies/:slug/client/login`, `/portal` e `/logout` exigem
 COMPANY_FOUNDATION_ENABLED=true e COMPANY_CLIENT_PORTAL_ENABLED=true exatamente.
 A segunda flag fica desabilitada por padrão. Login recebe reservationId, e-mail
 e código da reserva no corpo, com DTO fechado; não aceita companyId ou clientId.
-Exige empresa ACTIVE, cliente/viagem/reserva próprios e código existente; recusa
+Exige empresa ACTIVE, cliente/viagem/reserva próprios e código com validade futura; recusa
 reserva CANCELLED e viagem DRAFT/CANCELLED. Não gera códigos, reservas ou clientes.
 
 Sessão opaca de 32 bytes aleatórios vale 30 minutos. Banco guarda apenas SHA-256,
@@ -367,9 +367,10 @@ nesse portal, e seus tokens não servem nas rotas legadas.
 Migration aditiva cria CompanyClientPortalSession com RLS e política PUBLIC
 deny-all, além dos contadores na reserva. Não foi aplicada em produção. O papel
 restrito efetivo precisa de concessões/política revisadas para esta tabela antes
-da ativação; não concede privilégios automaticamente. Provisionamento seguro
-do código e reserva pública com identidade verificada
-continuam pendentes. O e-mail informado e o código não equivalem à verificação
+da ativação; não concede privilégios automaticamente. A API administrativa de
+provisionamento está implementada abaixo; interface administrativa de entrega e
+reserva pública com identidade verificada continuam pendentes.
+O e-mail informado e o código não equivalem à verificação
 da posse da caixa de e-mail para um cadastro público novo.
 
 ## Interface do portal por empresa
@@ -389,3 +390,32 @@ e informa que a saída não foi confirmada. Sucesso limpa os campos. AbortContro
 impede respostas antigas após saída da tela; botões impedem ações simultâneas.
 Não há alteração de poltronas, passageiros, pagamentos ou cancelamento.
 Interface segue fora de produção e a API conserva as duas flags obrigatórias.
+
+## Emissão e revogação de código por administrador da empresa
+
+`POST /admin/reservations/:id/company-portal-code` exige sessão administrativa
+persistida, perfil ADMIN atual, associação e empresa ACTIVE, as duas flags do
+portal e corpo fechado `{ "confirmedPrivateDelivery": true }`. Não aceita
+companyId, código escolhido nem contato alternativo. Recusa sessões legadas,
+FINANCE/AGENT, vínculos externos, reserva cancelada, viagem DRAFT/CANCELLED ou
+cliente sem e-mail. Não publica viagem nem confirma/cria reserva.
+
+Gera 24 bytes aleatórios (48 caracteres hexadecimais) e armazena somente Argon2.
+Retorna código, reservationId, expiresAt e delivery=MANUAL_PRIVATE uma única vez,
+com no-store. Validade é de 24 horas; login e sessões existentes recusam código
+expirado. A migration aditiva deixa códigos antigos de empresas sem validade:
+devem ser reemitidos antes de acessar. Acesso legado permanece inalterado.
+
+Reemissão revoga todas as sessões anteriores e zera o bloqueio por falhas.
+`POST /admin/reservations/:id/company-portal-code/revoke` remove hash/validade e
+revoga sessões, inclusive para reserva cancelada própria. Autorização, vínculos,
+mutação e auditoria são mantidos na mesma transação; falha de auditoria preserva
+o código e as sessões anteriores. Auditoria contém somente IDs, sem códigos,
+hashes, tokens ou contatos. Não há endpoint para recuperar o código original.
+
+Não envia mensagens nem verifica posse do e-mail. Antes da entrega manual,
+o operador deve verificar o destinatário por canal privado; a confirmação no
+corpo registra intenção, não comprova identidade ou recebimento. Se a resposta
+de emissão se perder, reemitir invalida o código anterior. Interface para essa
+entrega, ativação controlada e concessões do papel de banco seguem pendentes;
+nenhuma migration, flag ou serviço foi alterado em produção.

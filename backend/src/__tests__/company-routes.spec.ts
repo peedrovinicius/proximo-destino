@@ -20,6 +20,9 @@ import { revealDocument } from '../security/sensitive-data'
 import { CompanyTripsService } from '../tenancy/company-trips.service'
 import { listBusTemplates } from '../trips/bus-templates'
 import { CompanyReservationsService } from '../tenancy/company-reservations.service'
+import { CompanyReservationAccessService } from '../tenancy/company-reservation-access.service'
+import { CompanyClientPortalService } from '../portal/company-client-portal.service'
+import * as argon2 from 'argon2'
 import { CompanyDataService } from '../tenancy/company-data.service'
 import { ClientsController } from '../clients/clients.controller'
 import { ClientsService } from '../clients/clients.service'
@@ -49,6 +52,9 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
   const config = new ConfigService({ JWT_ACCESS_SECRET: 'synthetic-http-access-secret-only-for-tests',
     AUDIT_HASH_KEY: 'synthetic-http-audit-key-only-for-tests' })
   const jwt = new JwtService()
+  const accessConfig = new ConfigService({ COMPANY_FOUNDATION_ENABLED: 'true', COMPANY_CLIENT_PORTAL_ENABLED: 'true' })
+  const access = new CompanyReservationAccessService(prisma, new CompanyScopeService(prisma), accessConfig)
+  const portal = new CompanyClientPortalService(prisma, accessConfig)
   const auth = new AuthService(prisma, jwt, config, {} as MfaService, new SessionService(prisma, config),
     { record: async () => {} } as unknown as AuditService)
   const sign = (user: string, session: string) => jwt.signAsync({ sub: user, sid: session, type: 'access',
@@ -89,7 +95,8 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
         { provide: AdminService, useValue: { listReservations: () => ['legacy'], dashboard: () => ({ legacy: true }),
           createReservation: () => { legacyWrites++; return { id: 'legacy' } } } },
       ],
-    }).overrideProvider(PrismaService).useValue(prisma).overrideProvider(AuthService).useValue(auth).compile()
+    }).overrideProvider(PrismaService).useValue(prisma).overrideProvider(AuthService).useValue(auth)
+      .overrideProvider(CompanyReservationAccessService).useValue(access).compile()
     app = module.createNestApplication({ logger: false })
     app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }))
     await app.listen(0, '127.0.0.1'); base = await app.getUrl()
@@ -843,6 +850,95 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
       await prisma.user.update({ where: { id: users[0] }, data: { role: 'ADMIN' } })
       await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { role: 'ADMIN' } })
     }
+  })
+  it('issues a private expiring company code once, rotates it and revokes existing portal sessions', async () => {
+    await prisma.trip.update({ where: { id: trips[0] }, data: { status: 'SCHEDULED' } })
+    await prisma.client.update({ where: { id: clients[0] }, data: { email: `${clients[0]}@example.invalid` } })
+    const path = `/admin/reservations/${reservations[0]}/company-portal-code`
+    assert.equal((await call(path, tokens[0], 'POST', {})).status, 400)
+    assert.equal((await call(path, tokens[0], 'POST', { confirmedPrivateDelivery: false })).status, 400)
+    assert.equal((await call(path, tokens[0], 'POST', { confirmedPrivateDelivery: true, companyId: companies[1] })).status, 400)
+    assert.equal((await call(path, tokens[1], 'POST', { confirmedPrivateDelivery: true })).status, 404)
+    assert.equal((await call(path, tokens[2], 'POST', { confirmedPrivateDelivery: true })).status, 403)
+    const response = await call(path, tokens[0], 'POST', { confirmedPrivateDelivery: true })
+    assert.equal(response.status, 201); assert.equal(response.headers.get('cache-control'), 'no-store')
+    const issued = await response.json() as { code: string; expiresAt: string; delivery: string; reservationId: string }
+    assert.match(issued.code, /^[A-F0-9]{48}$/); assert.equal(issued.delivery, 'MANUAL_PRIVATE')
+    assert.equal(issued.reservationId, reservations[0])
+    assert.ok(new Date(issued.expiresAt).getTime() > Date.now() + 23 * 60 * 60_000)
+    const saved = await prisma.reservation.findUniqueOrThrow({ where: { id: reservations[0] } })
+    assert.notEqual(saved.accessCodeHash, issued.code); assert.ok(await argon2.verify(saved.accessCodeHash!, issued.code))
+    const credentials = { reservationId: reservations[0], email: `${clients[0]}@example.invalid`, code: issued.code }
+    const session = await portal.login(companies[0], credentials)
+    const rotated = await access.issue(users[0], sessions[0], reservations[0])
+    assert.ok('code' in rotated); assert.notEqual(rotated.code, issued.code)
+    await assert.rejects(portal.portal(companies[0], session.accessToken), { status: 401 })
+    await assert.rejects(portal.login(companies[0], credentials), { status: 401 })
+    const newSession = await portal.login(companies[0], { ...credentials, code: rotated.code! })
+    const revoked = await call(`${path}/revoke`, tokens[0], 'POST')
+    assert.equal(revoked.status, 201); assert.deepEqual(await revoked.json(), { revoked: true })
+    await assert.rejects(portal.portal(companies[0], newSession.accessToken), { status: 401 })
+    assert.equal((await prisma.reservation.findUniqueOrThrow({ where: { id: reservations[0] } })).accessCodeHash, null)
+    const audit = JSON.stringify(await prisma.authAuditEvent.findMany({ where: { userId: users[0], eventType: { in: ['OPS_COMPANY_PORTAL_CODE_ISSUED', 'OPS_COMPANY_PORTAL_CODE_REVOKED'] } } }))
+    for (const secret of [issued.code, rotated.code!, saved.accessCodeHash!, credentials.email, session.accessToken]) assert.equal(audit.includes(secret), false)
+  })
+  it('rejects missing or expired company code validity on login and current sessions', async () => {
+    const issued = await access.issue(users[0], sessions[0], reservations[0])
+    assert.ok('code' in issued)
+    const credentials = { reservationId: reservations[0], email: `${clients[0]}@example.invalid`, code: issued.code! }
+    const session = await portal.login(companies[0], credentials)
+    for (const expiry of [null, new Date(Date.now() - 1000)]) {
+      await prisma.reservation.update({ where: { id: reservations[0] }, data: { companyPortalCodeExpiresAt: expiry } })
+      await assert.rejects(portal.login(companies[0], credentials), { status: 401 })
+      await assert.rejects(portal.portal(companies[0], session.accessToken), { status: 401 })
+    }
+    await access.revoke(users[0], sessions[0], reservations[0])
+  })
+  it('rolls back code rotation and revocation if audit fails, preserving the previous login', async () => {
+    const issued = await access.issue(users[0], sessions[0], reservations[0])
+    assert.ok('code' in issued)
+    const session = await portal.login(companies[0], { reservationId: reservations[0], email: `${clients[0]}@example.invalid`, code: issued.code! })
+    const before = await prisma.reservation.findUniqueOrThrow({ where: { id: reservations[0] } })
+    const failing = new CompanyReservationAccessService({ $transaction: (callback: (tx: unknown) => Promise<unknown>) => prisma.$transaction(tx =>
+      callback(new Proxy(tx, { get: (target, key) => key === 'authAuditEvent' ? { create: async () => { throw new Error('synthetic code audit failure') } } : Reflect.get(target, key) }))),
+    } as unknown as PrismaService, new CompanyScopeService(prisma), accessConfig)
+    await assert.rejects(failing.issue(users[0], sessions[0], reservations[0]), /synthetic code audit failure/)
+    await assert.rejects(failing.revoke(users[0], sessions[0], reservations[0]), /synthetic code audit failure/)
+    assert.deepEqual(await prisma.reservation.findUniqueOrThrow({ where: { id: reservations[0] } }), before)
+    assert.equal((await portal.portal(companies[0], session.accessToken)).readOnly, true)
+    await access.revoke(users[0], sessions[0], reservations[0])
+  })
+  it('keeps code issuance disabled by default, restricted to current admins and eligible own reservations', async () => {
+    for (const flags of [{}, { COMPANY_FOUNDATION_ENABLED: 'true' }, { COMPANY_FOUNDATION_ENABLED: true, COMPANY_CLIENT_PORTAL_ENABLED: true }]) {
+      await assert.rejects(new CompanyReservationAccessService(prisma, new CompanyScopeService(prisma), new ConfigService(flags))
+        .issue(users[0], sessions[0], reservations[0]), { status: 404 })
+    }
+    const scope = await new CompanyScopeService(prisma).resolveSession(users[0], sessions[0])
+    const stale = new CompanyReservationAccessService(prisma, { resolveSession: async () => scope } as unknown as CompanyScopeService, accessConfig)
+    await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { isActive: false } })
+    try { await assert.rejects(stale.issue(users[0], sessions[0], reservations[0]), { status: 403 }) }
+    finally { await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { isActive: true } }) }
+    for (const role of ['FINANCE', 'AGENT'] as const) {
+      await prisma.user.update({ where: { id: users[0] }, data: { role } })
+      await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { role } })
+      try { await assert.rejects(access.issue(users[0], sessions[0], reservations[0]), { status: 403 }) }
+      finally {
+        await prisma.user.update({ where: { id: users[0] }, data: { role: 'ADMIN' } })
+        await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { role: 'ADMIN' } })
+      }
+    }
+    await prisma.trip.update({ where: { id: trips[0] }, data: { status: 'DRAFT' } })
+    try { await assert.rejects(access.issue(users[0], sessions[0], reservations[0]), { status: 409 }) }
+    finally { await prisma.trip.update({ where: { id: trips[0] }, data: { status: 'SCHEDULED' } }) }
+    await prisma.client.update({ where: { id: clients[0] }, data: { email: null } })
+    try { await assert.rejects(access.issue(users[0], sessions[0], reservations[0]), { status: 409 }) }
+    finally { await prisma.client.update({ where: { id: clients[0] }, data: { email: `${clients[0]}@example.invalid` } }) }
+    await prisma.reservation.update({ where: { id: reservations[0] }, data: { clientId: clients[1] } })
+    try { await assert.rejects(access.issue(users[0], sessions[0], reservations[0]), { status: 404 }) }
+    finally { await prisma.reservation.update({ where: { id: reservations[0] }, data: { clientId: clients[0] } }) }
+    await prisma.reservation.update({ where: { id: reservations[0] }, data: { status: 'CANCELLED' } })
+    try { await assert.rejects(access.issue(users[0], sessions[0], reservations[0]), { status: 409 }); await access.revoke(users[0], sessions[0], reservations[0]) }
+    finally { await prisma.reservation.update({ where: { id: reservations[0] }, data: { status: 'PENDING' } }) }
   })
   it('revocation and deletion do not restore global access, and the marker cannot be cleared', async () => {
     await prisma.companyMembership.deleteMany({ where: { userId: users[0] } })

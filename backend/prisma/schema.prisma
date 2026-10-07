@@ -352,6 +352,7 @@ model Reservation {
   accessCodeHash String?
   companyPortalFailedAttempts Int @default(0)
   companyPortalLockedUntil DateTime?
+  companyPortalCodeExpiresAt DateTime?
   companyPortalSessions CompanyClientPortalSession[]
   cancellationRequestStatus CancellationRequestStatus?
   cancellationRequestedAt DateTime?

@@ -9,7 +9,11 @@ import {
   Query,
   Req,
   UseGuards,
+  ForbiddenException,
 } from '@nestjs/common'
+import { Equals, IsBoolean } from 'class-validator'
+import { Throttle } from '@nestjs/throttler'
+import { CompanyReservationAccessService } from '../tenancy/company-reservation-access.service'
 import { JwtAuthGuard, type AuthenticatedRequest } from '../auth/jwt-auth.guard'
 import {
   ADMIN_ONLY_ROLES,
@@ -35,12 +39,32 @@ import {
   UpdateReservationStatusDto,
 } from './dto/reservation.dto'
 
+export class CompanyPortalCodeIssueDto {
+  @IsBoolean() @Equals(true) confirmedPrivateDelivery!: boolean
+}
+
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(...STAFF_ROLES)
 export class AdminController {
   constructor(private readonly admin: AdminService, private readonly scoped: CompanyDataService,
-    private readonly scopedReservations: CompanyReservationsService) {}
+    private readonly scopedReservations: CompanyReservationsService,
+    private readonly reservationAccess: CompanyReservationAccessService) {}
+
+  @Post('reservations/:id/company-portal-code')
+  @CompanyWrite() @Roles(...ADMIN_ONLY_ROLES) @Header('Cache-Control', 'no-store')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  issueCompanyPortalCode(@Param('id') id: string, @Body() _body: CompanyPortalCodeIssueDto, @Req() request: AuthenticatedRequest) {
+    if (!request.companyScope) throw new ForbiddenException('Sessão de empresa obrigatória')
+    return this.reservationAccess.issue(request.user.id, request.user.sessionId, id)
+  }
+
+  @Post('reservations/:id/company-portal-code/revoke')
+  @CompanyWrite() @Roles(...ADMIN_ONLY_ROLES) @Header('Cache-Control', 'no-store')
+  revokeCompanyPortalCode(@Param('id') id: string, @Req() request: AuthenticatedRequest) {
+    if (!request.companyScope) throw new ForbiddenException('Sessão de empresa obrigatória')
+    return this.reservationAccess.revoke(request.user.id, request.user.sessionId, id)
+  }
 
   @Get('dashboard')
   @CompanyRead()

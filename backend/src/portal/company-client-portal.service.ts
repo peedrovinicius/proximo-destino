@@ -23,8 +23,8 @@ export class CompanyClientPortalService {
     if (!company) throw denied()
     await tx.$queryRaw`SELECT "id" FROM "Reservation" WHERE "id" = ${reservationId} AND "companyId" = ${company.id} FOR UPDATE`
     const reservation = await tx.reservation.findFirst({ where: { id: reservationId, companyId: company.id, status: { not: 'CANCELLED' } },
-      select: { id: true, clientId: true, tripId: true, accessCodeHash: true, companyPortalFailedAttempts: true, companyPortalLockedUntil: true } })
-    if (!reservation?.accessCodeHash) throw denied()
+      select: { id: true, clientId: true, tripId: true, accessCodeHash: true, companyPortalFailedAttempts: true, companyPortalLockedUntil: true, companyPortalCodeExpiresAt: true } })
+    if (!reservation?.accessCodeHash || !reservation.companyPortalCodeExpiresAt || reservation.companyPortalCodeExpiresAt <= new Date()) throw denied()
     await tx.$queryRaw`SELECT "id" FROM "Client" WHERE "id" = ${reservation.clientId} FOR SHARE`
     await tx.$queryRaw`SELECT "id" FROM "Trip" WHERE "id" = ${reservation.tripId} FOR SHARE`
     const client = await tx.client.findFirst({ where: { id: reservation.clientId, companyId: company.id }, select: { id: true, email: true } })
@@ -69,7 +69,7 @@ export class CompanyClientPortalService {
       const scope = await this.scope(tx, slug, session.reservationId)
       await tx.$queryRaw`SELECT "id" FROM "CompanyClientPortalSession" WHERE "id" = ${session.id} FOR UPDATE`
       const current = await tx.companyClientPortalSession.findUnique({ where: { id: session.id } })
-      if (!current || current.revokedAt || current.expiresAt <= new Date() || current.companyId !== scope.company.id ||
+      if (!current || current.reservationId !== session.reservationId || current.tokenHash !== hash(token) || current.revokedAt || current.expiresAt <= new Date() || current.companyId !== scope.company.id ||
         current.clientId !== scope.client.id || current.credentialVersion !== hash(scope.reservation.accessCodeHash!)) throw denied()
       return callback(tx, session.id, scope)
     })

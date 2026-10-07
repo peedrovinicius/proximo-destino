@@ -53,7 +53,7 @@ describe('company public catalogs in isolated PostgreSQL', () => {
       const companyId = i < 2 ? companies[i] : null
       await prisma.client.create({ data: { id: clients[i], companyId, fullName: 'private-passenger', email: `${clients[i]}@example.invalid` } })
       await prisma.reservation.create({ data: { id: reservations[i], companyId, clientId: clients[i], tripId: i < 2 ? ids[i] : ids[7],
-        accessCodeHash: await argon2.hash('SYNTHETIC-CODE') } })
+        accessCodeHash: await argon2.hash('SYNTHETIC-CODE'), companyPortalCodeExpiresAt: new Date(Date.now() + 86_400_000) } })
     }
     await prisma.seatAssignment.create({ data: { tripId: ids[0], reservationId: reservations[0], seatNumber: 1 } })
     const module = await Test.createTestingModule({ controllers: [CompanyPublicTripsController, TripsController, LegacyPortalProbe, CompanyClientPortalController],
