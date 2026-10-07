@@ -7,6 +7,8 @@ import { PrismaService } from '../prisma/prisma.service'
 // Database-layer tenant proof with disposable synthetic fixtures only.
 // Policies are created for a temporary LOGIN role in a local test database.
 // Nothing here enables companies or installs policies into production.
+// Trip has no RLS in current migrations: this role intentionally has no Trip grants.
+// A production-ready Trip policy and app-scoped runtime remain separate release gates.
 describe('tenant A/B RLS proof with a restricted PostgreSQL login', () => {
   const suffix = randomUUID().replaceAll('-', '').slice(0, 18)
   const role = `tenant_probe_${suffix}`
@@ -20,7 +22,7 @@ describe('tenant A/B RLS proof with a restricted PostgreSQL login', () => {
   const clients = [`tenant-client-a-${suffix}`, `tenant-client-b-${suffix}`]
   const trips = [`tenant-trip-a-${suffix}`, `tenant-trip-b-${suffix}`]
   const reservations = [`tenant-reservation-a-${suffix}`, `tenant-reservation-b-${suffix}`]
-  const tables = ['Client', 'Trip', 'Reservation'] as const
+  const tables = ['Client', 'Reservation'] as const
 
   before(async () => {
     const database = new URL(process.env.DATABASE_URL ?? 'http://missing')
@@ -107,10 +109,10 @@ describe('tenant A/B RLS proof with a restricted PostgreSQL login', () => {
     })
   }
 
-  it('has no visible client, trip or reservation without a tenant context', async () => {
+  it('has no visible client or reservation without a tenant context', async () => {
     await asCompany(null, async tx => {
       assert.deepEqual(await tx.client.findMany({ select: { id: true } }), [])
-      assert.deepEqual(await tx.trip.findMany({ select: { id: true } }), [])
+      await assert.rejects(tx.trip.findMany({ select: { id: true } }), /permission denied|P1010|P2010/i)
       assert.deepEqual(await tx.reservation.findMany({ select: { id: true } }), [])
     })
   })
@@ -119,11 +121,9 @@ describe('tenant A/B RLS proof with a restricted PostgreSQL login', () => {
     for (let i = 0; i < 2; i++) {
       await asCompany(companies[i], async tx => {
         assert.deepEqual((await tx.client.findMany({ select: { id: true } })).map(x => x.id), [clients[i]])
-        assert.deepEqual((await tx.trip.findMany({ select: { id: true } })).map(x => x.id), [trips[i]])
         assert.deepEqual((await tx.reservation.findMany({ select: { id: true } })).map(x => x.id),
           [reservations[i]])
         assert.equal(await tx.client.findUnique({ where: { id: clients[1 - i] } }), null)
-        assert.equal(await tx.trip.findUnique({ where: { id: trips[1 - i] } }), null)
         assert.equal(await tx.reservation.findUnique({ where: { id: reservations[1 - i] } }), null)
       })
     }
