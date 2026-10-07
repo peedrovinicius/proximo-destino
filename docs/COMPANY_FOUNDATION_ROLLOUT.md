@@ -200,6 +200,19 @@ remover o valor de enum do PostgreSQL durante uma reversão operacional.
    concede permissões. Executar psql `-v ON_ERROR_STOP=1 -f` com conexão pelo
    canal seguro/ambiente, nunca senha em argumento. Doze tabelas com RLS não
    comprovam isolamento entre empresas; validar API/políticas com duas empresas.
+**Gate de segurança do runtime (novo, não executado em produção):** depois de
+configurar um papel de API realmente restrito em banco isolado, rodar
+`psql -X -v ON_ERROR_STOP=1 -f backend/scripts/security/assert-runtime.sql`
+a partir da raiz do repositório (ou `scripts/security/assert-runtime.sql`
+a partir de `backend/`). A conexão precisa usar as mesmas credenciais e o mesmo
+papel **efetivo** da API. O script é somente leitura e falha em privilégios
+administrativos, ownership/DDL, escrita da auditoria, acesso a migrations, RLS
+ausente ou políticas universais `USING(true)`/`WITH CHECK(true)` aplicáveis
+ao runtime/PUBLIC. O teste de ensaio propositalmente usa uma política permissiva,
+que **deve falhar** neste gate. Uma aprovação não demonstra, por si só, o
+isolamento tenant: é indispensável validar leitura e gravação com empresas A/B
+e políticas RLS específicas; acompanhar em [issue #44](https://github.com/peedrovinicius/proximo-destino/issues/44).
+
 5. Backup: `python3 scripts/backup-preflight.py` valida configuração offline,
    sem acessar banco/bucket nem iniciar subprocessos. Emite nomes de campos
    ausentes e nunca declara ponto de recuperação. Faltam destino privado,
