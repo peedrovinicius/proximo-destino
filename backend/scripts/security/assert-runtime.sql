@@ -71,6 +71,18 @@ BEGIN
     RAISE EXCEPTION 'GATE_RUNTIME: funcao de autorizacao tenant ausente ou insegura';
   END IF;
 
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_proc fn
+    JOIN pg_namespace n ON n.oid = fn.pronamespace
+    WHERE n.nspname = 'public'
+      AND fn.proname = 'company_write_authorized'
+      AND fn.prosecdef
+      AND fn.provolatile = 'v'
+  ) THEN
+    RAISE EXCEPTION 'GATE_RUNTIME: funcao de lock de autorizacao ausente ou insegura';
+  END IF;
+
   IF EXISTS (
     SELECT 1
     FROM (VALUES
