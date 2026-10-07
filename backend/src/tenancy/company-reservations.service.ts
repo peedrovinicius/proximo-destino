@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { CompanyScopeService } from './company-scope.service'
-import { lockCompanyWrite } from './company-write-lock'
+import { lockCompanyRead, lockCompanyWrite } from './company-write-lock'
 import { CancelReservationDto, CreateReservationDto, UpdateReservationPassengersDto } from '../admin/dto/reservation.dto'
 import { encryptedDocumentFields } from '../security/sensitive-data'
 
@@ -15,11 +15,14 @@ export class CompanyReservationsService {
   async passengers(userId: string, sessionId: string, id: string) {
     const scope = await this.scopes.resolveSession(userId, sessionId)
     if (scope.role === 'FINANCE') throw new ForbiddenException('Perfil sem acesso aos passageiros')
-    const row = await this.prisma.reservation.findFirst({ where: { id, companyId: scope.companyId,
-      client: { companyId: scope.companyId }, trip: { companyId: scope.companyId } },
-      select: { passengers: { select: passengerFields, orderBy: { sequence: 'asc' } } } })
-    if (!row) throw new NotFoundException('Reserva não encontrada')
-    return row.passengers
+    return this.prisma.$transaction(async tx => {
+      await lockCompanyRead(tx, scope)
+      const row = await tx.reservation.findFirst({ where: { id, companyId: scope.companyId,
+        client: { companyId: scope.companyId }, trip: { companyId: scope.companyId } },
+        select: { passengers: { select: passengerFields, orderBy: { sequence: 'asc' } } } })
+      if (!row) throw new NotFoundException('Reserva não encontrada')
+      return row.passengers
+    }, { isolationLevel: 'RepeatableRead' })
   }
 
   private async lockDraft(tx: Prisma.TransactionClient, companyId: string, id: string) {
