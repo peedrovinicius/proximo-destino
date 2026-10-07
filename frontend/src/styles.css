@@ -15121,6 +15121,30 @@ button, input, select, textarea { font-family: inherit; }
   }
 }
 
+/* Listas administrativas preenchidas: leitura e alvos de toque consistentes. */
+.admin-table-row > div { min-width: 0; }
+.admin-table-row > div > strong,
+.admin-table-row > div > span { overflow-wrap: anywhere; }
+.admin-table-row > div > strong { font-size: .875rem; line-height: 1.5; }
+.admin-table-row > div > span { font-size: .8125rem; line-height: 1.6; }
+.admin-client-row-actions > button,
+.admin-reservation-actions > button,
+.admin-reservation-actions > select { min-height: 44px; }
+.admin-client-row-actions > button,
+.admin-reservation-actions > button { font-size: .875rem; }
+.admin-table-row--reservation { grid-template-columns: minmax(0, 1fr) minmax(280px, .8fr); }
+.admin-reservation-actions { min-width: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.admin-reservation-actions > button { height: auto; padding: 10px 11px; white-space: normal; overflow-wrap: anywhere; }
+@media (max-width: 980px) {
+  .admin-table-row--client,
+  .admin-table-row--reservation { grid-template-columns: minmax(0, 1fr); }
+  .admin-client-row-actions,
+  .admin-reservation-actions { justify-content: flex-start; flex-wrap: wrap; }
+}
+@media (max-width: 620px) {
+  .admin-reservation-actions { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* Portal do viajante: leitura e controles proporcionais com dados preenchidos. */
 .client-shell .client-topbar { gap: 16px; }
 .client-shell .client-nav-item,

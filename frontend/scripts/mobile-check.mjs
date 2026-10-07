@@ -57,6 +57,18 @@ const portal = {
       dueDate: '2027-01-01T12:00:00Z', amountCents: 50000, status: 'OPEN', paidAt: null, paymentMethod: null }] },
 }
 let browser
+const adminClient = {
+  ...portal.client, document: null, birthDate: null, createdAt: portal.createdAt,
+  email: 'nome.muito.extenso.sem.espacos.para.verificar.quebra@exemplo.invalid',
+  bonusBalanceCents: 125000, _count: { companions: 2, reservations: 1 },
+}
+const adminTrip = { ...trip, deckCount: 1, lowerDeckCapacity: null,
+  vehicleFeatures: [], blockedSeats: [], _count: { reservations: 1 } }
+const adminReservation = { ...portal, client: adminClient,
+  cancellationRequestStatus: 'PENDING', cancellationRequestedAt: portal.createdAt,
+  cancellationRequestReason: 'Solicitação fictícia para revisão de layout',
+  cancellationRequestResolvedAt: null, cancellationRequestResolutionNote: null,
+  seatAssignments: [{ seatNumber: 12 }], trip: adminTrip }
 let checks = 0
 let failures = 0
 
@@ -115,7 +127,7 @@ async function checkFooter(page, width) {
   await fit(page, 'institutional page')
   await page.goto(base)
 }
-async function test(name, viewport, execute) {
+async function test(name, viewport, execute, populatedAdmin = false) {
   const context = await browser.newContext({ viewport, reducedMotion: 'reduce' })
   const page = await context.newPage()
   const errors = []
@@ -139,7 +151,10 @@ async function test(name, viewport, execute) {
     else if (url.pathname.endsWith('/auth/refresh')) body = { accessToken: `test.${Buffer.from(JSON.stringify({ role: 'ADMIN' })).toString('base64url')}.test` }
     else if (url.pathname.endsWith('/admin/dashboard')) body = { metrics: { clients: 0, pendingReservations: 0, activeTrips: 0, confirmedReservations: 0 }, birthdays: [] }
     else if (url.pathname.endsWith('/admin/notifications')) body = { unreadCount: 0, items: [] }
-    else if (['/admin/clients', '/admin/trips', '/admin/reservations', '/admin/trips/bus-templates'].some((path) => url.pathname.endsWith(path))) body = []
+    else if (url.pathname.endsWith('/admin/clients')) body = populatedAdmin ? [adminClient] : []
+    else if (url.pathname.endsWith('/admin/trips')) body = populatedAdmin ? [adminTrip] : []
+    else if (url.pathname.endsWith('/admin/reservations')) body = populatedAdmin ? [adminReservation] : []
+    else if (url.pathname.endsWith('/admin/trips/bus-templates')) body = []
     else if (url.pathname.endsWith('/public/trips')) body = [trip]
     else if (url.pathname.endsWith(`/public/trips/${trip.id}`)) body = trip
     else if (url.pathname.endsWith('/seats')) body = map
@@ -258,6 +273,28 @@ try {
     })
   }
   for (const width of [320, 390, 768, 1440]) {
+    await test(`admin-populated-${width}`, { width, height: 900 }, async (page) => {
+      await page.goto(`${base}/?screen=admin`)
+      const nav = page.getByRole('navigation', { name: 'Administração', exact: true })
+      await nav.waitFor()
+      await page.getByText('Carregando dados operacionais...', { exact: true }).waitFor({ state: 'hidden' })
+      for (const [name, row] of [['Clientes', '.admin-table-row--client'], ['Reservas', '.admin-table-row--reservation']]) {
+        await nav.getByRole('button', { name, exact: true }).click()
+        await page.locator(row).waitFor()
+        await fit(page, `filled admin ${name}`)
+        const bounds = await page.locator(`${row}, ${row} button, ${row} select`).evaluateAll(elements => elements.map(element => {
+          const box = element.getBoundingClientRect()
+          return { label: element.textContent.trim().slice(0, 60), left: box.left, right: box.right,
+            scroll: element.scrollWidth, available: element.clientWidth }
+        }).filter(box => box.left < -1 || box.right > innerWidth + 1 || box.scroll > box.available + 1))
+        assert.deepEqual(bounds, [], `${name}: rows and actions must not clip`)
+        const controls = await page.locator(`${row} button, ${row} select`).evaluateAll(elements => elements.map(element => ({
+          label: element.textContent.trim(), height: element.getBoundingClientRect().height,
+        })))
+        for (const control of controls) assert(control.height >= 43.9, `${control.label}: target at least 44px`)
+        await page.screenshot({ path: `${output}/admin-${name}-${width}.png`, fullPage: true })
+      }
+    }, true)
     await test(`client-portal-${width}`, { width, height: 900 }, async (page) => {
       await page.goto(`${base}/?screen=client`)
       await page.getByLabel('E-mail', { exact: true }).fill('viajante@exemplo.invalid')
