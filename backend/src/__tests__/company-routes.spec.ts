@@ -160,6 +160,23 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
     }
     assert.deepEqual(await (await call('/admin/trips?q=Synthetic%201')).json(), [])
   })
+  it('projects portal access controls only for scoped administrators and published reservations', async () => {
+    const own = async () => (await (await call('/admin/reservations')).json())[0]
+    assert.deepEqual((await own()).companyPortalAccess, { canIssue: false })
+    await prisma.trip.update({ where: { id: trips[0] }, data: { status: 'SCHEDULED' } })
+    try {
+      assert.deepEqual((await own()).companyPortalAccess, { canIssue: true })
+      await prisma.reservation.update({ where: { id: reservations[0] }, data: { status: 'CANCELLED' } })
+      assert.deepEqual((await own()).companyPortalAccess, { canIssue: false })
+      const body = JSON.stringify(await own())
+      assert.equal(body.includes('accessCodeHash'), false)
+      assert.equal(body.includes('companyPortalCodeExpiresAt'), false)
+      assert.deepEqual(await (await call('/admin/reservations', tokens[2])).json(), ['legacy'])
+    } finally {
+      await prisma.trip.update({ where: { id: trips[0] }, data: { status: 'DRAFT' } })
+      await prisma.reservation.update({ where: { id: reservations[0] }, data: { status: 'PENDING' } })
+    }
+  })
   it('blocks company sessions from unscoped credit, finance and writes', async () => {
     for (const path of [`/admin/clients/${clients[0]}/credits`]) {
       assert.equal((await call(path)).status, 403)

@@ -540,3 +540,31 @@ depois de resolver o escopo precisa falhar na revalidação dentro da transaçã
 Essas verificações usam somente dados fictícios e um login criado/destruído no
 banco isolado do CI. Não comprovam concessões efetivas, disponibilidade ou
 isolamento da conexão de produção; ativação e publicação continuam pendentes.
+
+## Emissão manual de acesso do cliente na interface (2026-10-07)
+
+Em Reservas, ADMIN da empresa vê “Acesso ao portal” a partir da projeção scoped
+do servidor. O painel legado não recebe essa ação; AGENT e FINANCE não recebem
+o marcador. A emissão requer confirmação de entrega privada, reserva não
+cancelada, viagem publicada e e-mail do cliente validado pelo servidor. O
+servidor continua exigindo as duas flags de empresa/portal; a interface não ativa
+flags, empresas ou viagens. A elegibilidade não substitui autorização transacional
+nem comprova que as flags estão habilitadas.
+
+O código aparece somente após sucesso e fica na memória do componente. Fechar,
+navegar, recarregar ou vencer o código remove a exibição. Não há armazenamento,
+URL com segredo, envio automático ou cópia automática para clipboard. Gerar
+outro revoga o anterior e sessões antigas; revogar exige confirmação própria e
+pode ser repetido após falha. Resposta perdida não exibe código antigo como válido.
+Identificador e código podem ser copiados manualmente para entrega privada.
+
+O ensaio de navegador usa dados fictícios em 375/768/1440px: confirmação,
+falha/repetição de emissão e revogação, foco, remoção ao fechar/recarregar, ausência
+de segredo em storages/URL e ausência da ação para AGENT/painel legado. Não
+comprova entrega ao cliente real ou ativação em produção.
+
+Inspeção em 2026-10-07: Railway sem buckets ou alterações staged; a conexão
+disponível retorna somente nomes de variáveis. Neon exige project_id e não
+oferece listagem de projetos nessa conexão. Faltam o ID do projeto Neon,
+armazenamento externo configurado e custódia recuperável das chaves para validar
+runtime real e backup real. Ensaios sintéticos não encerram essas pendências.

@@ -1,4 +1,5 @@
 import { ChangePasswordDialog } from './ChangePasswordDialog'
+import { ReservationAccessDialog } from './ReservationAccessDialog'
 import {
   ArrowLeft,
   Bell,
@@ -2577,6 +2578,7 @@ function ReservationsView({
   const [cancelReservationId, setCancelReservationId] = useState<string | null>(null)
   const [bonusReservationId, setBonusReservationId] = useState<string | null>(null)
   const [financeReservationId, setFinanceReservationId] = useState<string | null>(null)
+  const [accessReservation, setAccessReservation] = useState<AdminReservation | null>(null)
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -2629,7 +2631,7 @@ function ReservationsView({
                   {reservation.trip.title} · {date.format(new Date(reservation.trip.departureDate))}
                   {' · '}
                   {reservation.passengerCount} passageiro{reservation.passengerCount === 1 ? '' : 's'}
-                  {reservation.seatAssignments.length
+                  {reservation.seatAssignments?.length
                     ? ' · Assentos ' + reservation.seatAssignments.map((seat) => seat.seatNumber).join(', ')
                     : ''}
                   {reservation.client.bonusBalanceCents > 0
@@ -2647,6 +2649,9 @@ function ReservationsView({
                 ) : null}
               </div>
               <div className="admin-reservation-actions">
+                {roleFromToken(accessToken) === 'ADMIN' && reservation.companyPortalAccess ? (
+                  <button type="button" onClick={() => setAccessReservation(reservation)}>Acesso ao portal</button>
+                ) : null}
                 {canChangeStatus ? (
                   <select
                     value={reservation.status}
@@ -2732,6 +2737,9 @@ function ReservationsView({
           )) : <p className="admin-empty">Nenhuma reserva cadastrada ainda.</p>}
         </div>
       </article>
+
+      {accessReservation ? <ReservationAccessDialog key={accessReservation.id} token={accessToken}
+        reservation={accessReservation} onClose={() => setAccessReservation(null)} /> : null}
 
       {passengersReservationId ? (
         <ReservationPassengersDialog

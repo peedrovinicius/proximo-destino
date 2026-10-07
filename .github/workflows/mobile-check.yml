@@ -38,6 +38,8 @@ jobs:
         run: node scripts/company-public-check.mjs
       - name: Check company client portal privacy and session lifecycle
         run: node scripts/company-client-check.mjs
+      - name: Check private company reservation access issuance and revocation
+        run: node scripts/company-access-check.mjs
       - name: Verify first-party session restoration through preview proxy
         run: node scripts/session-check.mjs
       - name: Save synthetic browser evidence

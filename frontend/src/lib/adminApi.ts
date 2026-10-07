@@ -76,6 +76,7 @@ export type AdminTrip = {
 }
 
 export type AdminReservation = {
+  companyPortalAccess?: { canIssue: boolean }
   id: string
   status: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED'
   passengerCount: number
@@ -806,6 +807,13 @@ export function adminTripImageUrl(trip: Pick<AdminTrip, 'id' | 'imageUrl' | 'has
 }
 
 export const adminApi = {
+  issueCompanyPortalCode: (token: string, id: string) =>
+    adminFetch<{ reservationId: string; code: string; expiresAt: string; delivery: 'MANUAL_PRIVATE' }>(
+      token, `/admin/reservations/${encodeURIComponent(id)}/company-portal-code`,
+      { method: 'POST', body: JSON.stringify({ confirmedPrivateDelivery: true }) }),
+  revokeCompanyPortalCode: (token: string, id: string) =>
+    adminFetch<{ revoked: true }>(token,
+      `/admin/reservations/${encodeURIComponent(id)}/company-portal-code/revoke`, { method: 'POST' }),
   securityPosture: (token: string) =>
     adminFetch<SecurityPosture>(
       token,

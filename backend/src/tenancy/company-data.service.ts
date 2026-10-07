@@ -204,9 +204,13 @@ export class CompanyDataService {
     const scope = await this.scopes.resolveSession(userId, sessionId)
     return this.prisma.$transaction(async tx => {
       await lockCompanyRead(tx, scope)
-      return tx.reservation.findMany({ where: { companyId: scope.companyId,
+      const rows = await tx.reservation.findMany({ where: { companyId: scope.companyId,
         client: { companyId: scope.companyId }, trip: { companyId: scope.companyId } },
         select: this.reservationFields(scope.role), orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 100 })
+      return rows.map(row => ({ ...row, ...(scope.role === 'ADMIN' ? {
+        companyPortalAccess: { canIssue: row.status !== 'CANCELLED' &&
+          ['ACTIVE', 'SCHEDULED', 'COMPLETED'].includes(row.trip.status) },
+      } : {}) }))
     }, { isolationLevel: 'RepeatableRead' })
   }
 
