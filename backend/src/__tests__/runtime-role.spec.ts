@@ -107,7 +107,7 @@ describe('papel runtime sem bypass em PostgreSQL isolado', () => {
       '--file=scripts/security/check-runtime.sql'], { encoding: 'utf8', stdio: 'pipe' })
     const restricted = check(role)
     assert.ok(restricted.split('\n').includes('t|f|t|t|t|t|t|t'), restricted)
-    assert.ok(restricted.split('\n').includes('13'), restricted)
+    assert.ok(restricted.split('\n').includes('15'), restricted)
     const owner = check()
     assert.equal(owner.split('\n').includes('t|f|t|t|t|t|t|t'), false)
     const [access] = await prisma.$queryRaw<Array<{ forbidden: boolean }>>`
