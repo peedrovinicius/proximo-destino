@@ -200,6 +200,28 @@ remover o valor de enum do PostgreSQL durante uma reversão operacional.
    concede permissões. Executar psql `-v ON_ERROR_STOP=1 -f` com conexão pelo
    canal seguro/ambiente, nunca senha em argumento. Doze tabelas com RLS não
    comprovam isolamento entre empresas; validar API/políticas com duas empresas.
+**Contexto transacional derivado da sessão (preparado, não publicado):**
+`company-db-context.ts` instala `app.company_id`, `app.user_id` e
+`app.session_id` com `set_config(..., true)`, portanto os valores existem
+somente dentro da transação. O contexto é instalado por `lockCompanyRead` e
+`lockCompanyWrite` **depois** de revalidar, no PostgreSQL, a sessão persistida,
+usuário ativo, empresa ACTIVE, vínculo ativo e papel compatível. Valores de
+body/query/header não são aceitos como origem desse contexto.
+
+As leituras administrativas centrais de clientes, viagens, reservas, dashboard,
+pesquisa, mapa preparatório e passageiros agora executam dentro de transação
+com essa revalidação. Os fluxos de escrita que já passam por
+`lockCompanyWrite` recebem o mesmo contexto automaticamente. Testes específicos
+confirmam que uma combinação forjada de empresa/sessão é recusada antes de
+instalar o contexto e que os valores desaparecem ao final da transação.
+
+Esse GUC é **defesa em profundidade e preparação para RLS**, não uma credencial:
+qualquer role SQL com liberdade para executar `set_config` poderia tentar
+definir esses valores. Portanto, não criar política de produção que confie
+somente em `app.company_id`. A liberação continua exigindo role runtime
+restrita, políticas revisadas que validem a sessão/vínculo persistidos e testes
+negativos com duas empresas usando as credenciais efetivas da API.
+
 **RLS da tabela de viagens (preparado, não publicado):** a migração
 `202610070300_trip_rls_default_deny` habilita RLS para `Trip` e instala
 uma política `USING(false)/WITH CHECK(false)` para usuários sem bypass de
