@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import { CompanyScopeService } from './company-scope.service'
-import { lockCompanyWrite } from './company-write-lock'
+import { lockCompanyRead } from './company-write-lock'
 
 const clientFields = { id: true, fullName: true, email: true, phone: true, birthDate: true } as const
 const tripFields = { id: true, title: true, origin: true, destination: true,
@@ -30,7 +30,7 @@ export class CompanyDataService {
     const scope = await this.scopes.resolveSession(userId, sessionId)
     if (scope.role === 'AGENT') throw new ForbiddenException('Perfil sem acesso ao resumo financeiro')
     return this.prisma.$transaction(async tx => {
-      await lockCompanyWrite(tx, scope)
+      await lockCompanyRead(tx, scope)
       const where = { reservation: { companyId: scope.companyId,
         client: { companyId: scope.companyId }, trip: { companyId: scope.companyId } } }
       const invalid = await tx.purchaseOrder.count({ where: { ...where, OR: [
@@ -96,18 +96,21 @@ export class CompanyDataService {
     const q = searchText(rawQuery)
     if (q.length < 2) return { clients: [], trips: [], reservations: [] }
     const companyId = scope.companyId
-    const [clients, trips, reservations] = await this.prisma.$transaction([
-      this.prisma.client.findMany({ where: { companyId, OR: ['fullName', 'email', 'phone'].map(field => ({
-        [field]: { contains: q, mode: 'insensitive' },
-      })) }, select: clientFields, orderBy: { id: 'asc' }, take: 8 }),
-      this.prisma.trip.findMany({ where: { companyId, ...tripSearch(q) }, select: tripFields, orderBy: { id: 'asc' }, take: 8 }),
-      this.prisma.reservation.findMany({ where: { companyId, client: { companyId }, trip: { companyId }, OR: [
-        { id: { contains: q, mode: 'insensitive' } },
-        { client: { fullName: { contains: q, mode: 'insensitive' } } },
-        { trip: { title: { contains: q, mode: 'insensitive' } } },
-      ] }, select: this.reservationFields(scope.role), orderBy: { id: 'asc' }, take: 8 }),
-    ], { isolationLevel: 'RepeatableRead' })
-    return { clients, trips, reservations }
+    return this.prisma.$transaction(async tx => {
+      await lockCompanyRead(tx, scope)
+      const [clients, trips, reservations] = await Promise.all([
+        tx.client.findMany({ where: { companyId, OR: ['fullName', 'email', 'phone'].map(field => ({
+          [field]: { contains: q, mode: 'insensitive' },
+        })) }, select: clientFields, orderBy: { id: 'asc' }, take: 8 }),
+        tx.trip.findMany({ where: { companyId, ...tripSearch(q) }, select: tripFields, orderBy: { id: 'asc' }, take: 8 }),
+        tx.reservation.findMany({ where: { companyId, client: { companyId }, trip: { companyId }, OR: [
+          { id: { contains: q, mode: 'insensitive' } },
+          { client: { fullName: { contains: q, mode: 'insensitive' } } },
+          { trip: { title: { contains: q, mode: 'insensitive' } } },
+        ] }, select: this.reservationFields(scope.role), orderBy: { id: 'asc' }, take: 8 }),
+      ])
+      return { clients, trips, reservations }
+    }, { isolationLevel: 'RepeatableRead' })
   }
 
   async dashboard(userId: string, sessionId: string) {
@@ -116,15 +119,19 @@ export class CompanyDataService {
     // Include both parents: a reservation must never contribute through a
     // foreign client/trip, even while legacy records are being backfilled.
     const reservationScope = { companyId, client: { companyId }, trip: { companyId } }
-    const [clients, pendingReservations, activeTrips, confirmedReservations, birthdays] = await this.prisma.$transaction([
-      this.prisma.client.count({ where: { companyId } }),
-      this.prisma.reservation.count({ where: { ...reservationScope, status: 'PENDING' } }),
-      this.prisma.trip.count({ where: { companyId, status: { in: ['ACTIVE', 'SCHEDULED'] } } }),
-      this.prisma.reservation.count({ where: { ...reservationScope, status: 'CONFIRMED' } }),
-      this.prisma.client.findMany({ where: { companyId, birthDate: { not: null },
-        ...(scope.role === 'FINANCE' ? { id: { in: [] as string[] } } : {}) },
-        select: { id: true, fullName: true, phone: true, birthDate: true } }),
-    ], { isolationLevel: 'RepeatableRead' })
+    const [clients, pendingReservations, activeTrips, confirmedReservations, birthdays] =
+      await this.prisma.$transaction(async tx => {
+        await lockCompanyRead(tx, scope)
+        return Promise.all([
+          tx.client.count({ where: { companyId } }),
+          tx.reservation.count({ where: { ...reservationScope, status: 'PENDING' } }),
+          tx.trip.count({ where: { companyId, status: { in: ['ACTIVE', 'SCHEDULED'] } } }),
+          tx.reservation.count({ where: { ...reservationScope, status: 'CONFIRMED' } }),
+          tx.client.findMany({ where: { companyId, birthDate: { not: null },
+            ...(scope.role === 'FINANCE' ? { id: { in: [] as string[] } } : {}) },
+            select: { id: true, fullName: true, phone: true, birthDate: true } }),
+        ])
+      }, { isolationLevel: 'RepeatableRead' })
     const now = new Date()
     const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
     const upcomingBirthdays = birthdays.map(client => {
@@ -143,36 +150,48 @@ export class CompanyDataService {
     const scope = await this.scopes.resolveSession(userId, sessionId)
     if (scope.role === 'FINANCE') throw new ForbiddenException('Perfil sem acesso ao cadastro de clientes')
     const q = searchText(query)
-    return this.prisma.client.findMany({ where: { companyId: scope.companyId,
-      ...(q ? { fullName: { contains: q, mode: 'insensitive' as const } } : {}) },
-      select: clientFields, orderBy: [{ fullName: 'asc' }, { id: 'asc' }], take: 100 })
+    return this.prisma.$transaction(async tx => {
+      await lockCompanyRead(tx, scope)
+      return tx.client.findMany({ where: { companyId: scope.companyId,
+        ...(q ? { fullName: { contains: q, mode: 'insensitive' as const } } : {}) },
+        select: clientFields, orderBy: [{ fullName: 'asc' }, { id: 'asc' }], take: 100 })
+    }, { isolationLevel: 'RepeatableRead' })
   }
 
   async client(userId: string, sessionId: string, id: string) {
     const scope = await this.scopes.resolveSession(userId, sessionId)
     if (scope.role === 'FINANCE') throw new ForbiddenException('Perfil sem acesso ao cadastro de clientes')
-    const result = await this.prisma.client.findFirst({ where: { id, companyId: scope.companyId }, select: {
-      ...clientFields, companions: { select: { id: true, fullName: true, birthDate: true, relationship: true },
-        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
-    } })
-    if (!result) throw new NotFoundException('Cliente não encontrado')
-    return result
+    return this.prisma.$transaction(async tx => {
+      await lockCompanyRead(tx, scope)
+      const result = await tx.client.findFirst({ where: { id, companyId: scope.companyId }, select: {
+        ...clientFields, companions: { select: { id: true, fullName: true, birthDate: true, relationship: true },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
+      } })
+      if (!result) throw new NotFoundException('Cliente não encontrado')
+      return result
+    }, { isolationLevel: 'RepeatableRead' })
   }
 
   async trips(userId: string, sessionId: string, query?: string) {
     const scope = await this.scopes.resolveSession(userId, sessionId)
     if (scope.role === 'FINANCE') throw new ForbiddenException('Perfil sem acesso ao cadastro de viagens')
     const q = searchText(query)
-    return this.prisma.trip.findMany({ where: { companyId: scope.companyId, ...(q ? tripSearch(q) : {}) }, select: tripAdminFields,
-      orderBy: [{ departureDate: 'desc' }, { id: 'desc' }], take: 100 })
+    return this.prisma.$transaction(async tx => {
+      await lockCompanyRead(tx, scope)
+      return tx.trip.findMany({ where: { companyId: scope.companyId, ...(q ? tripSearch(q) : {}) }, select: tripAdminFields,
+        orderBy: [{ departureDate: 'desc' }, { id: 'desc' }], take: 100 })
+    }, { isolationLevel: 'RepeatableRead' })
   }
 
   async trip(userId: string, sessionId: string, id: string) {
     const scope = await this.scopes.resolveSession(userId, sessionId)
     if (scope.role === 'FINANCE') throw new ForbiddenException('Perfil sem acesso ao cadastro de viagens')
-    const result = await this.prisma.trip.findFirst({ where: { id, companyId: scope.companyId }, select: tripAdminFields })
-    if (!result) throw new NotFoundException('Viagem não encontrada')
-    return result
+    return this.prisma.$transaction(async tx => {
+      await lockCompanyRead(tx, scope)
+      const result = await tx.trip.findFirst({ where: { id, companyId: scope.companyId }, select: tripAdminFields })
+      if (!result) throw new NotFoundException('Viagem não encontrada')
+      return result
+    }, { isolationLevel: 'RepeatableRead' })
   }
 
   private reservationFields(role: 'ADMIN' | 'AGENT' | 'FINANCE') {
@@ -183,16 +202,22 @@ export class CompanyDataService {
 
   async reservations(userId: string, sessionId: string) {
     const scope = await this.scopes.resolveSession(userId, sessionId)
-    return this.prisma.reservation.findMany({ where: { companyId: scope.companyId,
-      client: { companyId: scope.companyId }, trip: { companyId: scope.companyId } },
-      select: this.reservationFields(scope.role), orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 100 })
+    return this.prisma.$transaction(async tx => {
+      await lockCompanyRead(tx, scope)
+      return tx.reservation.findMany({ where: { companyId: scope.companyId,
+        client: { companyId: scope.companyId }, trip: { companyId: scope.companyId } },
+        select: this.reservationFields(scope.role), orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 100 })
+    }, { isolationLevel: 'RepeatableRead' })
   }
 
   async reservation(userId: string, sessionId: string, id: string) {
     const scope = await this.scopes.resolveSession(userId, sessionId)
-    const result = await this.prisma.reservation.findFirst({ where: { id, companyId: scope.companyId,
-      client: { companyId: scope.companyId }, trip: { companyId: scope.companyId } }, select: this.reservationFields(scope.role) })
-    if (!result) throw new NotFoundException('Reserva não encontrada')
-    return result
+    return this.prisma.$transaction(async tx => {
+      await lockCompanyRead(tx, scope)
+      const result = await tx.reservation.findFirst({ where: { id, companyId: scope.companyId,
+        client: { companyId: scope.companyId }, trip: { companyId: scope.companyId } }, select: this.reservationFields(scope.role) })
+      if (!result) throw new NotFoundException('Reserva não encontrada')
+      return result
+    }, { isolationLevel: 'RepeatableRead' })
   }
 }
