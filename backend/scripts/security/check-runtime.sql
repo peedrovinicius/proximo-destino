@@ -25,5 +25,5 @@ SELECT count(*) AS sensitive_tables_with_rls
 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
 WHERE n.nspname='public' AND c.relrowsecurity AND c.relname IN
  ('Client','Companion','Trip','Reservation','ReservationPassenger','SeatAssignment','PurchaseOrder',
-  'Quote','FinancePlan','Installment','TravelDocument','ManualPayment','ClientCreditTransaction');
+  'Quote','QuoteItem','ReservationService','FinancePlan','Installment','TravelDocument','ManualPayment','ClientCreditTransaction');
 ROLLBACK;
