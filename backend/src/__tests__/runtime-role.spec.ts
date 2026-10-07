@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { after, before, describe, it } from 'node:test'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { createHash } from 'node:crypto'
 import { PrismaService } from '../prisma/prisma.service'
@@ -113,5 +113,12 @@ describe('papel runtime sem bypass em PostgreSQL isolado', () => {
     const [access] = await prisma.$queryRaw<Array<{ forbidden: boolean }>>`
       SELECT has_table_privilege(${role}, 'public."AuthAuditEvent"', 'UPDATE') AS forbidden`
     assert.equal(access.forbidden, false)
+  })
+  it('bloqueia o uso de RLS permissiva do ensaio como evidência de produção', () => {
+    const gate = spawnSync('psql', [database.toString(), '-X', '--set=ON_ERROR_STOP=1',
+      `--command=SET ROLE "${role}"`, '--file=scripts/security/assert-runtime.sql'],
+    { encoding: 'utf8' })
+    assert.equal(gate.status, 3, gate.stderr)
+    assert.match(gate.stderr, /GATE_RUNTIME: politica RLS permissiva para tabela sensivel/)
   })
 })
