@@ -200,17 +200,24 @@ remover o valor de enum do PostgreSQL durante uma reversão operacional.
    concede permissões. Executar psql `-v ON_ERROR_STOP=1 -f` com conexão pelo
    canal seguro/ambiente, nunca senha em argumento. Doze tabelas com RLS não
    comprovam isolamento entre empresas; validar API/políticas com duas empresas.
-**Lacuna confirmada na etapa de isolamento:** a tabela `Trip` ainda não
-possui RLS na migração atual. Portanto, o gate `assert-runtime.sql` exige
-explicitamente RLS em `Trip`, falhando com mensagem de tabela sensível sem RLS.
-O teste `tenant-rls-isolation.spec.ts` exercita políticas A/B sintéticas
-sobre `Client` e `Reservation` usando conexão PostgreSQL LOGIN restrita;
-`Trip` permanece sem GRANT nesse ensaio e deve negar consultas diretas.
-Essas políticas **não** são aplicadas em produção e não provam autorização
-da API com duas empresas. Para liberar, implementar/testar política permanente
-da tabela `Trip` e uma forma segura de propagar a empresa validada no servidor,
-sem aceitar escolha arbitrária do cliente; preservar o comportamento legado
-durante a transição.
+**RLS da tabela de viagens (preparado, não publicado):** a migração
+`202610070300_trip_rls_default_deny` habilita RLS para `Trip` e instala
+uma política `USING(false)/WITH CHECK(false)` para usuários sem bypass de
+proprietário, seguindo a estratégia fail-closed já usada nas outras tabelas.
+A alteração não ativa empresas, não modifica viagens existentes e preserva o
+acesso legado do proprietário da tabela. O gate `assert-runtime.sql` exige
+RLS também em `Trip`; a ausência de RLS ou políticas universais de ensaio
+fazem o gate falhar.
+
+O teste `tenant-rls-isolation.spec.ts` utiliza duas empresas e um LOGIN
+PostgreSQL temporário com políticas A/B **exclusivamente sintéticas** para
+`Client`, `Trip` e `Reservation`, conferindo negação de leitura e escrita
+entre empresas. A política temporária usa `app.company_id` apenas no ensaio;
+essa variável seria controlável por qualquer conexão direta ao banco e
+**não constitui autorização segura na produção**. Falta concluir conexão
+runtime restrita, política de tenant revisada com origem de sessão confiável
+e testes HTTP ponta a ponta com dois tenants antes de ativar operações reais.
+Nenhuma política permissiva de ensaio pode ser implantada em produção.
 
 **Gate de segurança do runtime (novo, não executado em produção):** depois de
 configurar um papel de API realmente restrito em banco isolado, rodar
