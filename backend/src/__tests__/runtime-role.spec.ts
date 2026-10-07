@@ -114,11 +114,26 @@ describe('papel runtime sem bypass em PostgreSQL isolado', () => {
       SELECT has_table_privilege(${role}, 'public."AuthAuditEvent"', 'UPDATE') AS forbidden`
     assert.equal(access.forbidden, false)
   })
-  it('bloqueia o uso de RLS permissiva do ensaio como evidência de produção', () => {
-    const gate = spawnSync('psql', [database.toString(), '-X', '--set=ON_ERROR_STOP=1',
+  const productionGate = () => spawnSync('psql',
+    [database.toString(), '-X', '--set=ON_ERROR_STOP=1',
       `--command=SET ROLE "${role}"`, '--file=scripts/security/assert-runtime.sql'],
     { encoding: 'utf8' })
+
+  it('bloqueia produção quando Trip ainda não tem RLS', () => {
+    const gate = productionGate()
     assert.equal(gate.status, 3, gate.stderr)
-    assert.match(gate.stderr, /GATE_RUNTIME: politica RLS permissiva para tabela sensivel/)
+    assert.match(gate.stderr, /GATE_RUNTIME: tabela sensivel sem RLS/)
+  })
+
+  it('rejeita políticas RLS permissivas, mesmo se todas as tabelas tiverem RLS', async () => {
+    // Simulates an RLS migration in the disposable database only; always revert.
+    await prisma.$executeRawUnsafe('ALTER TABLE "Trip" ENABLE ROW LEVEL SECURITY')
+    try {
+      const gate = productionGate()
+      assert.equal(gate.status, 3, gate.stderr)
+      assert.match(gate.stderr, /GATE_RUNTIME: politica RLS permissiva para tabela sensivel/)
+    } finally {
+      await prisma.$executeRawUnsafe('ALTER TABLE "Trip" DISABLE ROW LEVEL SECURITY')
+    }
   })
 })
