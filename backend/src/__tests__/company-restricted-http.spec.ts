@@ -95,6 +95,7 @@ describe('company HTTP A/B isolation using the restricted PostgreSQL runtime log
     for (const table of ['User', 'AuthSession', 'Company', 'CompanyMembership']) {
       await owner.$executeRawUnsafe(`GRANT SELECT ON TABLE public."${table}" TO "${role}"`)
     }
+    await owner.$executeRawUnsafe(`GRANT SELECT ON TABLE public."Companion" TO "${role}"`)
     for (const table of ['Client', 'Trip', 'Reservation']) {
       await owner.$executeRawUnsafe(
         `GRANT SELECT, INSERT, UPDATE ON TABLE public."${table}" TO "${role}"`)
