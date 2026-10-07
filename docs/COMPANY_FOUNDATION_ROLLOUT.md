@@ -200,6 +200,18 @@ remover o valor de enum do PostgreSQL durante uma reversão operacional.
    concede permissões. Executar psql `-v ON_ERROR_STOP=1 -f` com conexão pelo
    canal seguro/ambiente, nunca senha em argumento. Doze tabelas com RLS não
    comprovam isolamento entre empresas; validar API/políticas com duas empresas.
+**Lacuna confirmada na etapa de isolamento:** a tabela `Trip` ainda não
+possui RLS na migração atual. Portanto, o gate `assert-runtime.sql` exige
+explicitamente RLS em `Trip`, falhando com mensagem de tabela sensível sem RLS.
+O teste `tenant-rls-isolation.spec.ts` exercita políticas A/B sintéticas
+sobre `Client` e `Reservation` usando conexão PostgreSQL LOGIN restrita;
+`Trip` permanece sem GRANT nesse ensaio e deve negar consultas diretas.
+Essas políticas **não** são aplicadas em produção e não provam autorização
+da API com duas empresas. Para liberar, implementar/testar política permanente
+da tabela `Trip` e uma forma segura de propagar a empresa validada no servidor,
+sem aceitar escolha arbitrária do cliente; preservar o comportamento legado
+durante a transição.
+
 **Gate de segurança do runtime (novo, não executado em produção):** depois de
 configurar um papel de API realmente restrito em banco isolado, rodar
 `psql -X -v ON_ERROR_STOP=1 -f backend/scripts/security/assert-runtime.sql`
