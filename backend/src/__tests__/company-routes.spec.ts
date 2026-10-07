@@ -933,9 +933,8 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
     await prisma.client.update({ where: { id: clients[0] }, data: { email: null } })
     try { await assert.rejects(access.issue(users[0], sessions[0], reservations[0]), { status: 409 }) }
     finally { await prisma.client.update({ where: { id: clients[0] }, data: { email: `${clients[0]}@example.invalid` } }) }
-    await prisma.reservation.update({ where: { id: reservations[0] }, data: { clientId: clients[1] } })
-    try { await assert.rejects(access.issue(users[0], sessions[0], reservations[0]), { status: 404 }) }
-    finally { await prisma.reservation.update({ where: { id: reservations[0] }, data: { clientId: clients[0] } }) }
+    await assert.rejects(prisma.reservation.update({ where: { id: reservations[0] }, data: { clientId: clients[1] } }), /company scope mismatch/)
+    assert.equal((await prisma.reservation.findUniqueOrThrow({ where: { id: reservations[0] } })).clientId, clients[0])
     await prisma.reservation.update({ where: { id: reservations[0] }, data: { status: 'CANCELLED' } })
     try { await assert.rejects(access.issue(users[0], sessions[0], reservations[0]), { status: 409 }); await access.revoke(users[0], sessions[0], reservations[0]) }
     finally { await prisma.reservation.update({ where: { id: reservations[0] }, data: { status: 'PENDING' } }) }
