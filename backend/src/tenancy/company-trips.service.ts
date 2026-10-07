@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { CompanyScopeService } from './company-scope.service'
-import { lockCompanyWrite } from './company-write-lock'
+import { lockCompanyRead, lockCompanyWrite } from './company-write-lock'
 import { AssignSeatClientDto, CreateTripDto, UpdateTripDto, VehicleFeatureDto } from '../trips/dto/admin-trip.dto'
 import { describeBus, resolveBusTemplate } from '../trips/bus-templates'
 
@@ -51,7 +51,10 @@ export class CompanyTripsService {
   async seatMap(userId: string, sessionId: string, id: string) {
     const scope = await this.scopes.resolveSession(userId, sessionId)
     if (scope.role !== 'ADMIN') throw new ForbiddenException('Perfil sem acesso ao mapa de assentos')
-    return this.prisma.$transaction(tx => this.draftSeatMap(tx, scope.companyId, id), { isolationLevel: 'RepeatableRead' })
+    return this.prisma.$transaction(async tx => {
+      await lockCompanyRead(tx, scope)
+      return this.draftSeatMap(tx, scope.companyId, id)
+    }, { isolationLevel: 'RepeatableRead' })
   }
 
   private async draftSeatMap(tx: Prisma.TransactionClient, companyId: string, id: string) {
