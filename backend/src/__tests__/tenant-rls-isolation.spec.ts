@@ -7,8 +7,8 @@ import { PrismaService } from '../prisma/prisma.service'
 // Database-layer tenant proof with disposable synthetic fixtures only.
 // Policies are created for a temporary LOGIN role in a local test database.
 // Nothing here enables companies or installs policies into production.
-// Trip has no RLS in current migrations: this role intentionally has no Trip grants.
-// A production-ready Trip policy and app-scoped runtime remain separate release gates.
+// Trip now has default-deny RLS; tenant-specific policies remain synthetic.
+// The API must not trust tenant context supplied directly by clients in production.
 describe('tenant A/B RLS proof with a restricted PostgreSQL login', () => {
   const suffix = randomUUID().replaceAll('-', '').slice(0, 18)
   const role = `tenant_probe_${suffix}`
@@ -22,7 +22,7 @@ describe('tenant A/B RLS proof with a restricted PostgreSQL login', () => {
   const clients = [`tenant-client-a-${suffix}`, `tenant-client-b-${suffix}`]
   const trips = [`tenant-trip-a-${suffix}`, `tenant-trip-b-${suffix}`]
   const reservations = [`tenant-reservation-a-${suffix}`, `tenant-reservation-b-${suffix}`]
-  const tables = ['Client', 'Reservation'] as const
+  const tables = ['Client', 'Trip', 'Reservation'] as const
 
   before(async () => {
     const database = new URL(process.env.DATABASE_URL ?? 'http://missing')
@@ -109,25 +109,40 @@ describe('tenant A/B RLS proof with a restricted PostgreSQL login', () => {
     })
   }
 
-  it('has no visible client or reservation without a tenant context', async () => {
+  it('has no visible client, trip or reservation without a tenant context', async () => {
     await asCompany(null, async tx => {
       assert.deepEqual(await tx.client.findMany({ select: { id: true } }), [])
+      assert.deepEqual(await tx.trip.findMany({ select: { id: true } }), [])
       assert.deepEqual(await tx.reservation.findMany({ select: { id: true } }), [])
     })
   })
 
-  it('denies direct Trip access until a scoped production RLS policy exists', async () => {
-    await assert.rejects(asCompany(companies[0], tx => tx.trip.findMany()),
-      /permission denied|P1010|P2010/i)
+  it('Trip RLS denies foreign reads and writes even with direct SQL privileges', async () => {
+    await asCompany(companies[0], async tx => {
+      assert.deepEqual((await tx.trip.findMany({ select: { id: true } })).map(x => x.id), [trips[0]])
+      assert.equal(await tx.trip.findUnique({ where: { id: trips[1] } }), null)
+      assert.equal((await tx.trip.updateMany({ where: { id: trips[1] },
+        data: { title: 'Forbidden foreign update' } })).count, 0)
+    })
+    assert.equal((await owner.trip.findUniqueOrThrow({ where: { id: trips[1] } })).title,
+      'Synthetic trip 1')
+    await assert.rejects(asCompany(companies[0], async tx => {
+      await tx.trip.create({ data: {
+        companyId: companies[1], title: 'Forged foreign trip', origin: 'X',
+        destination: 'Y', departureDate: new Date('2027-03-01'),
+      } })
+    }), /row-level security|P2004|P2010/i)
   })
 
   it('isolates read access in both directions without relying on API filters', async () => {
     for (let i = 0; i < 2; i++) {
       await asCompany(companies[i], async tx => {
         assert.deepEqual((await tx.client.findMany({ select: { id: true } })).map(x => x.id), [clients[i]])
+        assert.deepEqual((await tx.trip.findMany({ select: { id: true } })).map(x => x.id), [trips[i]])
         assert.deepEqual((await tx.reservation.findMany({ select: { id: true } })).map(x => x.id),
           [reservations[i]])
         assert.equal(await tx.client.findUnique({ where: { id: clients[1 - i] } }), null)
+        assert.equal(await tx.trip.findUnique({ where: { id: trips[1 - i] } }), null)
         assert.equal(await tx.reservation.findUnique({ where: { id: reservations[1 - i] } }), null)
       })
     }
