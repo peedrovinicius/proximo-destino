@@ -1,0 +1,45 @@
+name: Isolated Neon HTTP rehearsal
+
+# Temporary opt-in rehearsal authorized by the owner. Only changes to this
+# workflow on the draft feature branch trigger it; main/production are excluded.
+on:
+  push:
+    branches: [feat/company-foundation]
+    paths: [.github/workflows/neon-http-rehearsal.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: isolated-neon-http-rehearsal
+  cancel-in-progress: false
+
+jobs:
+  isolated-http:
+    if: github.repository == 'peedrovinicius/proximo-destino' && github.ref == 'refs/heads/feat/company-foundation'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install without rehearsal credentials
+        run: npm install --no-audit --no-fund
+      - name: Generate Prisma client and build
+        run: |
+          npm run prisma:generate
+          npm run build
+      - name: Run real HTTP proof against the bounded disposable Neon database
+        env:
+          NEON_HTTP_OWNER_URL: ${{ secrets.NEON_HTTP_OWNER_URL }}
+        run: node scripts/neon-http-rehearsal.mjs
+      - name: Record proof boundary
+        if: always()
+        run: |
+          echo 'Only the temporary branch and random empty rehearsal database are accepted. Production is excluded by the target guard. See the preceding step for result and cleanup confirmation.' >> "$GITHUB_STEP_SUMMARY"
