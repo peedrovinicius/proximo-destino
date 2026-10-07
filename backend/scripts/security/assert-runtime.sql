@@ -59,6 +59,48 @@ BEGIN
     RAISE EXCEPTION 'GATE_RUNTIME: tabela sensivel sem RLS';
   END IF;
 
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_proc fn
+    JOIN pg_namespace n ON n.oid = fn.pronamespace
+    WHERE n.nspname = 'public'
+      AND fn.proname = 'company_tenant_authorized'
+      AND fn.prosecdef
+      AND fn.provolatile = 's'
+  ) THEN
+    RAISE EXCEPTION 'GATE_RUNTIME: funcao de autorizacao tenant ausente ou insegura';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM (VALUES
+      ('Client','tenant_session_client'),
+      ('Companion','tenant_session_companion'),
+      ('Trip','tenant_session_trip'),
+      ('Reservation','tenant_session_reservation'),
+      ('ReservationPassenger','tenant_session_reservation_passenger'),
+      ('SeatAssignment','tenant_session_seat_assignment'),
+      ('PurchaseOrder','tenant_session_purchase_order'),
+      ('Quote','tenant_session_quote'),
+      ('QuoteItem','tenant_session_quote_item'),
+      ('ReservationService','tenant_session_reservation_service'),
+      ('FinancePlan','tenant_session_finance_plan'),
+      ('Installment','tenant_session_installment'),
+      ('TravelDocument','tenant_session_travel_document'),
+      ('ManualPayment','tenant_session_manual_payment'),
+      ('ClientCreditTransaction','tenant_session_client_credit')
+    ) AS required(table_name, policy_name)
+    LEFT JOIN pg_policies p
+      ON p.schemaname = 'public'
+      AND p.tablename = required.table_name
+      AND p.policyname = required.policy_name
+      AND p.cmd = 'ALL'
+      AND 'public' = ANY(p.roles)
+    WHERE p.policyname IS NULL
+  ) THEN
+    RAISE EXCEPTION 'GATE_RUNTIME: politica tenant por sessao ausente';
+  END IF;
+
   -- Políticas USING(true)/WITH CHECK(true) não isolam tenants, mesmo com
   -- relrowsecurity=true. Detectar as que se aplicam ao runtime ou PUBLIC.
   IF EXISTS (
