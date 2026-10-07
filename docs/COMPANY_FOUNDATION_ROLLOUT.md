@@ -568,3 +568,10 @@ disponível retorna somente nomes de variáveis. Neon exige project_id e não
 oferece listagem de projetos nessa conexão. Faltam o ID do projeto Neon,
 armazenamento externo configurado e custódia recuperável das chaves para validar
 runtime real e backup real. Ensaios sintéticos não encerram essas pendências.
+
+O usuário forneceu depois o ID `mute-mode-81774877`. O ensaio isolado no Neon
+aplicou as 13 migrations pendentes e validou o gate e isolamento SQL A/B sob
+papel NOLOGIN restrito. Produção continuou com 27 migrations e sem esse papel.
+Ver [evidências e limites do ensaio](NEON_RUNTIME_REHEARSAL_2026-10-07.md).
+A limitação de identificar o projeto foi resolvida; conexão independente de
+runtime/HTTP e backup externo real continuam pendentes.
