@@ -107,7 +107,7 @@ describe('papel runtime sem bypass em PostgreSQL isolado', () => {
       '--file=scripts/security/check-runtime.sql'], { encoding: 'utf8', stdio: 'pipe' })
     const restricted = check(role)
     assert.ok(restricted.split('\n').includes('t|f|t|t|t|t|t|t'), restricted)
-    assert.ok(restricted.split('\n').includes('12'), restricted)
+    assert.ok(restricted.split('\n').includes('13'), restricted)
     const owner = check()
     assert.equal(owner.split('\n').includes('t|f|t|t|t|t|t|t'), false)
     const [access] = await prisma.$queryRaw<Array<{ forbidden: boolean }>>`
@@ -119,21 +119,21 @@ describe('papel runtime sem bypass em PostgreSQL isolado', () => {
       `--command=SET ROLE "${role}"`, '--file=scripts/security/assert-runtime.sql'],
     { encoding: 'utf8' })
 
-  it('bloqueia produção quando Trip ainda não tem RLS', () => {
-    const gate = productionGate()
-    assert.equal(gate.status, 3, gate.stderr)
-    assert.match(gate.stderr, /GATE_RUNTIME: tabela sensivel sem RLS/)
-  })
-
-  it('rejeita políticas RLS permissivas, mesmo se todas as tabelas tiverem RLS', async () => {
-    // Simulates an RLS migration in the disposable database only; always revert.
-    await prisma.$executeRawUnsafe('ALTER TABLE "Trip" ENABLE ROW LEVEL SECURITY')
+  it('bloqueia produção se Trip perder RLS mesmo após a migração', async () => {
+    // Never alter production; this suite uses a disposable local test database.
+    await prisma.$executeRawUnsafe('ALTER TABLE "Trip" DISABLE ROW LEVEL SECURITY')
     try {
       const gate = productionGate()
       assert.equal(gate.status, 3, gate.stderr)
-      assert.match(gate.stderr, /GATE_RUNTIME: politica RLS permissiva para tabela sensivel/)
+      assert.match(gate.stderr, /GATE_RUNTIME: tabela sensivel sem RLS/)
     } finally {
-      await prisma.$executeRawUnsafe('ALTER TABLE "Trip" DISABLE ROW LEVEL SECURITY')
+      await prisma.$executeRawUnsafe('ALTER TABLE "Trip" ENABLE ROW LEVEL SECURITY')
     }
+  })
+
+  it('rejeita políticas RLS permissivas do papel de ensaio', () => {
+    const gate = productionGate()
+    assert.equal(gate.status, 3, gate.stderr)
+    assert.match(gate.stderr, /GATE_RUNTIME: politica RLS permissiva para tabela sensivel/)
   })
 })
