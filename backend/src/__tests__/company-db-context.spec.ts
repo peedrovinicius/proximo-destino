@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, describe, it } from 'node:test'
+import type { Prisma } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { CompanyScopeService, type VerifiedCompanyScope } from '../tenancy/company-scope.service'
 import { lockCompanyRead, lockCompanyWrite } from '../tenancy/company-write-lock'
@@ -52,7 +53,7 @@ describe('transaction-local company database context', () => {
     }
   })
 
-  const readContext = (tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0]) => tx.$queryRaw<Array<{
+  const readContext = (tx: Prisma.TransactionClient) => tx.$queryRaw<Array<{
     companyId: string | null; userId: string | null; sessionId: string | null
   }>>`SELECT NULLIF(current_setting('app.company_id', true), '') AS "companyId",
       NULLIF(current_setting('app.user_id', true), '') AS "userId",
