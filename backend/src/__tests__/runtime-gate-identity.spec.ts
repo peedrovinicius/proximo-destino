@@ -79,6 +79,76 @@ describe('runtime production gate: synthetic restricted LOGIN', () => {
     }
   })
 
+  it('rejects a role-scoped permissive RLS policy that exposes a foreign row without true literals', async () => {
+    const client = await owner.client.create({ data: { fullName: `Synthetic RLS probe ${suffix}` } })
+    try {
+      const count = () => spawnSync('psql', [runtimeUrl.toString(), '-X', '-A', '-t',
+        '--set=ON_ERROR_STOP=1',
+        `--command=SELECT count(*) FROM public."Client" WHERE "id" = '${client.id}'`],
+      { encoding: 'utf8', timeout: 10_000 })
+      const before = count()
+      assert.equal(before.status, 0, before.stderr)
+      assert.equal(before.stdout.trim(), '0')
+      await owner.$executeRawUnsafe(`CREATE POLICY "synthetic_rls_leak_${suffix}"
+        ON public."Client" FOR SELECT TO "${role}"
+        USING ("id" IS NOT NULL)`)
+      try {
+        // PostgreSQL OR-combines this new permissive policy with the
+        // persisted-session policy; the row is now visible without any session.
+        const exposed = count()
+        assert.equal(exposed.status, 0, exposed.stderr)
+        assert.equal(exposed.stdout.trim(), '1')
+        const gate = runGate()
+        assert.notEqual(gate.status, 0)
+        assert.match(gate.stderr, /GATE_RUNTIME: politica RLS permissiva nao revisada ou enfraquecida/)
+      } finally {
+        await owner.$executeRawUnsafe(`DROP POLICY IF EXISTS "synthetic_rls_leak_${suffix}" ON public."Client"`)
+      }
+      const safe = count()
+      assert.equal(safe.status, 0, safe.stderr)
+      assert.equal(safe.stdout.trim(), '0')
+      assert.equal(runGate().status, 0)
+    } finally {
+      await owner.client.delete({ where: { id: client.id } })
+    }
+  })
+
+  it('rejects additional PUBLIC permissive policies and permits harmless restrictive policies', async () => {
+    await owner.$executeRawUnsafe(`CREATE POLICY "synthetic_public_leak_${suffix}"
+      ON public."Trip" FOR SELECT TO PUBLIC USING (1 = 1)`)
+    try {
+      const gate = runGate()
+      assert.notEqual(gate.status, 0)
+      assert.match(gate.stderr, /GATE_RUNTIME: politica RLS permissiva nao revisada ou enfraquecida/)
+    } finally {
+      await owner.$executeRawUnsafe(`DROP POLICY IF EXISTS "synthetic_public_leak_${suffix}" ON public."Trip"`)
+    }
+    await owner.$executeRawUnsafe(`CREATE POLICY "synthetic_restrict_${suffix}"
+      ON public."Trip" AS RESTRICTIVE FOR SELECT TO "${role}" USING (false)`)
+    try {
+      const gate = runGate()
+      assert.equal(gate.status, 0, gate.stderr)
+    } finally {
+      await owner.$executeRawUnsafe(`DROP POLICY IF EXISTS "synthetic_restrict_${suffix}" ON public."Trip"`)
+    }
+  })
+
+  it('rejects a reviewed tenant policy if its persisted-session check is replaced', async () => {
+    await owner.$executeRawUnsafe(`ALTER POLICY "tenant_session_client" ON public."Client"
+      USING ("id" IS NOT NULL) WITH CHECK ("id" IS NOT NULL)`)
+    try {
+      const gate = runGate()
+      assert.notEqual(gate.status, 0)
+      assert.match(gate.stderr, /GATE_RUNTIME: politica RLS permissiva nao revisada ou enfraquecida/)
+    } finally {
+      await owner.$executeRawUnsafe(`ALTER POLICY "tenant_session_client" ON public."Client"
+        USING (public.company_tenant_authorized("companyId"))
+        WITH CHECK (public.company_tenant_authorized("companyId"))`)
+    }
+    const recovered = runGate()
+    assert.equal(recovered.status, 0, recovered.stderr)
+  })
+
   it('rejects INSERT into tenant memberships regardless of RLS or apparent read-only access', async () => {
     await owner.$executeRawUnsafe(`GRANT INSERT ON TABLE public."CompanyMembership" TO "${role}"`)
     try {
