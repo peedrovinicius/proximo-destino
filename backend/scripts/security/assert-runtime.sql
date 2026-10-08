@@ -116,6 +116,27 @@ BEGIN
     RAISE EXCEPTION 'GATE_RUNTIME: integridade de funcao SECURITY DEFINER';
   END IF;
 
+  -- PostgreSQL gives new functions EXECUTE to PUBLIC unless explicitly
+  -- revoked. has_function_privilege(current_user, ..., 'EXECUTE') alone is
+  -- therefore insufficient: any unrelated SQL login can call a SECURITY
+  -- DEFINER helper, despite not belonging to the application runtime.
+  -- Evaluate the effective ACL (including proacl IS NULL defaults), not only
+  -- explicit aclitems. This gate is READ ONLY: rollout must GRANT the reviewed
+  -- runtime principal first, then REVOKE PUBLIC through approved DBA steps.
+  IF EXISTS (
+    SELECT 1 FROM pg_proc fn
+    JOIN pg_namespace n ON n.oid = fn.pronamespace
+    CROSS JOIN LATERAL aclexplode(
+      COALESCE(fn.proacl, acldefault('f', fn.proowner))
+    ) granted
+    WHERE n.nspname = 'public'
+      AND fn.proname IN ('company_tenant_authorized', 'company_write_authorized')
+      AND granted.grantee = 0
+      AND granted.privilege_type = 'EXECUTE'
+  ) THEN
+    RAISE EXCEPTION 'GATE_RUNTIME: EXECUTE via PUBLIC em funcao SECURITY DEFINER';
+  END IF;
+
   IF EXISTS (
     SELECT 1
     FROM (VALUES
