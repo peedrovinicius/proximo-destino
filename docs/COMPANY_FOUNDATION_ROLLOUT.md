@@ -44,6 +44,39 @@
 O script de provisionamento não foi executado. Nenhuma migração foi aplicada
 ao banco de produção nesta etapa.
 
+## Inventário de funções privilegiadas e poderes DDL do runtime
+
+O gate somente leitura `scripts/security/assert-runtime.sql` faz inventário
+**fail-closed** das funções `SECURITY DEFINER` no schema `public`. Apenas
+`company_tenant_authorized(text)` e
+`company_write_authorized(text,text,text,text)` pertencem à lista
+revisada: suas assinaturas, corpos e permissões são verificados nos
+controles anteriores. Outra função privilegiada no mesmo schema exige
+revisão de código e mudança deliberada do inventário; a existência de
+uma função nova não deve autorizar seu uso automaticamente.
+
+O gate também recusa `CREATE` efetivo **no banco de dados inteiro**
+ou em **qualquer schema não pertencente ao PostgreSQL** (não apenas
+`public`). O runtime não deve poder criar novos schemas ou rotinas
+administráveis sob outros namespaces. Esses privilégios são
+verificados sem alterar o banco de destino, e o gate continua recusando
+os poderes DDL preexistentes.
+
+Os ensaios em PostgreSQL descartável incluem: (1) criar função
+`SECURITY DEFINER` extra, acessível por `PUBLIC`, que devolve a
+permissão de leitura do proprietário sobre `AuthSession`, embora um
+login restrito não a tenha; (2) negar essa função pelo inventário,
+mesmo quando `PUBLIC` é revogado; (3) conceder e revogar `CREATE`
+somente no banco sintético; e (4) repetir para um schema fictício fora
+de `public`. Cada cenário restaura o estado no `finally` e exige
+que o gate original volte a passar.
+
+A validação opera apenas no schema `public` para inventário de
+`SECURITY DEFINER`; eventuais funções de extensões em outros schemas
+requerem avaliação operacional separada. Não há migration nem alteração
+de grants reais. A compatibilidade de runtime **efetivo** só poderá
+ser aprovada em homologação controlada, sem expor credenciais.
+
 ## EXECUTE herdado de PUBLIC nas funções SECURITY DEFINER
 
 O PostgreSQL concede `EXECUTE` a `PUBLIC` em funções recém-criadas por
