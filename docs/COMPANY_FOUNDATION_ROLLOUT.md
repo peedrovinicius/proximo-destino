@@ -44,6 +44,41 @@
 O script de provisionamento não foi executado. Nenhuma migração foi aplicada
 ao banco de produção nesta etapa.
 
+## Integridade das expressões RLS revisadas (USING e WITH CHECK)
+
+A lista de políticas revisadas não deve confiar somente na **presença
+textual** de `company_tenant_authorized`. Alterar uma política já aprovada
+para `USING (company_tenant_authorized("companyId") OR "id" IS NOT NULL)`
+permite acesso sem sessão, mesmo com nome correto e função preservada. A
+semântica de `WITH CHECK` também precisa ser mantida para bloquear gravações
+indevidas.
+
+O `scripts/security/assert-runtime.sql` agora verifica assinaturas MD5
+**fixas no código, revisadas**, geradas sobre as expressões de
+`pg_policies.qual` e `pg_policies.with_check`, separadas por `chr(31)`.
+A comparação cobre as 15 políticas `tenant_session_*`, inclusive as
+subconsultas com vínculos entre tabelas e o `OR` intencional dos créditos
+de clientes. O gate é somente leitura e **não aprende** o estado atual do
+banco como padrão seguro. Sem correspondência, falha com
+`GATE_RUNTIME: expressao RLS aprovada foi alterada`.
+
+O teste de regressão roda com login PostgreSQL efêmero em banco descartável.
+Comprova que uma linha fictícia está inicialmente invisível, fica visível
+quando uma cláusula `OR` é adicionada à política de cliente e volta a
+ficar oculta após a restauração. A verificação deve reprovar tanto o
+`USING` quanto o `WITH CHECK` adulterados e detectar também alteração
+numa política complexa de créditos. Todas as mudanças são revertidas em
+`finally`.
+
+As assinaturas capturam a representação normalizada pelo PostgreSQL da
+versão revisada da migration `202610071900_session_backed_tenant_rls`.
+Uma mudança do desparser entre versões de PostgreSQL pode exigir revisão
+manual e atualização das assinaturas: o padrão é **falhar fechado**,
+nunca redefinir automaticamente o baseline. Hashes são evidência de
+integridade de expressão, não prova de correção semântica da função
+`company_tenant_authorized` nem substituem execução com credencial real,
+análise de RLS adicional e aprovação da issue #44.
+
 ## Inspeção de políticas RLS permissivas concorrentes
 
 O gate `scripts/security/assert-runtime.sql` também recusa **qualquer nova

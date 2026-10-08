@@ -192,6 +192,46 @@ BEGIN
     RAISE EXCEPTION 'GATE_RUNTIME: politica RLS permissiva nao revisada ou enfraquecida';
   END IF;
 
+  -- Exact reviewed PostgreSQL expression fingerprints. The earlier
+  -- allowlist verifies policy names and that the guard function appears,
+  -- but it cannot detect: tenant_authorized(companyId) OR id IS NOT NULL.
+  -- A canonical digest of BOTH USING and WITH CHECK closes that gap,
+  -- including nested parent joins and the legitimate ClientCredit OR.
+  --
+  -- Baseline: reviewed 202610071900_session_backed_tenant_rls migration,
+  -- captured from pg_policies on CI's disposable PostgreSQL. No runtime-
+  -- generated/learned baseline: a compromised policy must never self-certify.
+  -- PostgreSQL deparser changes can fail closed after a major upgrade;
+  -- rebaseline is permitted only with a manual review of migration SQL.
+  IF EXISTS (
+    SELECT 1 FROM (VALUES
+      ('Client', 'tenant_session_client', 'f4667708bd21036303d13e6c4fd55c71'),
+      ('ClientCreditTransaction', 'tenant_session_client_credit', 'c97adc205714687c06bbe5c4a697ca9f'),
+      ('Companion', 'tenant_session_companion', 'cea2a7dbc10d8ffbb46e6a8854d3fe2b'),
+      ('FinancePlan', 'tenant_session_finance_plan', '194a833d67618735e7d71052d178acc1'),
+      ('Installment', 'tenant_session_installment', '4a17c0473d864fc579702a339ddf997b'),
+      ('ManualPayment', 'tenant_session_manual_payment', 'a86b096072a2a0367e02ac93fc4be083'),
+      ('PurchaseOrder', 'tenant_session_purchase_order', 'e22239d3c0054b6aba13c9b0bd0d1d8d'),
+      ('Quote', 'tenant_session_quote', '86f6ceba00f957cc1a6a296fcae4029d'),
+      ('QuoteItem', 'tenant_session_quote_item', '93017e90283d1796c18860574baac40a'),
+      ('Reservation', 'tenant_session_reservation', 'f4667708bd21036303d13e6c4fd55c71'),
+      ('ReservationPassenger', 'tenant_session_reservation_passenger', 'e86858580f7328ac131d5e53311edbe1'),
+      ('ReservationService', 'tenant_session_reservation_service', 'ed810eb5c5fce2422282dd8aa0449bcc'),
+      ('SeatAssignment', 'tenant_session_seat_assignment', '156fec71c58645511ab17bc48368c817'),
+      ('TravelDocument', 'tenant_session_travel_document', '0143db501780448ac7da7d61e9653558'),
+      ('Trip', 'tenant_session_trip', 'f4667708bd21036303d13e6c4fd55c71')
+    ) AS canonical(table_name, policy_name, expression_md5)
+    LEFT JOIN pg_policies p
+      ON p.schemaname = 'public'
+      AND p.tablename = canonical.table_name
+      AND p.policyname = canonical.policy_name
+    WHERE p.policyname IS NULL
+      OR md5(coalesce(p.qual, '') || chr(31) || coalesce(p.with_check, ''))
+           IS DISTINCT FROM canonical.expression_md5
+  ) THEN
+    RAISE EXCEPTION 'GATE_RUNTIME: expressao RLS aprovada foi alterada';
+  END IF;
+
   -- The runtime must not modify persisted authorization directly. All
   -- mutations to company identity/session/membership require a separately
   -- reviewed path; these privileges can bypass API-level tenancy guards.
