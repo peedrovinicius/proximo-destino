@@ -21,19 +21,21 @@ export class CompanyScopeService {
       where: { id: sessionId, userId, revokedAt: null, expiresAt: { gt: new Date() } },
       select: {
         id: true, userId: true, companyId: true,
-        user: { select: { role: true, isActive: true } },
+        user: { select: { role: true, isActive: true, companyManaged: true } },
         company: { select: {
           id: true, status: true,
           memberships: { where: { userId, isActive: true }, select: { role: true } },
         } },
       },
     })
-    if (!session || !session.companyId || !session.user.isActive ||
+    if (!session || !session.companyId || !session.user.isActive || !session.user.companyManaged ||
       session.company?.status !== 'ACTIVE' || session.company.id !== session.companyId) throw this.denied()
     const role = session.user.role
     if (role !== 'ADMIN' && role !== 'AGENT' && role !== 'FINANCE') throw this.denied()
     // Prevent stale global privileges or a revoked/changed membership from silently
     // granting a different role while legacy permissions still use User.role.
+    // Reject legacy identities even if an old/forged session and membership
+    // appear valid. RLS and lockCompanyRead already demand this marker too.
     const membership = session.company.memberships
     if (membership.length !== 1 || membership[0].role !== role) throw this.denied()
     return Object.freeze({ companyId: session.companyId, userId: session.userId,
