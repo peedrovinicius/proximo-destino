@@ -148,7 +148,7 @@ describe('papel runtime sem bypass em PostgreSQL isolado', () => {
     }
   })
 
-  it('rejeita políticas RLS permissivas do papel de ensaio', () => {
+  it('rejeita políticas RLS permissivas do papel de ensaio', async () => {
     const gate = await productionGate()
     assert.equal(gate.status, 3, gate.stderr)
     assert.match(gate.stderr, /GATE_RUNTIME: politica RLS permissiva para tabela sensivel/)
