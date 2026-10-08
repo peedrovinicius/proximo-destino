@@ -12,7 +12,12 @@ describe('runtime production gate: synthetic restricted LOGIN', () => {
   const role = `runtime_gate_${suffix}`
   let connected = false
   let roleCreated = false
+  let publicExecuteRevoked = false
   let runtimeUrl: URL
+  const authorizers = [
+    'public.company_tenant_authorized(text)',
+    'public.company_write_authorized(text,text,text,text)',
+  ] as const
 
   const runGate = () => spawnSync('psql', [runtimeUrl.toString(), '-X',
     '--set=ON_ERROR_STOP=1', '--file=scripts/security/assert-runtime.sql'],
@@ -32,6 +37,13 @@ describe('runtime production gate: synthetic restricted LOGIN', () => {
     await owner.$executeRawUnsafe(`GRANT USAGE ON SCHEMA public TO "${role}"`)
     await owner.$executeRawUnsafe(`GRANT SELECT, INSERT, UPDATE
       ON TABLE public."Client", public."Trip", public."Reservation" TO "${role}"`)
+    // Safe order: grant to the actual runtime LOGIN before removing the
+    // migration's PostgreSQL-default PUBLIC grant. CI database only.
+    await owner.$executeRawUnsafe(`GRANT EXECUTE ON FUNCTION
+      ${authorizers.join(', ')} TO "${role}"`)
+    await owner.$executeRawUnsafe(`REVOKE EXECUTE ON FUNCTION
+      ${authorizers.join(', ')} FROM PUBLIC`)
+    publicExecuteRevoked = true
     url.username = role
     url.password = password
     url.searchParams.delete('schema')
@@ -41,6 +53,12 @@ describe('runtime production gate: synthetic restricted LOGIN', () => {
   after(async () => {
     if (!connected) return
     try {
+      // Restore the migration's original PUBLIC privileges ONLY inside the
+      // disposable database; never touch a managed/runtime database.
+      if (publicExecuteRevoked) {
+        await owner.$executeRawUnsafe(`GRANT EXECUTE ON FUNCTION
+          ${authorizers.join(', ')} TO PUBLIC`)
+      }
       if (roleCreated) {
         await owner.$executeRawUnsafe(`DROP OWNED BY "${role}"`)
         await owner.$executeRawUnsafe(`DROP ROLE "${role}"`)
@@ -60,6 +78,63 @@ describe('runtime production gate: synthetic restricted LOGIN', () => {
     { encoding: 'utf8', timeout: 10_000 })
     assert.equal(probe.status, 0, probe.stderr)
     assert.equal(probe.stdout.trim(), `${role}|${role}|0`)
+  })
+
+  it('proves PUBLIC EXECUTE exposure and rejects it without breaking explicit runtime access', async () => {
+    const stranger = `untrusted_sql_${suffix}`
+    const password = randomUUID()
+    const strangerUrl = new URL(runtimeUrl)
+    strangerUrl.username = stranger
+    strangerUrl.password = password
+    await owner.$executeRawUnsafe(`CREATE ROLE "${stranger}" LOGIN
+      PASSWORD '${password}' NOSUPERUSER NOBYPASSRLS NOINHERIT`)
+    try {
+      await owner.$executeRawUnsafe(`GRANT USAGE ON SCHEMA public TO "${stranger}"`)
+      const calls = [
+        { signature: authorizers[0],
+          expression: "public.company_tenant_authorized('synthetic-nonexistent-company')" },
+        { signature: authorizers[1],
+          expression: "public.company_write_authorized('missing','missing','missing','ADMIN')" },
+      ] as const
+      const invoke = (url: URL, expression: string) =>
+        spawnSync('psql', [url.toString(), '-X', '-A', '-t',
+          '--set=ON_ERROR_STOP=1', `--command=SELECT ${expression}`],
+        { encoding: 'utf8', timeout: 10_000 })
+      for (const { signature, expression } of calls) {
+        const denied = invoke(strangerUrl, expression)
+        assert.notEqual(denied.status, 0, 'Unrelated login must not invoke SECURITY DEFINER')
+        assert.match(denied.stderr, /permission denied for function/i)
+        const authorized = invoke(runtimeUrl, expression)
+        assert.equal(authorized.status, 0, authorized.stderr)
+        assert.equal(authorized.stdout.trim(), 'f', 'No persisted tenant authorization exists')
+        assert.equal(runGate().status, 0)
+
+        // Re-create the unsafe PostgreSQL function-default grant.
+        await owner.$executeRawUnsafe(`GRANT EXECUTE ON FUNCTION ${signature} TO PUBLIC`)
+        try {
+          const leaked = invoke(strangerUrl, expression)
+          assert.equal(leaked.status, 0, leaked.stderr)
+          assert.equal(leaked.stdout.trim(), 'f', 'The untrusted login can reach the definer')
+          const unsafe = runGate()
+          assert.notEqual(unsafe.status, 0, 'The runtime gate must reject PUBLIC execution')
+          assert.match(unsafe.stderr, /GATE_RUNTIME: EXECUTE via PUBLIC em funcao SECURITY DEFINER/)
+        } finally {
+          await owner.$executeRawUnsafe(`REVOKE EXECUTE ON FUNCTION ${signature} FROM PUBLIC`)
+        }
+
+        const restored = invoke(strangerUrl, expression)
+        assert.notEqual(restored.status, 0)
+        assert.match(restored.stderr, /permission denied for function/i)
+        assert.equal(invoke(runtimeUrl, expression).status, 0)
+        assert.equal(runGate().status, 0)
+      }
+    } finally {
+      for (const signature of authorizers) {
+        await owner.$executeRawUnsafe(`REVOKE EXECUTE ON FUNCTION ${signature} FROM PUBLIC`)
+      }
+      await owner.$executeRawUnsafe(`DROP OWNED BY "${stranger}"`)
+      await owner.$executeRawUnsafe(`DROP ROLE "${stranger}"`)
+    }
   })
 
   it('rejects a tampered tenant SECURITY DEFINER function that exposes a synthetic row', async () => {
