@@ -137,6 +137,78 @@ describe('runtime production gate: synthetic restricted LOGIN', () => {
     }
   })
 
+  it('rejects an unreviewed PUBLIC SECURITY DEFINER that runs with owner privileges', async () => {
+    const helper = `unreviewed_authority_${suffix}`
+    const signature = `public."${helper}"()`
+    const sql = (expression: string) => spawnSync('psql', [runtimeUrl.toString(),
+      '-X', '-A', '-t', '--set=ON_ERROR_STOP=1', `--command=SELECT ${expression}`],
+    { encoding: 'utf8', timeout: 10_000 })
+
+    // An unrelated restricted LOGIN cannot read persisted sessions directly.
+    const direct = sql(`has_table_privilege(current_user, 'public."AuthSession"', 'SELECT')`)
+    assert.equal(direct.status, 0, direct.stderr)
+    assert.equal(direct.stdout.trim(), 'f')
+    assert.equal(runGate().status, 0)
+
+    await owner.$executeRawUnsafe(`CREATE FUNCTION ${signature}
+      RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER
+      SET search_path = pg_catalog AS
+      'SELECT has_table_privilege(current_user, ''public."AuthSession"'', ''SELECT'')'`)
+    try {
+      // PostgreSQL grants EXECUTE to PUBLIC by default. A caller can now
+      // borrow the function owner's privilege without a valid tenant context.
+      const escalated = sql(signature)
+      assert.equal(escalated.status, 0, escalated.stderr)
+      assert.equal(escalated.stdout.trim(), 't')
+      const gate = runGate()
+      assert.notEqual(gate.status, 0)
+      assert.match(gate.stderr, /GATE_RUNTIME: funcao SECURITY DEFINER nao revisada/)
+
+      // Even if that new definer is not publicly invocable, it must still
+      // undergo explicit review rather than silently enter the inventory.
+      await owner.$executeRawUnsafe(`REVOKE EXECUTE ON FUNCTION ${signature} FROM PUBLIC`)
+      const closed = runGate()
+      assert.notEqual(closed.status, 0)
+      assert.match(closed.stderr, /GATE_RUNTIME: funcao SECURITY DEFINER nao revisada/)
+    } finally {
+      await owner.$executeRawUnsafe(`DROP FUNCTION IF EXISTS ${signature}`)
+    }
+    assert.equal(runGate().status, 0)
+  })
+
+  it('rejects database-level CREATE granted to the otherwise restricted runtime', async () => {
+    const [row] = await owner.$queryRaw<Array<{ databaseName: string }>>`
+      SELECT current_database() AS "databaseName"
+    `
+    assert.ok(row.databaseName)
+    const database = `"${row.databaseName.replaceAll('"', '""')}"`
+    assert.equal(runGate().status, 0)
+    await owner.$executeRawUnsafe(`GRANT CREATE ON DATABASE ${database} TO "${role}"`)
+    try {
+      const gate = runGate()
+      assert.notEqual(gate.status, 0)
+      assert.match(gate.stderr, /GATE_RUNTIME: runtime possui DDL, ownership ou privilegios elevados/)
+    } finally {
+      await owner.$executeRawUnsafe(`REVOKE CREATE ON DATABASE ${database} FROM "${role}"`)
+    }
+    assert.equal(runGate().status, 0)
+  })
+
+  it('rejects CREATE on a non-public application schema', async () => {
+    const schema = `synthetic_runtime_schema_${suffix}`
+    await owner.$executeRawUnsafe(`CREATE SCHEMA "${schema}"`)
+    try {
+      await owner.$executeRawUnsafe(`GRANT USAGE, CREATE ON SCHEMA "${schema}" TO "${role}"`)
+      const gate = runGate()
+      assert.notEqual(gate.status, 0)
+      assert.match(gate.stderr, /GATE_RUNTIME: runtime possui DDL, ownership ou privilegios elevados/)
+    } finally {
+      await owner.$executeRawUnsafe(`REVOKE USAGE, CREATE ON SCHEMA "${schema}" FROM "${role}"`)
+      await owner.$executeRawUnsafe(`DROP SCHEMA "${schema}"`)
+    }
+    assert.equal(runGate().status, 0)
+  })
+
   it('rejects a tampered tenant SECURITY DEFINER function that exposes a synthetic row', async () => {
     const original = await owner.$queryRaw<Array<{ definition: string }>>`
       SELECT pg_get_functiondef('public.company_tenant_authorized(text)'::regprocedure) AS definition
