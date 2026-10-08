@@ -25,7 +25,16 @@ BEGIN
     RAISE EXCEPTION 'GATE_RUNTIME: papel com poderes administrativos ou herança de funções';
   END IF;
 
-  IF has_schema_privilege(current_user, 'public', 'CREATE')
+  -- A database-level CREATE grant allows the runtime to create arbitrary
+  -- non-public schemas; schema-level CREATE allows planting other functions.
+  -- Inspect effective privileges on *all* non-system schemas, not just public.
+  IF has_database_privilege(current_user, current_database(), 'CREATE')
+    OR EXISTS (
+      SELECT 1 FROM pg_namespace n
+      WHERE n.nspname <> 'information_schema'
+        AND n.nspname !~ '^pg_'
+        AND has_schema_privilege(current_user, n.oid, 'CREATE')
+    )
     OR EXISTS (
       SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
       WHERE n.nspname = 'public' AND pg_has_role(current_user, c.relowner, 'MEMBER')
@@ -114,6 +123,24 @@ BEGIN
       AND fn.proname IN ('company_tenant_authorized', 'company_write_authorized')
   ) <> 2 THEN
     RAISE EXCEPTION 'GATE_RUNTIME: integridade de funcao SECURITY DEFINER';
+  END IF;
+
+  -- Unknown SECURITY DEFINER routines are a distinct authority boundary.
+  -- Auditing only two known functions leaves any later definer able to run
+  -- with its owner's privileges (potentially via default PUBLIC EXECUTE).
+  -- Fail closed on all unreviewed public-schema definers; adding a reviewed
+  -- function requires a deliberate migration, source audit and gate update.
+  IF EXISTS (
+    SELECT 1 FROM pg_proc fn
+    JOIN pg_namespace n ON n.oid = fn.pronamespace
+    WHERE n.nspname = 'public'
+      AND fn.prosecdef
+      AND fn.oid NOT IN (
+        'public.company_tenant_authorized(text)'::regprocedure,
+        'public.company_write_authorized(text,text,text,text)'::regprocedure
+      )
+  ) THEN
+    RAISE EXCEPTION 'GATE_RUNTIME: funcao SECURITY DEFINER nao revisada';
   END IF;
 
   -- PostgreSQL gives new functions EXECUTE to PUBLIC unless explicitly
