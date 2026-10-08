@@ -522,6 +522,34 @@ export type AdminPaymentsDashboard = {
   manualPayments: AdminManualPayment[]
 }
 
+export type CompanyFinanceDiscrepancyIssue =
+  | 'ORDER_AMOUNT_MISMATCH'
+  | 'REFUND_STATUS_MISMATCH'
+  | 'PASSENGER_COUNT_MISMATCH'
+  | 'PROVIDER_REFERENCE_MISSING'
+  | 'INVALID_MANUAL_AMOUNT'
+  | 'MANUAL_ASSOCIATION_MISMATCH'
+  | 'MIXED_PAYMENT_CHANNELS_REVIEW'
+
+export type CompanyFinanceDiscrepancyReportPage = {
+  reportOnly: true
+  pageScoped: true
+  providerContacted: false
+  dataModified: false
+  paymentsEnabled: false
+  pageSize: 50
+  scannedReservations: number
+  flaggedReservations: number
+  issueCount: number
+  nextCursor: string | null
+  divergences: Array<{
+    reservationId: string
+    issues: CompanyFinanceDiscrepancyIssue[]
+    online: { status: string; totalCents: number; refundedCents: number } | null
+    manual: { receivedCount: number; receivedCents: number; reversedCents: number }
+  }>
+}
+
 export type AdminReservationFinance = {
   reservation: {
     id: string
@@ -1076,6 +1104,12 @@ export const adminApi = {
 
   purchaseOrders: (token: string) =>
     adminFetch<AdminPaymentsDashboard>(token, '/admin/payments/orders'),
+
+  companyFinanceDiscrepancies: (token: string, after?: string, signal?: AbortSignal) =>
+    adminFetch<CompanyFinanceDiscrepancyReportPage>(
+      token, `/admin/payments/reconciliation/report${after ? `?after=${encodeURIComponent(after)}` : ''}`,
+      { method: 'GET', cache: 'no-store', signal },
+    ),
 
   paymentConnection: (token: string) =>
     adminFetch<PaymentConnectionStatus>(token, '/admin/payments/mercado-pago'),
