@@ -90,6 +90,65 @@ export class CompanyDataService {
     }, { isolationLevel: 'RepeatableRead' })
   }
 
+  /** Finance-only projection for one reservation. No checkout, receipt, refund or balance changes. */
+  async reservationFinanceSummary(userId: string, sessionId: string, id: string) {
+    const scope = await this.scopes.resolveSession(userId, sessionId)
+    if (scope.role === 'AGENT') throw new ForbiddenException('Perfil sem acesso ao financeiro da reserva')
+    return this.prisma.$transaction(async tx => {
+      await lockCompanyRead(tx, scope)
+      const reservation = await tx.reservation.findFirst({ where: { id, companyId: scope.companyId,
+        client: { companyId: scope.companyId }, trip: { companyId: scope.companyId } },
+        select: { id: true, status: true, passengerCount: true,
+          trip: { select: { priceCents: true } } } })
+      if (!reservation) throw new NotFoundException('Reserva não encontrada')
+
+      const order = await tx.purchaseOrder.findUnique({ where: { reservationId: id },
+        select: { status: true, totalCents: true, refundedCents: true } })
+      if (order && (order.totalCents < 0 || order.refundedCents < 0 ||
+        order.refundedCents > order.totalCents)) {
+        throw new ConflictException('Pedido financeiro inconsistente')
+      }
+      const manual = await tx.$queryRaw<{ status: string; count: bigint; amount: bigint; invalid: bigint }[]>`
+        SELECT m."status"::text AS status, COUNT(*) AS count, COALESCE(SUM(m."amountCents"), 0) AS amount,
+          COUNT(*) FILTER (WHERE m."amountCents" < 0
+            OR (m."financePlanId" IS NOT NULL AND (p."reservationId" IS DISTINCT FROM m."reservationId"
+              OR pq."reservationId" IS DISTINCT FROM m."reservationId"))
+            OR (m."installmentId" IS NOT NULL AND (ip."reservationId" IS DISTINCT FROM m."reservationId"
+              OR iq."reservationId" IS DISTINCT FROM m."reservationId"
+              OR (m."financePlanId" IS NOT NULL AND i."financePlanId" IS DISTINCT FROM m."financePlanId")))) AS invalid
+        FROM "ManualPayment" m
+        LEFT JOIN "FinancePlan" p ON p."id" = m."financePlanId"
+        LEFT JOIN "Quote" pq ON pq."id" = p."quoteId"
+        LEFT JOIN "Installment" i ON i."id" = m."installmentId"
+        LEFT JOIN "FinancePlan" ip ON ip."id" = i."financePlanId"
+        LEFT JOIN "Quote" iq ON iq."id" = ip."quoteId"
+        WHERE m."reservationId" = ${id}
+        GROUP BY m."status"`
+      const amounts = { receivedCount: 0, receivedCents: 0, reversedCount: 0, reversedCents: 0 }
+      for (const row of manual) {
+        if (row.invalid > 0n || !['RECEIVED', 'REVERSED'].includes(row.status)) {
+          throw new ConflictException('Recebimentos da reserva inconsistentes')
+        }
+        const count = Number(row.count), amount = Number(row.amount)
+        if (!Number.isSafeInteger(count) || !Number.isSafeInteger(amount)) {
+          throw new ConflictException('Valores da reserva excedem o limite seguro')
+        }
+        if (row.status === 'RECEIVED') {
+          amounts.receivedCount += count; amounts.receivedCents += amount
+        } else {
+          amounts.reversedCount += count; amounts.reversedCents += amount
+        }
+      }
+      if (Object.values(amounts).some(value => !Number.isSafeInteger(value))) {
+        throw new ConflictException('Valores da reserva excedem o limite seguro')
+      }
+      return { summaryOnly: true, operationalPaymentsEnabled: false, reservationId: reservation.id,
+        reservationStatus: reservation.status, passengerCount: reservation.passengerCount,
+        indicativeTripUnitPriceCents: reservation.trip.priceCents,
+        onlineOrder: order, manual: amounts }
+    }, { isolationLevel: 'RepeatableRead' })
+  }
+
   async search(userId: string, sessionId: string, rawQuery: string) {
     const scope = await this.scopes.resolveSession(userId, sessionId)
     if (scope.role === 'FINANCE') throw new ForbiddenException('Perfil sem acesso à pesquisa operacional')
