@@ -110,8 +110,7 @@ try {
           if (request.method() === 'GET') return respond(200, admins)
           assert.equal(request.method(), 'POST')
           const payload = request.postDataJSON()
-          assert.deepEqual(Object.keys(payload).sort(), ['displayName', 'email', 'password'])
-          assert.ok(payload.password.length >= 16)
+          assert.deepEqual(Object.keys(payload).sort(), ['displayName', 'email'])
           if (adminFails) { adminFails = false; return respond(503, { message: 'Falha sintética. Tente novamente.' }) }
           const admin = { id: 'synthetic-membership', isActive: false,
             user: { id: 'synthetic-admin', displayName: payload.displayName, email: payload.email, isActive: false } }
@@ -149,14 +148,14 @@ try {
     assert.equal(await page.getByLabel('Nome do administrador', { exact: true }).inputValue(), 'Responsável sintético')
     assert.equal(await page.getByLabel('E-mail de acesso', { exact: true }).inputValue(), 'responsavel@example.invalid')
     assert.equal(await page.locator('#company-admin-title').evaluate(el => document.activeElement === el), true)
-    await page.getByLabel('Senha inicial', { exact: true }).fill('Synthetic-password-only-for-test')
+    assert.equal(await page.getByLabel('Senha inicial', { exact: true }).count(), 0)
     await page.getByRole('button', { name: 'Cadastrar administrador pendente' }).click()
     await page.getByRole('alert').filter({ hasText: 'Falha sintética' }).waitFor()
-    assert.equal(await page.getByLabel('Senha inicial', { exact: true }).inputValue(), '')
+    assert.equal(await page.getByLabel('Senha inicial', { exact: true }).count(), 0)
     assert.equal(writes.length, 1); assert.equal(admins.length, 0)
     await page.getByLabel('Nome do administrador', { exact: true }).fill('Administrador sintético')
     await page.getByLabel('E-mail de acesso', { exact: true }).fill('admin@example.invalid')
-    await page.getByLabel('Senha inicial', { exact: true }).fill('Synthetic-password-only-for-test')
+    assert.equal(await page.getByLabel('Senha inicial', { exact: true }).count(), 0)
     await page.getByRole('button', { name: 'Cadastrar administrador pendente' }).click()
     await page.getByRole('heading', { name: 'Preparar convite de Agência sintética' }).waitFor()
     assert.equal(admins.length, 1); assert.equal(writes.length, 1)
