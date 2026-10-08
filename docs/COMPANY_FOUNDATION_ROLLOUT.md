@@ -44,6 +44,28 @@
 O script de provisionamento não foi executado. Nenhuma migração foi aplicada
 ao banco de produção nesta etapa.
 
+## Ensaio de concorrência de autorização (PostgreSQL sintético)
+
+A suíte `company-routes.spec.ts` agora inclui dois testes com barreiras
+controladas entre transações independentes, além da cobertura HTTP A/B:
+
+- **Gravação já autorizada × revogação:** uma transação de gravação mantém a
+  autorização bloqueada enquanto outra conexão tenta revogar o vínculo. A
+  revogação deve aguardar o commit da operação autorizada; imediatamente
+  depois dela, novas gravações da conta revogada retornam 403. A segunda
+  empresa permanece acessível e isolada.
+- **Papel desatualizado × mudança concorrente de função:** o escopo ADMIN é
+  resolvido antes da alteração. Outra conexão bloqueia o vínculo, muda seu
+  papel para FINANCE e confirma a mudança. A tentativa de gravação que
+  aguardava o vínculo é recusada; nenhum cliente é criado a partir da
+  autorização antiga. Outros tenants não são afetados.
+
+Os dois cenários rodam somente no PostgreSQL descartável do CI, com IDs
+sintéticos, dados revertidos e sem qualquer transação financeira. Eles
+verificam a consistência de autorização e não substituem a validação com o
+papel runtime realmente restrito, os cenários completos de portal/pagamentos
+ou a aprovação manual para produção.
+
 ## Próxima etapa obrigatória antes de ativar outra empresa
 
 O início desta etapa adiciona `AuthSession.companyId` opcional e um resolvedor
