@@ -44,6 +44,47 @@
 O script de provisionamento não foi executado. Nenhuma migração foi aplicada
 ao banco de produção nesta etapa.
 
+## EXECUTE herdado de PUBLIC nas funções SECURITY DEFINER
+
+O PostgreSQL concede `EXECUTE` a `PUBLIC` em funções recém-criadas por
+padrão. As migrations que introduziram
+`public.company_tenant_authorized(text)` e
+`public.company_write_authorized(text,text,text,text)` não revogavam
+expressamente esse acesso. Uma conta SQL estranha à aplicação, com
+`USAGE` no schema, poderia chamar ambas as funções `SECURITY DEFINER`.
+Isso não equivale automaticamente a acessar outro tenant (ambas verificam
+estado persistido), mas amplia a superfície de autoridade e viola o
+princípio de menor privilégio.
+
+O gate somente leitura `scripts/security/assert-runtime.sql` agora
+inspeciona **ACL efetiva** em `pg_proc`: inclusive o caso `proacl IS NULL`
+e o privilégio padrão obtido com `acldefault('f', proowner)`. Um `EXECUTE`
+concedido a `PUBLIC` em qualquer das duas funções reprova o gate com
+`GATE_RUNTIME: EXECUTE via PUBLIC em funcao SECURITY DEFINER`. A verificação
+pré-existente de `EXECUTE` efetivo para a conexão runtime permanece ativa.
+
+**Transição segura para um ambiente de homologação controlado:** um DBA,
+após identificar e aprovar a conta exata utilizada pela API e conferir
+outros consumidores legítimos, deve primeiro conceder `EXECUTE`
+**diretamente** a essa conta nas duas assinaturas e verificar o login
+operacional. Só depois deve revogar `EXECUTE` de `PUBLIC` nas duas
+funções, repetir os ensaios de leitura/escrita da API e executar o
+`assert-runtime.sql` como a própria conta candidata. Não inserir usuário
+ou senha em arquivos versionados, logs ou comandos salvos. Repetir após
+migrações que recriem ACLs. Caso outro consumidor legítimo exista,
+revisar suas necessidades antes de retirar `PUBLIC` — nunca conceder
+automaticamente para todos. Não executar essas operações na produção
+sem plano de mudança, homologação e autorização operacional.
+
+No teste descartável `runtime-gate-identity.spec.ts`, uma conta SQL não
+relacionada consegue chamar as funções quando o `EXECUTE` é aberto
+temporariamente a `PUBLIC`, e recebe erro de permissão quando a concessão
+é revogada. A conta runtime efêmera recebe `EXECUTE` específico
+**antes** da revogação, permanece funcional e é aprovada pelo gate
+enquanto `PUBLIC` não tem acesso. As permissões originais são restauradas
+apenas no banco isolado. **Este PR não contém migração de grants, não
+altera banco operacional e não ativa empresas.**
+
 ## Integridade das funções de autorização SECURITY DEFINER
 
 O gate `scripts/security/assert-runtime.sql` deve exigir a **assinatura
@@ -72,9 +113,10 @@ Os hashes são **baseline revisado e versionado**, nunca derivados do estado
 da conexão que está sendo homologada. Mudanças legítimas no SQL exigem
 revisão manual e atualização conjunta da migration/testes/gate. Um hash
 não substitui a revisão semântica do código-fonte e não assegura o estado
-de produção. Os privilégios herdados por PUBLIC nas funções continuam
-a merecer avaliação na implantação; este PR não altera grants existentes
-nem credenciais e não libera empresas ou pagamentos.
+de produção. O gate também bloqueia EXECUTE concedido a PUBLIC; a remediação de ACLs
+em ambiente de homologação deve seguir a transição controlada descrita acima.
+Este PR não altera grants existentes nem credenciais e não libera empresas
+ou pagamentos.
 
 ## Integridade das expressões RLS revisadas (USING e WITH CHECK)
 
