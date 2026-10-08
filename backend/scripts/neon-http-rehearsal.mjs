@@ -46,6 +46,11 @@ try {
     stage = label
     const result = spawnSync(process.execPath, args, { cwd: root, env, encoding: 'utf8', timeout: 300000, maxBuffer: 8 * 1024 * 1024 })
     // Captured child output can contain connection details. Never print it.
+    if (label === 'executar HTTP com login PostgreSQL independente') {
+      const counts = [...(result.stdout || '').matchAll(/(?:^|\n)(?:# |ℹ )(tests|pass|fail|cancelled|skipped) (\d+)/g)]
+        .map(match => `${match[1]}=${match[2]}`)
+      if (counts.length) console.log(`Resumo HTTP: ${counts.join(', ')}`)
+    }
     if (result.error || result.status !== 0) throw new Error('Processo recusado')
   }
   run([require.resolve('prisma/build/index.js'), 'migrate', 'deploy'], 'aplicar migrations no banco fictício')

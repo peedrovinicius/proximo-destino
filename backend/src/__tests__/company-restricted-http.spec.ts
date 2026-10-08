@@ -92,6 +92,10 @@ describe('company HTTP A/B isolation using the restricted PostgreSQL runtime log
     await owner.$executeRawUnsafe(`CREATE ROLE "${role}" LOGIN PASSWORD '${password}'
       NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOINHERIT`)
     roleCreated = true
+    // PostgreSQL 18 grants a non-superuser role creator ADMIN but not SET by
+    // default. SET lets the owner dispose of this role's grants after the proof;
+    // it does not give the runtime membership in the owner or elevated roles.
+    await owner.$executeRawUnsafe(`GRANT "${role}" TO CURRENT_USER WITH SET TRUE`)
     await owner.$executeRawUnsafe(`REVOKE CREATE ON SCHEMA public FROM "${role}"`)
     await owner.$executeRawUnsafe(`GRANT USAGE ON SCHEMA public TO "${role}"`)
     for (const table of ['User', 'AuthSession', 'Company', 'CompanyMembership']) {
