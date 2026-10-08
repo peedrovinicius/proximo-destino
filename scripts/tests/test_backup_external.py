@@ -31,6 +31,7 @@ class BackupTests(unittest.TestCase):
                         BACKUP_S3_ENDPOINT='https://storage.example', BACKUP_KEY_VERSION='v1',
                         AWS_ACCESS_KEY_ID='fake-access', AWS_SECRET_ACCESS_KEY='fake-secret')
         self.env['PATH'] = f"{self.root}:{os.environ['PATH']}"
+        self.write_tool('psql', '#!/bin/sh\nprintf "t\\n"\n')
         self.write_tool('pg_dump', f'''#!/usr/bin/env python3
 import sys
 from pathlib import Path
@@ -111,6 +112,32 @@ else:
                 with self.assertRaises(backup.BackupError):
                     backup.run_backup(dict(self.env, **variant))
                 spawn.assert_not_called()
+
+
+class DatabaseAccessTests(unittest.TestCase):
+    def test_incomplete_or_privileged_access_stops_before_dump(self):
+        for output in ('f\n', '', 't\nt\n'):
+            with self.subTest(output=output), patch.object(backup.subprocess, 'run', return_value=
+                    subprocess.CompletedProcess([], 0, stdout=output)), \
+                    patch.object(backup.subprocess, 'Popen') as spawn:
+                with self.assertRaisesRegex(backup.BackupError, 'upload refused'):
+                    backup.verify_database_access({'PGPASSWORD': 'secret'})
+                spawn.assert_not_called()
+
+    def test_connection_error_is_redacted(self):
+        with patch.object(backup.subprocess, 'run', side_effect=
+                subprocess.CalledProcessError(1, ['psql'], stderr='secret')):
+            with self.assertRaises(backup.BackupError) as caught:
+                backup.verify_database_access({})
+        self.assertNotIn('secret', str(caught.exception))
+
+    def test_complete_access_uses_read_only_environment_and_hides_password(self):
+        pg = {'PGPASSWORD': 'secret', 'PGOPTIONS': '-c default_transaction_read_only=on'}
+        with patch.object(backup.subprocess, 'run', return_value=
+                subprocess.CompletedProcess([], 0, stdout='t\n')) as command:
+            backup.verify_database_access(pg)
+        self.assertEqual(command.call_args.kwargs['env'], pg)
+        self.assertNotIn('secret', ' '.join(command.call_args.args[0]))
 
 
 if __name__ == '__main__':

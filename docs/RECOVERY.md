@@ -109,13 +109,39 @@ credenciais ou chaves para o proprietário. Execução ignorada não significa b
 bem-sucedido; confirmar o job executado e o objeto verificado antes de operar.
 
 O script `scripts/backup-external.py` usa PostgreSQL 18, conexão direta com TLS,
-transação somente leitura e `pg_dump --format=custom`. O dump passa direto para
+transação somente leitura e `pg_dump --format=custom --enable-row-security`. Antes
+e depois do dump, verifica que o papel não tem privilégios administrativos,
+membership, escrita, criação de objetos ou execução de funções SECURITY DEFINER
+da aplicação. Exige SELECT em todas as tabelas e sequências e política de leitura
+irrestrita para cada tabela com RLS, sem política restritiva aplicável. Uma tabela
+nova sem esses acessos impede o envio; revisar os grants e políticas após migrations.
+Não conceder `neon_superuser` nem BYPASSRLS ao usuário do backup. As verificações
+não substituem o ensaio de restauração nem garantem ausência de alterações DDL
+concorrentes: evitar migrations durante a geração do ponto de recuperação.
+O dump passa direto para
 `age`; apenas o arquivo criptografado é gravado em diretório temporário restrito.
 Erros de dump ou criptografia impedem upload. Após enviar para S3 compatível,
 baixa os bytes criptografados e compara SHA-256. Apaga os arquivos locais ao
 terminar. Não publica artifacts, não registra erros brutos com dados de conexão,
 não restaura produção nem apaga backups remotos. Falhas após upload podem deixar
 um objeto criptografado sem confirmação; não tratá-lo como ponto validado.
+
+### Papel de backup no Neon
+
+Em 07/10/2026, `pd_backup` foi preparado por SQL com SELECT nas 28 tabelas
+existentes e nas sequências, sem privilégios administrativos, membership,
+ownership, escrita ou execução de funções SECURITY DEFINER da aplicação.
+As 12 tabelas com RLS receberam políticas `pd_backup_full_read` exclusivas de
+SELECT para esse papel. Em snapshot REPEATABLE READ, suas contagens coincidiram
+com as do proprietário em todas as tabelas e DELETE foi recusado. O verificador
+do exportador também passou sob SET ROLE. O responsável habilitou o login com
+senha definida diretamente no Neon. Não criar esse papel pelo painel/API do
+Neon, pois esse caminho concede privilégios administrativos.
+
+A prova acima não exportou dados reais nem valida a conexão armazenada no GitHub.
+Novas migrations exigem revisão de grants/políticas; credenciais do environment,
+retenção/custódia, envio externo e restore do objeto real precisam de evidência
+separada antes de declarar recuperação validada.
 
 ### Configuração e custódia
 
@@ -158,7 +184,10 @@ sensíveis e exige disco protegido e descarte após o teste. Restaurar exclusiva
 em banco vazio isolado com `pg_restore --exit-on-error --single-transaction`,
 configurando conexão direta por variáveis `PG*`. Revisar owners e grants antes de
 usar `--no-owner --no-acl`: essas opções removem controles que precisam ser
-reaplicados e verificados. Executar as comparações de schema, migrations,
+reaplicados e verificados. Políticas RLS podem referenciar `pd_backup` mesmo com
+`--no-acl`; preparar esse papel como NOLOGIN, sem senha e sem privilégios
+administrativos no destino isolado antes de restaurar. Não copiar credenciais
+ou habilitar o login do backup no destino. Executar as comparações de schema, migrations,
 contagens, RLS, financeiro e descriptografia já descritas acima. Registrar somente
 evidências agregadas, sem dados pessoais; nunca apontar esse teste à produção.
 
