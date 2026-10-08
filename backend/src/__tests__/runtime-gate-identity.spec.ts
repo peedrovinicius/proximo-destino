@@ -196,10 +196,10 @@ describe('runtime production gate: synthetic restricted LOGIN', () => {
             USING (${original.qual}) WITH CHECK (${original.with_check})`)
         }
       }
+      assert.equal(query().stdout.trim(), '0')
     } finally {
       await owner.client.delete({ where: { id: own.id } })
     }
-    assert.equal(query().stdout.trim(), '0')
     const restored = runGate()
     assert.equal(restored.status, 0, restored.stderr)
   })
