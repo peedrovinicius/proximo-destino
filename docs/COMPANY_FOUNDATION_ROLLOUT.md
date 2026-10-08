@@ -44,6 +44,30 @@
 O script de provisionamento não foi executado. Nenhuma migração foi aplicada
 ao banco de produção nesta etapa.
 
+## Ensaio ampliado: documentos, passageiros, assentos e sessão do portal
+
+O teste `tenant-session-rls.spec.ts` agora usa um LOGIN PostgreSQL
+temporário sem privilégios de proprietário/contorno de RLS e inclui
+`TravelDocument` de duas empresas. Verifica que o documento estrangeiro
+não é visível, não pode ser alterado ou inserido sob uma reserva estrangeira,
+e que também não podem ser alterados passageiros/assentos estrangeiros.
+Revogação e expiração da sessão administrativa ocultam documentos,
+passageiros e assentos; a empresa B continua acessível. Os tokens privados
+do portal ficam em `CompanyClientPortalSession`, **sem GRANT** ao papel SQL
+operacional sintético: o teste exige falha para SELECT, mesmo com contexto
+válido de empresa, e não exibe hashes.
+
+Em `company-routes.spec.ts`, um escopo de administrador obtido previamente
+é reutilizado após revogar a sessão: leituras de passageiros e mapa de
+assentos devem retornar 403 após a revalidação transacional. Outro teste
+intercala uma leitura de sessão do portal (já tendo lido o token antigo)
+com revogação concorrente do código de acesso, exigindo que a leitura
+retorne 401 após o commit, sem revelar dados entre slugs de empresas.
+
+**Limitação:** o portal ainda não é homologado sob o usuário SQL de runtime
+real e o ensaio não transforma as permissões sintéticas em credenciais de
+produção. As restrições de ativação da issue #44 permanecem.
+
 ## Ensaio de concorrência de autorização (PostgreSQL sintético)
 
 A suíte `company-routes.spec.ts` agora inclui dois testes com barreiras

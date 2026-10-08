@@ -18,6 +18,8 @@ describe('session-backed tenant RLS with a restricted PostgreSQL login', () => {
   const companions = [`rls-companion-a-${suffix}`, `rls-companion-b-${suffix}`]
   const passengers = [`rls-passenger-a-${suffix}`, `rls-passenger-b-${suffix}`]
   const seats = [`rls-seat-a-${suffix}`, `rls-seat-b-${suffix}`]
+  const documents = [`rls-document-a-${suffix}`, `rls-document-b-${suffix}`]
+  const portalSessions = [`rls-portal-a-${suffix}`, `rls-portal-b-${suffix}`]
   let runtime: PrismaService | undefined
   let connected = false
   let roleCreated = false
@@ -69,6 +71,19 @@ describe('session-backed tenant RLS with a restricted PostgreSQL login', () => {
         id: seats[i], tripId: trips[i], reservationId: reservations[i],
         passengerId: passengers[i], seatNumber: i + 1,
       } })
+      await owner.travelDocument.create({ data: {
+        id: documents[i], reservationId: reservations[i], type: 'TRAVEL_VOUCHER',
+        version: 1, documentNumber: `synthetic-doc-${suffix}-${i}`,
+        verificationCode: `synthetic-code-${suffix}-${i}`,
+        snapshot: { label: 'fictitious document', tenant: i },
+      } })
+      await owner.companyClientPortalSession.create({ data: {
+        id: portalSessions[i], reservationId: reservations[i],
+        companyId: companies[i], clientId: clients[i],
+        tokenHash: `synthetic-token-${suffix}-${i}`,
+        credentialVersion: 'synthetic-unusable',
+        expiresAt: new Date(Date.now() + 300_000),
+      } })
     }
 
     const password = randomUUID()
@@ -76,7 +91,7 @@ describe('session-backed tenant RLS with a restricted PostgreSQL login', () => {
       NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOINHERIT`)
     roleCreated = true
     await owner.$executeRawUnsafe(`GRANT USAGE ON SCHEMA public TO "${role}"`)
-    for (const table of ['Client', 'Companion', 'Trip', 'Reservation', 'ReservationPassenger', 'SeatAssignment']) {
+    for (const table of ['Client', 'Companion', 'Trip', 'Reservation', 'ReservationPassenger', 'SeatAssignment', 'TravelDocument']) {
       await owner.$executeRawUnsafe(
         `GRANT SELECT, INSERT, UPDATE ON TABLE public."${table}" TO "${role}"`)
     }
@@ -95,6 +110,8 @@ describe('session-backed tenant RLS with a restricted PostgreSQL login', () => {
         await owner.$executeRawUnsafe(`DROP OWNED BY "${role}"`)
         await owner.$executeRawUnsafe(`DROP ROLE "${role}"`)
       }
+      await owner.companyClientPortalSession.deleteMany({ where: { id: { in: portalSessions } } })
+      await owner.travelDocument.deleteMany({ where: { id: { in: documents } } })
       await owner.seatAssignment.deleteMany({ where: { id: { in: seats } } })
       await owner.reservationPassenger.deleteMany({ where: { id: { in: passengers } } })
       await owner.companion.deleteMany({ where: { id: { in: companions } } })
@@ -166,6 +183,64 @@ describe('session-backed tenant RLS with a restricted PostgreSQL login', () => {
     })
     assert.equal((await owner.client.findUniqueOrThrow({ where: { id: clients[1] } })).fullName,
       'Synthetic client 1')
+  })
+
+  it('isolates travel documents and derived passenger/seat writes with the restricted login', async () => {
+    for (let i = 0; i < 2; i++) {
+      await scoped(companies[i], users[i], sessions[i], async tx => {
+        assert.deepEqual((await tx.travelDocument.findMany({ select: { id: true } }))
+          .map(item => item.id), [documents[i]])
+        assert.equal(await tx.travelDocument.findUnique({ where: { id: documents[1 - i] } }), null)
+        assert.equal((await tx.travelDocument.updateMany({ where: { id: documents[1 - i] },
+          data: { snapshot: { modified: true } } })).count, 0)
+        assert.equal((await tx.reservationPassenger.updateMany({ where: { id: passengers[1 - i] },
+          data: { fullName: 'Cross-tenant modification denied' } })).count, 0)
+        assert.equal((await tx.seatAssignment.updateMany({ where: { id: seats[1 - i] },
+          data: { seatNumber: 30 } })).count, 0)
+      })
+    }
+    await assert.rejects(scoped(companies[0], users[0], sessions[0], tx =>
+      tx.travelDocument.create({ data: {
+        reservationId: reservations[1], type: 'TRAVEL_VOUCHER',
+        version: 2, documentNumber: `denied-doc-${suffix}`,
+        verificationCode: `denied-verification-${suffix}`,
+        snapshot: { denied: true },
+      } })), /row-level security|P2004|P2010/i)
+    assert.deepEqual((await owner.travelDocument.findUniqueOrThrow({ where: { id: documents[1] } }))
+      .snapshot, { label: 'fictitious document', tenant: 1 })
+    assert.equal((await owner.reservationPassenger.findUniqueOrThrow({ where: { id: passengers[1] } }))
+      .fullName, 'Synthetic passenger 1')
+    assert.equal((await owner.seatAssignment.findUniqueOrThrow({ where: { id: seats[1] } }))
+      .seatNumber, 2)
+  })
+
+  it('does not grant the operational SQL login direct access to private portal sessions', async () => {
+    // Portal sessions are intentionally not among the operational tenant grants:
+    // this table holds hashed bearer tokens and must not be readable by SQL tenants.
+    await assert.rejects(scoped(companies[0], users[0], sessions[0], tx =>
+      tx.companyClientPortalSession.findMany({ select: { id: true, tokenHash: true } })),
+    /permission denied|P1010|P2010|P2004/i)
+    assert.equal(await owner.companyClientPortalSession.count({ where: { id: { in: portalSessions } } }), 2)
+  })
+
+  it('revocation or expiry hides all documents and other derived records', async () => {
+    for (const kind of ['revoked', 'expired'] as const) {
+      await owner.authSession.update({ where: { id: sessions[0] },
+        data: kind === 'revoked' ? { revokedAt: new Date() } : { expiresAt: new Date(0) } })
+      try {
+        await scoped(companies[0], users[0], sessions[0], async tx => {
+          assert.deepEqual(await tx.travelDocument.findMany({ select: { id: true } }), [])
+          assert.deepEqual(await tx.reservationPassenger.findMany({ select: { id: true } }), [])
+          assert.deepEqual(await tx.seatAssignment.findMany({ select: { id: true } }), [])
+        })
+      } finally {
+        await owner.authSession.update({ where: { id: sessions[0] },
+          data: { revokedAt: null, expiresAt: new Date(Date.now() + 300_000) } })
+      }
+      const documentsVisibleToB = await scoped(companies[1], users[1], sessions[1], tx =>
+        tx.travelDocument.findMany({ select: { id: true } }))
+      assert.deepEqual(documentsVisibleToB.map(doc => doc.id), [documents[1]])
+    }
   })
 
   it('revoking membership invalidates the database policy immediately', async () => {

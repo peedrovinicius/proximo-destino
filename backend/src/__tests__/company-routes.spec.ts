@@ -1,7 +1,7 @@
 import 'reflect-metadata'
 import assert from 'node:assert/strict'
 import { after, before, describe, it } from 'node:test'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { ValidationPipe, type INestApplication } from '@nestjs/common'
 import { ConfigModule, ConfigService } from '@nestjs/config'
 import { JwtService } from '@nestjs/jwt'
@@ -1234,6 +1234,88 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
       await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { role: 'ADMIN' } })
     }
   })
+  it('rechecks revoked staff sessions for passengers and seats after an earlier scope resolution', async () => {
+    const resolved = await new CompanyScopeService(prisma).resolveSession(users[0], sessions[0])
+    const cached = { resolveSession: async () => resolved } as unknown as CompanyScopeService
+    const reservationsService = new CompanyReservationsService(prisma, cached)
+    const tripsService = new CompanyTripsService(prisma, cached)
+    await prisma.authSession.update({ where: { id: sessions[0] }, data: { revokedAt: new Date() } })
+    try {
+      await assert.rejects(reservationsService.passengers(users[0], sessions[0], reservations[0]), { status: 403 })
+      await assert.rejects(tripsService.seatMap(users[0], sessions[0], trips[0]), { status: 403 })
+      // HTTP authentication rejects revoked bearer sessions before tenant
+      // authorization: 401 here, while direct stale scoped services return 403.
+      assert.equal((await call(`/admin/reservations/${reservations[0]}/passengers`)).status, 401)
+      assert.equal((await call(`/admin/trips/${trips[0]}/seats`)).status, 401)
+      assert.equal((await call(`/admin/reservations/${reservations[1]}/passengers`, tokens[1])).status, 200)
+    } finally {
+      await prisma.authSession.update({ where: { id: sessions[0] }, data: { revokedAt: null } })
+    }
+  })
+
+  it('rejects stale portal sessions during concurrent code revocation and never crosses company slugs', async () => {
+    const formerTrip = await prisma.trip.findUniqueOrThrow({ where: { id: trips[0] },
+      select: { status: true } })
+    const formerClient = await prisma.client.findUniqueOrThrow({ where: { id: clients[0] },
+      select: { email: true } })
+    await prisma.trip.update({ where: { id: trips[0] }, data: { status: 'SCHEDULED' } })
+    await prisma.client.update({ where: { id: clients[0] },
+      data: { email: `${clients[0]}@example.invalid` } })
+    let releaseRead!: () => void
+    const holdRead = new Promise<void>(resolve => { releaseRead = resolve })
+    let announceRead!: () => void
+    const readStarted = new Promise<void>(resolve => { announceRead = resolve })
+    let signaled = false
+    let inFlight: Promise<{ success: boolean; error?: unknown }> | undefined
+    try {
+      const issued = await access.issue(users[0], sessions[0], reservations[0])
+      assert.ok('code' in issued)
+      const credentials = { reservationId: reservations[0],
+        email: `${clients[0]}@example.invalid`, code: issued.code! }
+      const session = await portal.login(companies[0], credentials)
+      await assert.rejects(portal.portal(companies[1], session.accessToken), { status: 401 })
+      await assert.rejects(portal.login(companies[1], credentials), { status: 401 })
+      const paused = new CompanyClientPortalService({
+        $transaction: (callback: (tx: unknown) => Promise<unknown>) => prisma.$transaction(tx =>
+          callback(new Proxy(tx, { get(target, property) {
+            if (property === 'companyClientPortalSession') return new Proxy(tx.companyClientPortalSession, {
+              get(delegate, key) {
+                if (key !== 'findUnique') return Reflect.get(delegate, key)
+                return async (args: { where: { tokenHash: string } }) => {
+                  const result = await tx.companyClientPortalSession.findUnique(args)
+                  if (result && !signaled) { signaled = true; announceRead(); await holdRead }
+                  return result
+                }
+              },
+            })
+            return Reflect.get(target, property)
+          } })),
+        { timeout: 10_000 }),
+      } as unknown as PrismaService, accessConfig)
+      inFlight = paused.portal(companies[0], session.accessToken)
+        .then(() => ({ success: true }), error => ({ success: false, error }))
+      await readStarted
+      // The portal read has loaded the previously valid token but cannot yet
+      // lock/recheck the reservation. Revoke the code in another transaction.
+      await access.revoke(users[0], sessions[0], reservations[0])
+      releaseRead()
+      const result = await inFlight
+      assert.equal(result.success, false,
+        'Previously loaded portal token must not survive concurrent credential revocation')
+      assert.equal((result.error as { status?: number })?.status, 401)
+      await assert.rejects(portal.portal(companies[0], session.accessToken), { status: 401 })
+      assert.equal((await prisma.companyClientPortalSession.findFirstOrThrow({
+        where: { tokenHash: createHash('sha256').update(session.accessToken).digest('hex') },
+      })).revokedAt !== null, true)
+    } finally {
+      releaseRead()
+      await inFlight?.catch(() => {})
+      await access.revoke(users[0], sessions[0], reservations[0])
+      await prisma.trip.update({ where: { id: trips[0] }, data: { status: formerTrip.status } })
+      await prisma.client.update({ where: { id: clients[0] }, data: { email: formerClient.email } })
+    }
+  })
+
   it('issues a private expiring company code once, rotates it and revokes existing portal sessions', async () => {
     await prisma.trip.update({ where: { id: trips[0] }, data: { status: 'SCHEDULED' } })
     await prisma.client.update({ where: { id: clients[0] }, data: { email: `${clients[0]}@example.invalid` } })
