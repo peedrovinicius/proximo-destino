@@ -235,6 +235,114 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
       await prisma.trip.deleteMany({ where: { id: { in: tripIds } } })
     }
   })
+  it('reports tenant-only finance discrepancies without provider access or writes', async () => {
+    const path = '/admin/payments/reconciliation/report'
+    const baselineAudit = await prisma.authAuditEvent.count({ where: { userId: { in: users } } })
+    const clean = await call(path)
+    assert.equal(clean.status, 200)
+    assert.equal(clean.headers.get('cache-control'), 'no-store')
+    assert.deepEqual(await clean.json(), { reportOnly: true, pageScoped: true,
+      providerContacted: false, dataModified: false, paymentsEnabled: false,
+      scannedReservations: 1, flaggedReservations: 0, issueCount: 0,
+      pageSize: 50, nextCursor: null, divergences: [] })
+    assert.equal((await call(path, unboundToken)).status, 403)
+    assert.equal((await call(path, tokens[2])).status, 403)
+    for (const invalid of ['after=%20', 'after[]=a', 'after=a&after=b', 'after=%24drop']) {
+      assert.equal((await call(`${path}?${invalid}`)).status, 400)
+    }
+    const ownOrder = await prisma.purchaseOrder.create({ data: { reservationId: reservations[0],
+      paymentMethod: 'PIX', passengerCount: 1, unitPriceCents: 1000, totalCents: 1000,
+      status: 'PAID', providerStatus: 'secret-status' } })
+    const otherOrder = await prisma.purchaseOrder.create({ data: { reservationId: reservations[1],
+      paymentMethod: 'PIX', passengerCount: 1, unitPriceCents: 5000, totalCents: 5000,
+      status: 'PAID', providerPaymentId: 'foreign-secret' } })
+    const receipt = await prisma.manualPayment.create({ data: { reservationId: reservations[0],
+      method: 'CASH', amountCents: 250, paidAt: new Date(), note: 'private-note' } })
+    try {
+      const report = await call(path)
+      assert.equal(report.status, 200)
+      const body = await report.json()
+      assert.deepEqual(body, { reportOnly: true, pageScoped: true,
+        providerContacted: false, dataModified: false, paymentsEnabled: false,
+        scannedReservations: 1, flaggedReservations: 1, issueCount: 2,
+        pageSize: 50, nextCursor: null, divergences: [{
+          reservationId: reservations[0], issues: ['PROVIDER_REFERENCE_MISSING', 'MIXED_PAYMENT_CHANNELS_REVIEW'],
+          online: { status: 'PAID', totalCents: 1000, refundedCents: 0 },
+          manual: { receivedCount: 1, receivedCents: 250, reversedCents: 0 },
+        }] })
+      for (const secret of ['foreign-secret', 'secret-status', 'private-note', clients[1], companies[1]]) {
+        assert.equal(JSON.stringify(body).includes(secret), false)
+      }
+      assert.equal(await prisma.authAuditEvent.count({ where: { userId: { in: users } } }), baselineAudit)
+      assert.equal((await prisma.purchaseOrder.findUniqueOrThrow({ where: { id: ownOrder.id } })).status, 'PAID')
+      assert.equal((await prisma.manualPayment.findUniqueOrThrow({ where: { id: receipt.id } })).amountCents, 250)
+      await prisma.purchaseOrder.update({ where: { id: ownOrder.id }, data: {
+        refundedCents: 1100, passengerCount: 2 } })
+      const invalid = await (await call(path)).json() as { divergences: { issues: string[] }[] }
+      assert.deepEqual(invalid.divergences[0].issues,
+        ['ORDER_AMOUNT_MISMATCH', 'REFUND_STATUS_MISMATCH', 'PASSENGER_COUNT_MISMATCH',
+          'PROVIDER_REFERENCE_MISSING', 'MIXED_PAYMENT_CHANNELS_REVIEW'])
+      await prisma.manualPayment.update({ where: { id: receipt.id }, data: { amountCents: -10 } })
+      const manualInvalid = await (await call(path)).json() as { divergences: { issues: string[] }[] }
+      assert.ok(manualInvalid.divergences[0].issues.includes('INVALID_MANUAL_AMOUNT'))
+    } finally {
+      await prisma.manualPayment.delete({ where: { id: receipt.id } })
+      await prisma.purchaseOrder.deleteMany({ where: { id: { in: [ownOrder.id, otherOrder.id] } } })
+    }
+  })
+  it('restricts company discrepancy reports to current ADMIN and FINANCE grants', async () => {
+    const path = '/admin/payments/reconciliation/report'
+    for (const role of ['AGENT', 'FINANCE'] as const) {
+      await prisma.user.update({ where: { id: users[0] }, data: { role } })
+      await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { role } })
+      try { assert.equal((await call(path)).status, role === 'FINANCE' ? 200 : 403) }
+      finally {
+        await prisma.user.update({ where: { id: users[0] }, data: { role: 'ADMIN' } })
+        await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { role: 'ADMIN' } })
+      }
+    }
+    const original = await new CompanyScopeService(prisma).resolveSession(users[0], sessions[0])
+    const stale = new CompanyDataService(prisma,
+      { resolveSession: async () => original } as unknown as CompanyScopeService)
+    await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { isActive: false } })
+    try {
+      assert.equal((await call(path)).status, 403)
+      await assert.rejects(stale.financeDiscrepancyReport(users[0], sessions[0]), { status: 403 })
+    } finally {
+      await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { isActive: true } })
+    }
+  })
+  it('paginates discrepancy reports at 50 reservations without hiding tenant scope', async () => {
+    const extraTripIds = Array.from({ length: 51 }, (_, i) => `report-trip-${suffix}-${String(i).padStart(3, '0')}`)
+    const extraReservationIds = Array.from({ length: 51 }, (_, i) => `report-reservation-${suffix}-${String(i).padStart(3, '0')}`)
+    await prisma.trip.createMany({ data: extraTripIds.map(id => ({
+      id, companyId: companies[0], title: 'Synthetic finance report', origin: 'A',
+      destination: 'B', departureDate: new Date('2027-01-01') })) })
+    try {
+      await prisma.reservation.createMany({ data: extraReservationIds.map((id, i) => ({
+        id, companyId: companies[0], clientId: clients[0], tripId: extraTripIds[i],
+      })) })
+      const first = await (await call('/admin/payments/reconciliation/report')).json() as {
+        scannedReservations: number; flaggedReservations: number; nextCursor: string | null
+      }
+      assert.equal(first.scannedReservations, 50)
+      assert.equal(first.flaggedReservations, 0)
+      assert.equal(first.nextCursor, extraReservationIds[49])
+      const second = await (await call(`/admin/payments/reconciliation/report?after=${encodeURIComponent(first.nextCursor!)}`)).json() as {
+        scannedReservations: number; nextCursor: string | null
+      }
+      assert.equal(second.scannedReservations, 2)
+      assert.equal(second.nextCursor, null)
+      const otherCompany = await (await call('/admin/payments/reconciliation/report', tokens[1])).json() as {
+        scannedReservations: number; flaggedReservations: number
+      }
+      assert.equal(otherCompany.scannedReservations, 1)
+      assert.equal(otherCompany.flaggedReservations, 0)
+    } finally {
+      await prisma.reservation.deleteMany({ where: { id: { in: extraReservationIds } } })
+      await prisma.trip.deleteMany({ where: { id: { in: extraTripIds } } })
+    }
+  })
   it('previews reconciliation without provider calls, writes or cross-company disclosure', async () => {
     const path = `/admin/reservations/${reservations[0]}/finance/reconcile/preview`
     const auditBefore = await prisma.authAuditEvent.count({ where: { userId: { in: users } } })
