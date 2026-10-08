@@ -44,6 +44,38 @@
 O script de provisionamento não foi executado. Nenhuma migração foi aplicada
 ao banco de produção nesta etapa.
 
+## Integridade das funções de autorização SECURITY DEFINER
+
+O gate `scripts/security/assert-runtime.sql` deve exigir a **assinatura
+exata** das duas funções de autorização, não apenas o nome:
+`public.company_tenant_authorized(text)` (SQL, STABLE) e
+`public.company_write_authorized(text,text,text,text)` (PL/pgSQL, VOLATILE).
+
+Ambas precisam retornar BOOLEAN, executar como `SECURITY DEFINER`, ter
+`search_path=pg_catalog` como única configuração e não pertencer ao papel
+runtime. A conexão runtime precisa possuir `EXECUTE` nessas funções, mas
+não pode herdar o papel proprietário. O gate recusa também sobrecargas
+adicionais com o mesmo nome e **compara hash MD5 fixo de `pg_proc.prosrc`**
+com as definições de código revisadas nas migrations
+`202610071900_session_backed_tenant_rls` e
+`202610071930_restricted_runtime_auth_lock`.
+
+Testes contra um PostgreSQL local descartável demonstram uma brecha que
+antes passava despercebida: substituir o corpo da primeira função por
+`SELECT true` expõe uma linha sintética sem sessão válida, enquanto
+substituir o lock por `RETURN true` permite afirmar autorização falsa.
+O gate atualizado rejeita ambas, bem como `search_path=public`,
+sobrecargas inesperadas e ausência de `EXECUTE` efetivo. As definições,
+grants e fixtures são restaurados em `finally`.
+
+Os hashes são **baseline revisado e versionado**, nunca derivados do estado
+da conexão que está sendo homologada. Mudanças legítimas no SQL exigem
+revisão manual e atualização conjunta da migration/testes/gate. Um hash
+não substitui a revisão semântica do código-fonte e não assegura o estado
+de produção. Os privilégios herdados por PUBLIC nas funções continuam
+a merecer avaliação na implantação; este PR não altera grants existentes
+nem credenciais e não libera empresas ou pagamentos.
+
 ## Integridade das expressões RLS revisadas (USING e WITH CHECK)
 
 A lista de políticas revisadas não deve confiar somente na **presença
