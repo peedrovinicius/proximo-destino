@@ -146,10 +146,44 @@ describe('runtime production gate: synthetic restricted LOGIN', () => {
     assert.equal(rows.length, 2)
     assert.ok(rows.every(row => /^[a-f0-9]{32}$/.test(row.digest) &&
       row.path === 'search_path=pg_catalog' && row.owner !== role))
-    // Digests are not secrets and contain no customer data. Only the approved
-    // migration, not a live database, can supply the gate's reference hashes.
-    console.log('SYNTHETIC_DEFINER_BASELINE ' +
-      JSON.stringify(rows.map(({ name, digest }) => ({ name, digest }))))
+    const expected = {
+      company_tenant_authorized: '89c73cf7463057fb31dad559036b9d93',
+      company_write_authorized: 'df80a956fd405ae0e9e109ef0c93e783',
+    }
+    assert.deepEqual(rows.map(row => ({ name: row.name, digest: row.digest })),
+      Object.entries(expected).map(([name, digest]) => ({ name, digest })))
+    assert.equal(runGate().status, 0)
+  })
+
+  it('rejects a shadowing overload even though the canonical function still exists', async () => {
+    await owner.$executeRawUnsafe(`CREATE FUNCTION public.company_tenant_authorized(
+      target_company TEXT, extra TEXT) RETURNS BOOLEAN
+      LANGUAGE sql STABLE SECURITY DEFINER
+      SET search_path = pg_catalog AS 'SELECT false'`)
+    try {
+      const gate = runGate()
+      assert.notEqual(gate.status, 0)
+      assert.match(gate.stderr, /GATE_RUNTIME: integridade de funcao SECURITY DEFINER/)
+    } finally {
+      await owner.$executeRawUnsafe(`DROP FUNCTION IF EXISTS public.company_tenant_authorized(text,text)`)
+    }
+    assert.equal(runGate().status, 0)
+  })
+
+  it('rejects a runtime connection that cannot execute the required authorization function', async () => {
+    await owner.$executeRawUnsafe(`REVOKE EXECUTE ON FUNCTION
+      public.company_tenant_authorized(text) FROM PUBLIC`)
+    try {
+      const gate = runGate()
+      assert.notEqual(gate.status, 0)
+      assert.match(gate.stderr, /GATE_RUNTIME: integridade de funcao SECURITY DEFINER/)
+    } finally {
+      // PostgreSQL's migration-default EXECUTE privilege was PUBLIC.
+      // Restore only the original effective privilege in this disposable DB.
+      await owner.$executeRawUnsafe(`GRANT EXECUTE ON FUNCTION
+        public.company_tenant_authorized(text) TO PUBLIC`)
+    }
+    assert.equal(runGate().status, 0)
   })
 
   it('fails closed on UPDATE/DELETE to tenant identity, even when normal tables remain scoped', async () => {
