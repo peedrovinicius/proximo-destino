@@ -93,7 +93,8 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
         { provide: TripsService, useValue: { listAdmin: () => ['legacy'], busTemplates: () => listBusTemplates(),
           create: () => { legacyWrites++; return { id: 'legacy' } } } },
         { provide: AdminService, useValue: { listReservations: () => ['legacy'], dashboard: () => ({ legacy: true }),
-          createReservation: () => { legacyWrites++; return { id: 'legacy' } } } },
+          createReservation: () => { legacyWrites++; return { id: 'legacy' } },
+          reservationFinance: () => ({ legacy: true }) } },
       ],
     }).overrideProvider(PrismaService).useValue(prisma).overrideProvider(AuthService).useValue(auth)
       .overrideProvider(CompanyReservationAccessService).useValue(access).compile()
@@ -267,6 +268,7 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
       assert.equal((await call('/admin/reservations/absent/finance')).status, 404)
       assert.equal((await call(`/admin/reservations/${reservations[0]}/finance`, tokens[1])).status, 404)
       assert.equal((await call(`/admin/reservations/${reservations[0]}/finance`, unboundToken)).status, 403)
+      assert.deepEqual(await (await call(`/admin/reservations/${reservations[0]}/finance`, tokens[2])).json(), { legacy: true })
       assert.equal(await prisma.authAuditEvent.count({ where: { userId: { in: users } } }), before)
       assert.equal((await call(`/admin/reservations/${reservations[0]}/finance/reconcile`, tokens[0], 'POST')).status, 403)
       await prisma.purchaseOrder.update({ where: { id: ownOrder.id }, data: { refundedCents: 1501 } })
@@ -315,7 +317,9 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
         await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { role: 'ADMIN' } })
       }
     }
-    assert.equal((await call(`/admin/reservations/${reservations[0]}/finance`)).status, 403)
+    const scopedFinance = await call(`/admin/reservations/${reservations[0]}/finance`)
+    assert.equal(scopedFinance.status, 200)
+    assert.equal((await scopedFinance.json() as { operationalPaymentsEnabled: boolean }).operationalPaymentsEnabled, false)
     assert.equal((await call(`/admin/reservations/${reservations[0]}/finance/reconcile`, tokens[0], 'POST')).status, 403)
   })
   it('refuses manual receipts linked to another reservation through plans, installments or quotes', async () => {
