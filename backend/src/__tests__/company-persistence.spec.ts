@@ -196,6 +196,34 @@ describe('company additive migration in isolated PostgreSQL', () => {
     await assert.rejects(invites.accept('invalid', 'synthetic-new-password-123'), { status: 400 })
     await assert.rejects(invites.accept('a'.repeat(43), 'short'), { status: 400 })
   })
+  it('revoking accepted onboarding blocks password resume until a fresh invitation is accepted', async () => {
+    const admin = await pendingInvite()
+    const invitation = await invites.issue(creatorId, creatorSessionId, ids[0], admin.id)
+    const firstPassword = 'synthetic-accepted-password-123'
+    const accepted = await invites.accept(invitation.token, firstPassword)
+    const setup = await invites.beginMfa(accepted.onboardingToken)
+    assert.ok(setup.manualKey)
+
+    await invites.revoke(creatorId, creatorSessionId, ids[0], admin.id)
+    await assert.rejects(invites.resume(admin.user.email, firstPassword), { status: 401 })
+    await assert.rejects(invites.beginMfa(accepted.onboardingToken), { status: 400 })
+    await assert.rejects(invites.accept(invitation.token, firstPassword), { status: 400 })
+    const state = await prisma.companyMembership.findUniqueOrThrow({ where: { id: admin.id } })
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: admin.user.id } })
+    assert.equal(state.inviteUsedAt, null)
+    assert.equal(state.inviteTokenHash, null)
+    assert.equal(state.onboardingTokenHash, null)
+    assert.equal(state.onboardingFailedAttempts, 0)
+    assert.equal(user.mfaPendingSecretEncrypted, null)
+    assert.equal(user.isActive, false)
+    assert.equal(await prisma.authSession.count({ where: { userId: admin.user.id } }), 0)
+
+    const fresh = await invites.issue(creatorId, creatorSessionId, ids[0], admin.id)
+    const secondPassword = 'synthetic-fresh-password-123'
+    assert.equal((await invites.accept(fresh.token, secondPassword)).activationAllowed, false)
+    await assert.rejects(invites.resume(admin.user.email, firstPassword), { status: 401 })
+    assert.ok((await invites.resume(admin.user.email, secondPassword)).onboardingToken)
+  })
   it('refuses invite acceptance when the company, account or membership is no longer pending', async () => {
     const admin = await pendingInvite()
     const invite = await invites.issue(creatorId, creatorSessionId, ids[0], admin.id)
