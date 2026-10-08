@@ -237,8 +237,9 @@ describe('session-backed tenant RLS with a restricted PostgreSQL login', () => {
         await owner.authSession.update({ where: { id: sessions[0] },
           data: { revokedAt: null, expiresAt: new Date(Date.now() + 300_000) } })
       }
-      assert.deepEqual((await scoped(companies[1], users[1], sessions[1], tx =>
-        tx.travelDocument.findMany({ select: { id: true } })).map(doc => doc.id)), [documents[1]])
+      const documentsVisibleToB = await scoped(companies[1], users[1], sessions[1], tx =>
+        tx.travelDocument.findMany({ select: { id: true } }))
+      assert.deepEqual(documentsVisibleToB.map(doc => doc.id), [documents[1]])
     }
   })
 
