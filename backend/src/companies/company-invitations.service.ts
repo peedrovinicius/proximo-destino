@@ -47,7 +47,8 @@ export class CompanyInvitationsService {
       await lockCreatorWrite(tx, actorId, sessionId)
       const pending = await this.lockPending(tx, companyId, membershipId, true)
       await tx.companyMembership.update({ where: { id: membershipId }, data: {
-        inviteTokenHash: null, inviteExpiresAt: null, onboardingTokenHash: null, onboardingExpiresAt: null,
+        inviteTokenHash: null, inviteExpiresAt: null, inviteUsedAt: null,
+        onboardingTokenHash: null, onboardingExpiresAt: null, onboardingFailedAttempts: 0,
       } })
       await tx.user.update({ where: { id: pending.userId }, data: { mfaPendingSecretEncrypted: null } })
       await tx.authAuditEvent.create({ data: { userId: actorId, eventType: 'PLATFORM_ADMIN_INVITE_REVOKED',
