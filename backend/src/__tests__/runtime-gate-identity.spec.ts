@@ -149,7 +149,7 @@ describe('runtime production gate: synthetic restricted LOGIN', () => {
     assert.equal(recovered.status, 0, recovered.stderr)
   })
 
-  it('records canonical PostgreSQL policy-expression fingerprints for reviewed tenant policies', async () => {
+  it('checks coverage of all 15 reviewed tenant policy fingerprints', async () => {
     const baseline = await owner.$queryRaw<Array<{ tablename: string; fingerprint: string }>>`
       SELECT tablename, md5(coalesce(qual, '') || chr(31) || coalesce(with_check, '')) AS fingerprint
       FROM pg_policies
@@ -157,8 +157,8 @@ describe('runtime production gate: synthetic restricted LOGIN', () => {
       ORDER BY tablename
     `
     assert.equal(baseline.length, 15)
-    // These contain no row data, credentials or sensitive tenant information.
-    console.log('REVIEWED_RLS_FINGERPRINTS ' + JSON.stringify(baseline))
+    assert.ok(baseline.every(row => /^[a-f0-9]{32}$/.test(row.fingerprint)))
+    assert.equal(runGate().status, 0)
   })
 
   it('rejects a malicious OR appended to an approved client policy while keeping tenant guard text', async () => {
@@ -170,6 +170,11 @@ describe('runtime production gate: synthetic restricted LOGIN', () => {
     const original = before[0]
     const own = await owner.client.create({ data: { fullName: `Synthetic canonical guard ${suffix}` } })
     try {
+      const query = () => spawnSync('psql', [runtimeUrl.toString(), '-X', '-A', '-t',
+        '--set=ON_ERROR_STOP=1',
+        `--command=SELECT count(*) FROM public."Client" WHERE "id" = '${own.id}'`],
+      { encoding: 'utf8', timeout: 10_000 })
+      assert.equal(query().stdout.trim(), '0')
       for (const clause of ['USING', 'WITH CHECK'] as const) {
         const changedUsing = clause === 'USING'
           ? '(public.company_tenant_authorized("companyId") OR "id" IS NOT NULL)' : original.qual
@@ -178,6 +183,11 @@ describe('runtime production gate: synthetic restricted LOGIN', () => {
         await owner.$executeRawUnsafe(`ALTER POLICY "tenant_session_client" ON public."Client"
           USING (${changedUsing}) WITH CHECK (${changedWrite})`)
         try {
+          if (clause === 'USING') {
+            const exposed = query()
+            assert.equal(exposed.status, 0, exposed.stderr)
+            assert.equal(exposed.stdout.trim(), '1', 'An injected OR must expose the synthetic record before the gate blocks it')
+          }
           const gate = runGate()
           assert.notEqual(gate.status, 0, `Malicious ${clause} unexpectedly approved`)
           assert.match(gate.stderr, /GATE_RUNTIME: expressao RLS aprovada foi alterada/)
@@ -189,6 +199,7 @@ describe('runtime production gate: synthetic restricted LOGIN', () => {
     } finally {
       await owner.client.delete({ where: { id: own.id } })
     }
+    assert.equal(query().stdout.trim(), '0')
     const restored = runGate()
     assert.equal(restored.status, 0, restored.stderr)
   })
