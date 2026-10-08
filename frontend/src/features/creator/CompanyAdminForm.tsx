@@ -62,7 +62,12 @@ export function CompanyAdminForm({ companyId, companyName, token, onClose, guide
         method: 'POST', headers: { Authorization: `Bearer ${token}` }, cache: 'no-store', credentials: 'omit',
       })
       if (!response.ok) throw new Error('Não foi possível alterar o convite deste administrador pendente.')
-      if (revoke) setNotice('Convite revogado. A preparação temporária de MFA também foi revogada; os códigos anteriores não podem mais ser usados.')
+      if (revoke) {
+        // The server also clears inviteUsedAt for an already accepted invitation.
+        // Update the local projection so a fresh invitation can be issued immediately.
+        setAdmins(current => current.map(item => item.id === admin.id ? { ...item, inviteUsedAt: null } : item))
+        setNotice('Convite revogado. A preparação temporária de MFA também foi revogada; os códigos anteriores não podem mais ser usados.')
+      }
       else {
         const result = await response.json() as { token: string; expiresAt: string }
         setInvite({ membershipId: admin.id, token: result.token, expiresAt: result.expiresAt })

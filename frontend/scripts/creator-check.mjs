@@ -90,6 +90,7 @@ try {
         assert.equal(request.headers().authorization, 'Bearer synthetic-creator-token')
         if (url.pathname.endsWith('/invitation/revoke')) {
           assert.equal(request.method(), 'POST'); inviteActive = false
+          if (admins.length) admins[0].inviteUsedAt = null
           return respond(201, { revoked: true, activationAllowed: false })
         }
         if (url.pathname.endsWith('/invitation')) {
@@ -178,6 +179,20 @@ try {
     assert.ok(dimensions.scroll <= dimensions.width + 1, `Creator overflow: ${JSON.stringify(dimensions)}`)
     assert.equal(await page.getByRole('button', { name: /Ativar empresa|Enviar convite/ }).count(), 0)
     await page.screenshot({ path: resolve(output, `creator-${width}.png`), fullPage: true })
+    // Another browser has accepted the invitation but has not finished MFA.
+    // The creator must be able to revoke it and reissue without reloading the page.
+    admins[0].inviteUsedAt = '2026-10-08T12:00:00Z'
+    inviteActive = false
+    await page.getByRole('button', { name: 'Fechar', exact: true }).click()
+    await page.getByRole('button', { name: 'Administradores de Agência sintética revisada' }).click()
+    await page.getByRole('button', { name: 'Revogar preparação de Administrador sintético' }).click()
+    await page.getByRole('status').filter({ hasText: 'Convite revogado' }).waitFor()
+    await page.getByRole('button', { name: 'Gerar novo convite para Administrador sintético' }).waitFor()
+    assert.equal(admins[0].inviteUsedAt, null)
+    assert.equal(inviteActive, false)
+    await page.getByRole('button', { name: 'Gerar novo convite para Administrador sintético' }).click()
+    await page.getByLabel('Código exibido somente nesta emissão').waitFor()
+    assert.equal(inviteActive, true)
     await page.getByRole('link', { name: 'Definir senha da empresa' }).click()
     await page.getByRole('heading', { name: 'Preparar acesso da empresa' }).waitFor()
     await page.getByLabel('Código do convite').fill(inviteCode)
