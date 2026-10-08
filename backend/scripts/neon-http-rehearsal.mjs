@@ -9,7 +9,7 @@ import { resolve } from 'node:path'
 
 const require = createRequire(import.meta.url)
 const root = fileURLToPath(new URL('../', import.meta.url))
-const { assertHttpRehearsalTarget } = require('../dist/security/http-rehearsal-target.js')
+const { assertHttpRehearsalTarget, HTTP_REHEARSAL_HOST, HTTP_REHEARSAL_EXPIRES } = require('../dist/security/http-rehearsal-target.js')
 const name = `validation_pr34_http_${randomBytes(12).toString('hex')}`
 let admin, created = false, stage = 'validar configuração', exitCode = 1
 try {
@@ -20,6 +20,14 @@ try {
   stage = 'validar banco base neondb'
   if (url.pathname !== '/neondb') throw new Error('Base inválida')
   const target = new URL(url); target.pathname = '/' + name
+  stage = 'validar host: conexão deve pertencer à branch validation-pr34-runtime-20261007, sem pooling'
+  if (url.hostname !== HTTP_REHEARSAL_HOST) throw new Error('Host recusado')
+  stage = 'validar role: selecionar neondb_owner no Connect do Neon'
+  if (url.username !== 'neondb_owner' || !url.password) throw new Error('Role recusado')
+  stage = 'validar expiração da branch temporária'
+  if (Date.now() >= HTTP_REHEARSAL_EXPIRES) throw new Error('Expirado')
+  stage = 'validar TLS: sslmode=require, verify-ca ou verify-full obrigatório'
+  if (!['require', 'verify-ca', 'verify-full'].includes(url.searchParams.get('sslmode') || '')) throw new Error('TLS recusado')
   stage = 'validar hostname, TLS, parâmetros e expiração da branch temporária'
   assertHttpRehearsalTarget(target)
   admin = new PrismaClient({ datasourceUrl: url.toString(), log: [], errorFormat: 'minimal' })
