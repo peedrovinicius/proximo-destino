@@ -26,6 +26,7 @@ import {
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Brand } from '../../components/Brand'
 import { FinanceWorkspace, QuotesWorkspace } from './CommercialWorkspace'
+import { CompanyFinanceDiscrepancyReport } from './CompanyFinanceDiscrepancyReport'
 import { AdminSeatMapDialog } from './AdminSeatMap'
 import { ReservationPassengersDialog } from './ReservationPassengersDialog'
 import { ReservationCancelDialog } from './ReservationCancelDialog'
@@ -1106,6 +1107,8 @@ function PaymentsWorkspace({ accessToken }: { accessToken: string }) {
           </span>
         </article>
       </div>
+
+      {data?.summaryOnly ? <CompanyFinanceDiscrepancyReport accessToken={accessToken} /> : null}
 
       {!data?.summaryOnly ? <>
       <div className="admin-payment-filters">

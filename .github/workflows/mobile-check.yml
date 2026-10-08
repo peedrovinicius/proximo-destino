@@ -40,6 +40,8 @@ jobs:
         run: node scripts/company-client-check.mjs
       - name: Check private company reservation access issuance and revocation
         run: node scripts/company-access-check.mjs
+      - name: Check company discrepancy report accessibility, filters and pagination
+        run: node scripts/company-finance-report-check.mjs
       - name: Verify first-party session restoration through preview proxy
         run: node scripts/session-check.mjs
       - name: Save synthetic browser evidence
