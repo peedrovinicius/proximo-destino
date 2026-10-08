@@ -61,18 +61,18 @@ describe('company additive migration in isolated PostgreSQL', () => {
     await assert.rejects(prisma.companyMembership.create({ data: { companyId: ids[0], userId: adminId, role: 'AGENT' } }), { code: 'P2002' })
     await assert.rejects(prisma.companyMembership.create({ data: { companyId: `missing-${suffix}`, userId: adminId, role: 'ADMIN' } }), { code: 'P2003' })
   })
-  it('creates an inactive managed administrator with hashed password and no session', async () => {
-    const password = 'synthetic-pending-password-123'
+  it('creates an inactive managed administrator with an undisclosed random credential and no session', async () => {
+    const oldProvisionalPassword = 'synthetic-pending-password-123'
     const result = await service.createPendingAdmin(creatorId, creatorSessionId, ids[0], { displayName: 'Synthetic admin',
-      email: ` PENDING-${suffix}@example.invalid `, password })
+      email: ` PENDING-${suffix}@example.invalid ` })
     pendingIds.push(result.user.id)
     assert.equal(result.isActive, false); assert.equal(result.user.isActive, false)
     assert.equal(result.user.email, `pending-${suffix}@example.invalid`)
-    assert.equal(JSON.stringify(result).includes(password), false)
+    assert.equal(JSON.stringify(result).includes(oldProvisionalPassword), false)
     assert.equal('passwordHash' in result.user, false)
     const user = await prisma.user.findUniqueOrThrow({ where: { id: result.user.id } })
     assert.equal(user.companyManaged, true); assert.equal(user.role, 'ADMIN'); assert.equal(user.mfaEnabled, false)
-    assert.ok(user.passwordHash.startsWith('$argon2id$')); assert.ok(await argon2.verify(user.passwordHash, password))
+    assert.ok(user.passwordHash.startsWith('$argon2id$')); assert.equal(await argon2.verify(user.passwordHash, oldProvisionalPassword), false)
     assert.equal(await prisma.authSession.count({ where: { userId: user.id } }), 0)
     const listed = await service.admins(ids[0])
     assert.ok(listed.some(row => row.user.id === user.id))
@@ -81,8 +81,7 @@ describe('company additive migration in isolated PostgreSQL', () => {
   it('refuses duplicate email and never promotes an existing creator', async () => {
     const count = await prisma.companyMembership.count({ where: { companyId: ids[0] } })
     for (const email of [`${creatorId}@example.invalid`, `PENDING-${suffix}@example.invalid`]) {
-      await assert.rejects(service.createPendingAdmin(creatorId, creatorSessionId, ids[0], { displayName: 'Synthetic', email,
-        password: 'synthetic-pending-password-123' }), { status: 409 })
+      await assert.rejects(service.createPendingAdmin(creatorId, creatorSessionId, ids[0], { displayName: 'Synthetic', email }), { status: 409 })
     }
     assert.equal(await prisma.companyMembership.count({ where: { companyId: ids[0] } }), count)
     assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: creatorId } })).role, 'CREATOR')
@@ -93,8 +92,7 @@ describe('company additive migration in isolated PostgreSQL', () => {
       prisma.$transaction(tx => callback({ $queryRaw: tx.$queryRaw.bind(tx), user: tx.user,
         companyMembership: { create: async () => { throw new Error('synthetic rollback') } } }))
     } as unknown as PrismaService)
-    await assert.rejects(failing.createPendingAdmin(creatorId, creatorSessionId, ids[0], { displayName: 'Synthetic', email,
-      password: 'synthetic-pending-password-123' }), /synthetic rollback/)
+    await assert.rejects(failing.createPendingAdmin(creatorId, creatorSessionId, ids[0], { displayName: 'Synthetic', email }), /synthetic rollback/)
     assert.equal(await prisma.user.findUnique({ where: { email } }), null)
   })
   it('audits creator writes without recording personal values or credentials', async () => {
@@ -119,8 +117,7 @@ describe('company additive migration in isolated PostgreSQL', () => {
     await assert.rejects(failing.updateDraft(creatorId, creatorSessionId, ids[0], { ...fields, tradeName: 'Must rollback' }), /synthetic audit failure/)
     assert.equal((await prisma.company.findUniqueOrThrow({ where: { id: ids[0] } })).tradeName, original.tradeName)
     const email = `audit-rollback-${suffix}@example.invalid`
-    await assert.rejects(failing.createPendingAdmin(creatorId, creatorSessionId, ids[0], { displayName: 'Synthetic', email,
-      password: 'synthetic-pending-password-123' }), /synthetic audit failure/)
+    await assert.rejects(failing.createPendingAdmin(creatorId, creatorSessionId, ids[0], { displayName: 'Synthetic', email }), /synthetic audit failure/)
     assert.equal(await prisma.user.findUnique({ where: { email } }), null)
   })
   it('rechecks creator authorization in every write transaction', async () => {
@@ -128,7 +125,7 @@ describe('company additive migration in isolated PostgreSQL', () => {
       await assert.rejects(service.create(creatorId, creatorSessionId, { ...fields, slug: `denied-${suffix}` }), { status: 403 })
       await assert.rejects(service.updateDraft(creatorId, creatorSessionId, ids[0], fields), { status: 403 })
       await assert.rejects(service.createPendingAdmin(creatorId, creatorSessionId, ids[0], { displayName: 'Synthetic',
-        email: `denied-${suffix}@example.invalid`, password: 'synthetic-pending-password-123' }), { status: 403 })
+        email: `denied-${suffix}@example.invalid` }), { status: 403 })
     }
     const session = await prisma.authSession.findUniqueOrThrow({ where: { id: creatorSessionId } })
     try {
@@ -150,7 +147,7 @@ describe('company additive migration in isolated PostgreSQL', () => {
   })
   async function pendingInvite() {
     const admin = await service.createPendingAdmin(creatorId, creatorSessionId, ids[0], {
-      displayName: 'Synthetic invitee', email: `invite-${randomUUID()}@example.invalid`, password: 'synthetic-initial-password-123',
+      displayName: 'Synthetic invitee', email: `invite-${randomUUID()}@example.invalid`,
     })
     pendingIds.push(admin.user.id)
     return admin
@@ -352,8 +349,7 @@ describe('company additive migration in isolated PostgreSQL', () => {
     await prisma.company.update({ where: { id: ids[0] }, data: { status: 'ACTIVE' } })
     await assert.rejects(service.updateDraft(creatorId, creatorSessionId, ids[0], fields), { status: 404 })
     const email = `active-refused-${suffix}@example.invalid`
-    await assert.rejects(service.createPendingAdmin(creatorId, creatorSessionId, ids[0], { displayName: 'Synthetic', email,
-      password: 'synthetic-pending-password-123' }), { status: 404 })
+    await assert.rejects(service.createPendingAdmin(creatorId, creatorSessionId, ids[0], { displayName: 'Synthetic', email }), { status: 404 })
     assert.equal(await prisma.user.findUnique({ where: { email } }), null)
   })
   it('resolves persisted session company and denies another company or another user', async () => {

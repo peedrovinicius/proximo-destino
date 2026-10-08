@@ -38,9 +38,8 @@ export function CompanyAdminForm({ companyId, companyName, token, onClose, guide
     if (saving || loading) return
     const form = event.currentTarget
     const data = new FormData(form)
-    const body = JSON.stringify({ displayName: data.get('displayName'), email: data.get('email'), password: data.get('password') })
-    // Password is never React state, browser storage, URL, or notification content.
-    form.reset(); data.delete('password')
+    const body = JSON.stringify({ displayName: data.get('displayName'), email: data.get('email') })
+    form.reset()
     setSaving(true); onBusyChange?.(true); setError(''); setNotice('')
     try {
       const response = await fetch(url, { method: 'POST', body, cache: 'no-store', credentials: 'omit',
@@ -91,8 +90,7 @@ export function CompanyAdminForm({ companyId, companyName, token, onClose, guide
     {!guided || !created ? <form onSubmit={save}><fieldset className="creator-fields" disabled={saving || loading}>
       <label>Nome do administrador<input name="displayName" defaultValue={defaultName} required minLength={2} maxLength={160} autoComplete="name" /></label>
       <label>E-mail de acesso<input name="email" type="email" defaultValue={defaultEmail} required maxLength={254} autoComplete="off" /></label>
-      <label>Senha inicial<input name="password" type="password" required minLength={16} maxLength={128} autoComplete="new-password" aria-describedby="admin-password-help" /></label>
-      <p id="admin-password-help" className="creator-help">Use pelo menos 16 caracteres. A senha não será exibida após salvar.</p>
+      <p className="creator-help">O administrador definirá a própria senha com um convite privado; não é necessário criar uma senha provisória.</p>
       <button type="submit">{saving ? 'Cadastrando…' : 'Cadastrar administrador pendente'}</button>
     </fieldset></form> : null}
     {guided && created ? <p>Administrador cadastrado. Gere o convite abaixo e entregue-o por um canal privado após conferir o destinatário. Gerar o convite não envia uma mensagem nem ativa o acesso.</p> : null}

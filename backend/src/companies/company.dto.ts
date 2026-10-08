@@ -10,10 +10,6 @@ export class CreateCompanyAdminDto {
 
   @Transform(normalizeEmail) @IsEmail() @MaxLength(254)
   email!: string
-
-  // Never trim or normalize passwords. The account remains inactive.
-  @IsString() @MinLength(16) @MaxLength(128)
-  password!: string
 }
 
 export class CreateCompanyDto {
