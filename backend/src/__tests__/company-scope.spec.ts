@@ -4,7 +4,7 @@ import { CompanyScopeService } from '../tenancy/company-scope.service'
 import type { PrismaService } from '../prisma/prisma.service'
 
 const baseline = () => ({ id: 'session-a', userId: 'user-a', companyId: 'company-a',
-  user: { role: 'ADMIN', isActive: true }, company: {
+  user: { role: 'ADMIN', isActive: true, companyManaged: true }, company: {
     id: 'company-a', status: 'ACTIVE', memberships: [{ role: 'ADMIN' }],
   } })
 
@@ -21,6 +21,10 @@ describe('server resolved company scope (not yet enabled on operations)', () => 
       assert.equal(query.where.id, 'session-a'); assert.equal(query.where.userId, 'user-a')
       assert.equal(query.where.revokedAt, null); assert.ok(query.where.expiresAt.gt instanceof Date)
       assert.deepEqual(query.select.company.select.memberships.where, { userId: 'user-a', isActive: true })
+      // Enforce the same permanent identity invariant as the SQL authorization
+      // and RLS policies, even when session + membership are otherwise valid.
+      assert.equal((query as unknown as { select: { user: { select: { companyManaged: boolean } } } })
+        .select.user.select.companyManaged, true)
     }).resolveSession('user-a', 'session-a')
     assert.deepEqual(scope, { companyId: 'company-a', userId: 'user-a', sessionId: 'session-a', role: 'ADMIN' })
     assert.equal(Object.isFrozen(scope), true)
@@ -40,6 +44,19 @@ describe('server resolved company scope (not yet enabled on operations)', () => 
       await assert.rejects(service(record).resolveSession('user-a', 'session-a'), { status: 403 })
     })
   }
+  it('rejects legacy accounts even when they have an active tenant session and matching membership', async () => {
+    const legacy = baseline()
+    legacy.user.companyManaged = false
+    await assert.rejects(service(legacy).resolveSession('user-a', 'session-a'), { status: 403 })
+    // The denial must hold for every operational role, not just ADMIN.
+    for (const role of ['AGENT', 'FINANCE']) {
+      const account = baseline()
+      account.user.role = role
+      account.company.memberships = [{ role }]
+      account.user.companyManaged = false
+      await assert.rejects(service(account).resolveSession('user-a', 'session-a'), { status: 403 })
+    }
+  })
   it('rejects inactive users and revoked or ambiguous memberships', async () => {
     const inactive = baseline(); inactive.user.isActive = false
     await assert.rejects(service(inactive).resolveSession('user-a', 'session-a'), { status: 403 })
