@@ -61,6 +61,13 @@ try {
             paidCents: 30900, pendingCents: 500, refundedCents: 550, manualReceivedCount: 1, manualReceivedCents: 10000,
             manualReversedCount: 1, manualReversedCents: 50 }, orders: [], manualPayments: [] })
         }
+        if (path === '/admin/payments/reconciliation/report' && request.method() === 'GET') {
+          assert.equal(url.searchParams.has('after'), false)
+          return respond(200, { reportOnly: true, pageScoped: true, providerContacted: false,
+            dataModified: false, paymentsEnabled: false, pageSize: 50,
+            scannedReservations: 1, flaggedReservations: 0, issueCount: 0,
+            nextCursor: null, divergences: [] })
+        }
         if (path === '/admin/trips/bus-templates') return respond(200, [])
         if (path === `/admin/trips/${trip.id}/audit`) return respond(200, { trip, preparatory: true, limit: 100, hasMore: true,
           events: [{ id: `event-${company}`, eventType: 'OPS_COMPANY_DRAFT_SEAT_MOVE', createdAt: '2026-10-05T12:00:00Z',
