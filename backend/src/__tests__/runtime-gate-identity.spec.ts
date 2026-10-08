@@ -149,6 +149,75 @@ describe('runtime production gate: synthetic restricted LOGIN', () => {
     assert.equal(recovered.status, 0, recovered.stderr)
   })
 
+  it('records canonical PostgreSQL policy-expression fingerprints for reviewed tenant policies', async () => {
+    const baseline = await owner.$queryRaw<Array<{ tablename: string; fingerprint: string }>>`
+      SELECT tablename, md5(coalesce(qual, '') || chr(31) || coalesce(with_check, '')) AS fingerprint
+      FROM pg_policies
+      WHERE schemaname = 'public' AND policyname LIKE 'tenant_session_%'
+      ORDER BY tablename
+    `
+    assert.equal(baseline.length, 15)
+    // These contain no row data, credentials or sensitive tenant information.
+    console.log('REVIEWED_RLS_FINGERPRINTS ' + JSON.stringify(baseline))
+  })
+
+  it('rejects a malicious OR appended to an approved client policy while keeping tenant guard text', async () => {
+    const before = await owner.$queryRaw<Array<{ qual: string; with_check: string }>>`
+      SELECT qual, with_check FROM pg_policies
+      WHERE schemaname='public' AND tablename='Client' AND policyname='tenant_session_client'
+    `
+    assert.equal(before.length, 1)
+    const original = before[0]
+    const own = await owner.client.create({ data: { fullName: `Synthetic canonical guard ${suffix}` } })
+    try {
+      for (const clause of ['USING', 'WITH CHECK'] as const) {
+        const changedUsing = clause === 'USING'
+          ? '(public.company_tenant_authorized("companyId") OR "id" IS NOT NULL)' : original.qual
+        const changedWrite = clause === 'WITH CHECK'
+          ? '(public.company_tenant_authorized("companyId") OR "id" IS NOT NULL)' : original.with_check
+        await owner.$executeRawUnsafe(`ALTER POLICY "tenant_session_client" ON public."Client"
+          USING (${changedUsing}) WITH CHECK (${changedWrite})`)
+        try {
+          const gate = runGate()
+          assert.notEqual(gate.status, 0, `Malicious ${clause} unexpectedly approved`)
+          assert.match(gate.stderr, /GATE_RUNTIME: expressao RLS aprovada foi alterada/)
+        } finally {
+          await owner.$executeRawUnsafe(`ALTER POLICY "tenant_session_client" ON public."Client"
+            USING (${original.qual}) WITH CHECK (${original.with_check})`)
+        }
+      }
+    } finally {
+      await owner.client.delete({ where: { id: own.id } })
+    }
+    const restored = runGate()
+    assert.equal(restored.status, 0, restored.stderr)
+  })
+
+  it('rejects edited nested tenant policies even when they preserve the authorization function', async () => {
+    const old = await owner.$queryRaw<Array<{ qual: string; with_check: string }>>`
+      SELECT qual, with_check FROM pg_policies
+      WHERE schemaname='public' AND tablename='ClientCreditTransaction'
+        AND policyname='tenant_session_client_credit'
+    `
+    assert.equal(old.length, 1)
+    const orig = old[0]
+    await owner.$executeRawUnsafe(`ALTER POLICY "tenant_session_client_credit"
+      ON public."ClientCreditTransaction"
+      USING ((${orig.qual}) OR "id" IS NOT NULL)
+      WITH CHECK (${orig.with_check})`)
+    try {
+      const gate = runGate()
+      assert.notEqual(gate.status, 0)
+      assert.match(gate.stderr, /GATE_RUNTIME: expressao RLS aprovada foi alterada/)
+    } finally {
+      await owner.$executeRawUnsafe(`ALTER POLICY "tenant_session_client_credit"
+        ON public."ClientCreditTransaction"
+        USING (${orig.qual}) WITH CHECK (${orig.with_check})`)
+    }
+    const safe = runGate()
+    assert.equal(safe.status, 0, safe.stderr)
+  })
+
   it('rejects INSERT into tenant memberships regardless of RLS or apparent read-only access', async () => {
     await owner.$executeRawUnsafe(`GRANT INSERT ON TABLE public."CompanyMembership" TO "${role}"`)
     try {
