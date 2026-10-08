@@ -83,6 +83,39 @@ BEGIN
     RAISE EXCEPTION 'GATE_RUNTIME: funcao de lock de autorizacao ausente ou insegura';
   END IF;
 
+  -- SECURITY DEFINER is an authority boundary. A name + volatility-only
+  -- check can be bypassed by replacing the function body with SELECT true,
+  -- leaving SECURITY DEFINER, STABLE/VOLATILE and search_path unchanged.
+  -- Pin the complete reviewed prosrc body from the original migrations.
+  -- This is a fixed migration-reviewed baseline, never read from the
+  -- current database to self-certify a compromised function.
+  IF EXISTS (
+    SELECT 1 FROM (VALUES
+      ('company_tenant_authorized', 'public.company_tenant_authorized(text)',
+        'sql', 's', '89c73cf7463057fb31dad559036b9d93'),
+      ('company_write_authorized', 'public.company_write_authorized(text,text,text,text)',
+        'plpgsql', 'v', 'df80a956fd405ae0e9e109ef0c93e783')
+    ) AS canonical(name, signature, language_name, expected_volatility, source_md5)
+    LEFT JOIN pg_proc fn ON fn.oid = to_regprocedure(canonical.signature)
+    LEFT JOIN pg_language lang ON lang.oid = fn.prolang
+    WHERE fn.oid IS NULL
+      OR fn.proname <> canonical.name
+      OR fn.prorettype <> 'pg_catalog.bool'::regtype
+      OR lang.lanname IS DISTINCT FROM canonical.language_name
+      OR NOT fn.prosecdef
+      OR fn.provolatile IS DISTINCT FROM canonical.expected_volatility::"char"
+      OR fn.proconfig IS DISTINCT FROM ARRAY['search_path=pg_catalog']::text[]
+      OR md5(fn.prosrc) IS DISTINCT FROM canonical.source_md5
+      OR pg_has_role(current_user, fn.proowner, 'MEMBER')
+      OR NOT has_function_privilege(current_user, fn.oid, 'EXECUTE')
+  ) OR (
+    SELECT count(*) FROM pg_proc fn JOIN pg_namespace n ON n.oid=fn.pronamespace
+    WHERE n.nspname='public'
+      AND fn.proname IN ('company_tenant_authorized', 'company_write_authorized')
+  ) <> 2 THEN
+    RAISE EXCEPTION 'GATE_RUNTIME: integridade de funcao SECURITY DEFINER';
+  END IF;
+
   IF EXISTS (
     SELECT 1
     FROM (VALUES
