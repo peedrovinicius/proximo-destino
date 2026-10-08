@@ -128,6 +128,70 @@ BEGIN
     RAISE EXCEPTION 'GATE_RUNTIME: politica RLS permissiva para tabela sensivel';
   END IF;
 
+  -- PostgreSQL OR-combines PERMISSIVE policies. A second SELECT policy
+  -- such as USING ("id" IS NOT NULL) can expose every tenant even while
+  -- tenant_session_* still exists and no policy contains literal true.
+  -- Reject any unexpected permissive policy applying to this login/PUBLIC.
+  -- Additional RESTRICTIVE policies may safely narrow access.
+  IF EXISTS (
+    SELECT 1 FROM pg_policies p
+    WHERE p.schemaname = 'public'
+      AND p.tablename = ANY(expected_tables)
+      AND p.permissive = 'PERMISSIVE'
+      AND ('public' = ANY(p.roles) OR current_user = ANY(p.roles))
+      AND NOT (
+        -- Reviewed tenant policies must still use persisted-session
+        -- authorization for both reads and writes.
+        (p.cmd = 'ALL' AND p.roles = ARRAY['public']::name[]
+          AND position('company_tenant_authorized' IN coalesce(p.qual, '')) > 0
+          AND position('company_tenant_authorized' IN coalesce(p.with_check, '')) > 0
+          AND (p.tablename, p.policyname) IN (
+            VALUES
+              ('Client','tenant_session_client'),
+              ('Companion','tenant_session_companion'),
+              ('Trip','tenant_session_trip'),
+              ('Reservation','tenant_session_reservation'),
+              ('ReservationPassenger','tenant_session_reservation_passenger'),
+              ('SeatAssignment','tenant_session_seat_assignment'),
+              ('PurchaseOrder','tenant_session_purchase_order'),
+              ('Quote','tenant_session_quote'),
+              ('QuoteItem','tenant_session_quote_item'),
+              ('ReservationService','tenant_session_reservation_service'),
+              ('FinancePlan','tenant_session_finance_plan'),
+              ('Installment','tenant_session_installment'),
+              ('TravelDocument','tenant_session_travel_document'),
+              ('ManualPayment','tenant_session_manual_payment'),
+              ('ClientCreditTransaction','tenant_session_client_credit')
+          ))
+        OR
+        -- Legacy default-deny policies are safe only while both clauses
+        -- remain literally false; the name alone never establishes safety.
+        (p.cmd = 'ALL' AND p.roles = ARRAY['public']::name[]
+          AND (p.tablename, p.policyname) IN (
+            VALUES
+              ('Client','api_only_client'),
+              ('Companion','api_only_companion'),
+              ('Reservation','api_only_reservation'),
+              ('ReservationPassenger','api_only_reservation_passenger'),
+              ('PurchaseOrder','api_only_purchase_order'),
+              ('FinancePlan','api_only_finance_plan'),
+              ('TravelDocument','api_only_travel_document'),
+              ('ClientCreditTransaction','api_only_client_credit'),
+              ('SeatAssignment','api_only_seat_assignment'),
+              ('Quote','api_only_quote'),
+              ('Installment','api_only_installment'),
+              ('ManualPayment','api_only_manual_payment'),
+              ('Trip','api_only_trip'),
+              ('QuoteItem','api_only_quote_item'),
+              ('ReservationService','api_only_reservation_service')
+          )
+          AND lower(regexp_replace(coalesce(p.qual, ''), '[[:space:]()]', '', 'g')) = 'false'
+          AND lower(regexp_replace(coalesce(p.with_check, ''), '[[:space:]()]', '', 'g')) = 'false')
+      )
+  ) THEN
+    RAISE EXCEPTION 'GATE_RUNTIME: politica RLS permissiva nao revisada ou enfraquecida';
+  END IF;
+
   -- The runtime must not modify persisted authorization directly. All
   -- mutations to company identity/session/membership require a separately
   -- reviewed path; these privileges can bypass API-level tenancy guards.

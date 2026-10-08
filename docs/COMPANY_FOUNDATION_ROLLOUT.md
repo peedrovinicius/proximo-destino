@@ -44,6 +44,32 @@
 O script de provisionamento não foi executado. Nenhuma migração foi aplicada
 ao banco de produção nesta etapa.
 
+## Inspeção de políticas RLS permissivas concorrentes
+
+O gate `scripts/security/assert-runtime.sql` também recusa **qualquer nova
+política PERMISSIVE** aplicável ao login runtime ou a PUBLIC nas 15 tabelas
+sensíveis, mesmo quando não usa literalmente `USING(true)`. PostgreSQL combina
+políticas permissivas por `OR`; uma política extra `USING ("id" IS NOT NULL)`
+poderia expor linhas de outras empresas apesar da presença da política
+original `tenant_session_*`.
+
+A lista positiva aceita apenas as políticas revisadas `tenant_session_*`
+(elas precisam continuar contendo a função `company_tenant_authorized`
+nos testes de leitura e gravação) e as antigas `api_only_*` apenas
+se ambas as cláusulas permanecem `false`. Políticas RESTRICTIVE adicionais
+continuam possíveis, pois só reduzem o conjunto acessível. Mudanças
+legítimas nessa lista precisam de revisão de código e atualização do gate;
+a checagem **não** substitui auditoria semântica completa do SQL de uma
+política permitida.
+
+O teste com LOGIN efêmero em PostgreSQL isolado cria um cliente fictício,
+verifica que está oculto, adiciona uma política insegura para demonstrar
+que o registro passa a ficar visível, exige recusa pelo gate, remove a
+política e confirma novamente ocultação e aprovação. Também testa uma
+permissiva extra para PUBLIC, uma RESTRICTIVE inofensiva e alteração da
+política de sessão aprovada sem a função de autorização. Nada é enviado
+a produção e as políticas sintéticas são eliminadas no próprio teste.
+
 ## Gate de privilégios de identidade no papel runtime
 
 O `scripts/security/assert-runtime.sql` é executado em transação **somente
