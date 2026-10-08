@@ -366,7 +366,11 @@ Códigos de recuperação são exibidos uma vez, apenas em memória, com control
 Se a página for fechada ou a preparação expirar, `/company-invitations/resume` permite
 retomar usando e-mail e a senha definida, somente antes de concluir MFA. Invalida a
 preparação anterior; cinco erros de senha bloqueiam a conta por 15 minutos, com contador
-serializado e auditoria sem dados pessoais. O Criador pode revogar a preparação pendente.
+serializado e auditoria sem dados pessoais. O Criador pode revogar a preparação pendente. A revogação de convite já aceito
+invalida o aceite anterior, o token MFA e o segredo temporário: a senha anterior
+não permite mais `/company-invitations/resume`. Para recomeçar, o Criador deve
+emitir um novo convite privado, que exige definir uma nova senha. A revogação
+não ativa a conta, não altera empresas operacionais e preserva a auditoria.
 Endpoints exigem a flag, limitam tentativas e enviam Cache-Control no-store. Segredos não
 entram em URLs, storage ou auditoria. MFA legado de contas ativas permanece separado.
 
