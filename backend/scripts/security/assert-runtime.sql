@@ -170,7 +170,13 @@ BEGIN
           AND (p.tablename, p.policyname) IN (
             VALUES
               ('Client','api_only_client'),
+              ('Companion','api_only_companion'),
               ('Reservation','api_only_reservation'),
+              ('ReservationPassenger','api_only_reservation_passenger'),
+              ('PurchaseOrder','api_only_purchase_order'),
+              ('FinancePlan','api_only_finance_plan'),
+              ('TravelDocument','api_only_travel_document'),
+              ('ClientCreditTransaction','api_only_client_credit'),
               ('SeatAssignment','api_only_seat_assignment'),
               ('Quote','api_only_quote'),
               ('Installment','api_only_installment'),
