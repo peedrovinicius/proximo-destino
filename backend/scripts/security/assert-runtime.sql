@@ -169,6 +169,12 @@ BEGIN
         (p.cmd = 'ALL' AND p.roles = ARRAY['public']::name[]
           AND (p.tablename, p.policyname) IN (
             VALUES
+              ('Client','api_only_client'),
+              ('Reservation','api_only_reservation'),
+              ('SeatAssignment','api_only_seat_assignment'),
+              ('Quote','api_only_quote'),
+              ('Installment','api_only_installment'),
+              ('ManualPayment','api_only_manual_payment'),
               ('Trip','api_only_trip'),
               ('QuoteItem','api_only_quote_item'),
               ('ReservationService','api_only_reservation_service')
