@@ -10,6 +10,7 @@ import {
   Req,
   UseGuards,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common'
 import { Equals, IsBoolean } from 'class-validator'
 import { Throttle } from '@nestjs/throttler'
@@ -100,6 +101,19 @@ export class AdminController {
   reservations(@Req() request: AuthenticatedRequest) {
     if (request.companyScope) return this.scoped.reservations(request.user.id, request.user.sessionId)
     return this.admin.listReservations(request.user.role)
+  }
+
+  @Get('payments/reconciliation/report')
+  @Header('Cache-Control', 'no-store')
+  @CompanyRead()
+  @Roles(...FINANCE_ROLES)
+  financeDiscrepancyReport(@Req() request: AuthenticatedRequest, @Query('after') after?: string) {
+    if (!request.companyScope) throw new ForbiddenException('Sessão de empresa obrigatória')
+    // Reject unknown or bracket-style query keys instead of silently ignoring them.
+    if (Object.keys(request.query).some(key => key !== 'after')) {
+      throw new BadRequestException('Parâmetros do relatório inválidos')
+    }
+    return this.scoped.financeDiscrepancyReport(request.user.id, request.user.sessionId, after)
   }
 
   @Get('payments/orders')

@@ -496,6 +496,45 @@ continuam bloqueados para sessões de empresa, e nenhuma migração, chave de
 pagamento ou integração externa é ativada. Testes HTTP usam banco isolado,
 duas empresas, perfis, vínculos revogados e dados financeiros fictícios.
 
+## Relatório paginado de divergências financeiras — somente leitura
+
+GET `/admin/payments/reconciliation/report` consulta exclusivamente a empresa
+verificada na sessão persistida de ADMIN/FINANCE. `@CompanyRead`, transação
+`RepeatableRead`, contexto SQL de tenant e revalidação da conta, do vínculo,
+da sessão e dos pais da reserva protegem todas as páginas. AGENT e sessão
+legada sem empresa não acessam esta rota. Não há filtro de empresa enviado pelo
+navegador, dados pessoais, IDs de provedor, referências, notas ou comprovantes.
+
+O retorno é intencionalmente **limitado por página**, com no máximo 50 reservas
+examinadas, ordenação por ID, `after` validado, `nextCursor` e contagem de
+alertas **somente daquela página**. Uma página vazia ou sem divergências não
+prova que a empresa inteira foi conciliada: o chamador deve percorrer todas
+as páginas. Cada alerta mostra somente o ID da reserva própria, códigos
+de conferência e valores mínimos pertinentes. Não calcula saldo devedor
+nem declara pagamentos confirmados.
+
+Códigos de revisão:
+- `ORDER_AMOUNT_MISMATCH`: pedido com total, unitário, passageiros ou estorno
+  numericamente incompatíveis;
+- `REFUND_STATUS_MISMATCH`: status do pedido incompatível com reembolso;
+- `PASSENGER_COUNT_MISMATCH`: quantidade do pedido e da reserva divergem;
+- `PROVIDER_REFERENCE_MISSING`: pedido pago/reembolsado sem referência registrada;
+- `INVALID_MANUAL_AMOUNT`: valor manual menor ou igual a zero;
+- `MANUAL_ASSOCIATION_MISMATCH`: plano, cotação ou parcela de outra reserva;
+- `MIXED_PAYMENT_CHANNELS_REVIEW`: mesma reserva com pedido online marcado
+  pago e recebimento manual; **indício para conferir, não prova de duplicidade**.
+
+O relatório calcula a agregação de recebimentos manuais separadamente
+dos pedidos online, sem cruzar esses valores como se fossem um mesmo meio
+de liquidação. Montantes fora do limite seguro são recusados em vez de
+arredondados. `reportOnly=true`, `providerContacted=false`,
+`dataModified=false` e `paymentsEnabled=false` deixam explícito que
+nada foi conciliado nem movimentado. A resposta usa `Cache-Control: no-store`.
+Não existe exportação pública, tarefa agendada, chamada a provedores,
+alteração de banco, envio de mensagens, migration ou habilitação empresarial.
+Testes com PostgreSQL descartável verificam segregação A/B, papéis,
+revogação, integridade, truncamento e paginação.
+
 ## Pré-conciliação financeira por reserva — somente leitura
 
 `GET /admin/reservations/:id/finance/reconcile/preview` oferece um **diagnóstico
