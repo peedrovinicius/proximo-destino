@@ -496,6 +496,34 @@ continuam bloqueados para sessões de empresa, e nenhuma migração, chave de
 pagamento ou integração externa é ativada. Testes HTTP usam banco isolado,
 duas empresas, perfis, vínculos revogados e dados financeiros fictícios.
 
+## Interface responsiva de revisão financeira (preparatória)
+
+Na aba **Pagamentos**, somente quando o backend retorna `summaryOnly=true`
+para empresa, o painel mostra "Divergências para revisão", consumindo o
+endpoint protegido `GET /admin/payments/reconciliation/report`. A operação
+legada mantém a visualização anterior e **não recebe** a nova interface.
+
+O navegador não recebe/escolhe IDs de empresa e não faz operações financeiras.
+O relatório usa token de sessão já existente, `GET` com `cache: no-store`,
+abort de consultas substituídas e reinício dos resultados quando a página
+muda. Erros não preservam dados vencidos como atuais: a tela limpa a página,
+informa a falha e oferece "Tentar novamente". Nenhum token vai para URL,
+log ou armazenamento novo. Resposta diferente de read-only é recusada.
+
+O painel tem filtros locais por código de reserva e código de divergência,
+rótulos em português, lista sem PII, valores formatados em reais, navegação
+"Página anterior" / "Próxima página" e indicadores da página atual.
+Os filtros operam **somente sobre os alertas já trazidos da página** e não
+substituem pesquisa completa nem conciliação da empresa. Estados de
+carregamento, erros e resumo são anunciados a tecnologias assistivas.
+Botões e campos usam alvo de toque de pelo menos 44 px, foco visível,
+espaçamento adaptativo e layout de uma coluna em telas estreitas.
+
+O workflow mobile executa um ensaio isolado nas larguras 320/390/768/1440 px
+com dados fictícios, verificando filtros, paginação, reenvio após falha,
+overflow, foco e ausência de chamadas de escrita. Sem deploy, sem empresa
+ativada, sem pagamento real ou consulta a provedores externos.
+
 ## Relatório paginado de divergências financeiras — somente leitura
 
 GET `/admin/payments/reconciliation/report` consulta exclusivamente a empresa
