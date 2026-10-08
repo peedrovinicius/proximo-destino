@@ -16,6 +16,7 @@ import { PrismaService } from '../prisma/prisma.service'
 import { TenancyModule } from '../tenancy/tenancy.module'
 import { CompanyClientsService } from '../tenancy/company-clients.service'
 import { CompanyScopeService } from '../tenancy/company-scope.service'
+import { lockCompanyWrite } from '../tenancy/company-write-lock'
 import { revealDocument } from '../security/sensitive-data'
 import { CompanyTripsService } from '../tenancy/company-trips.service'
 import { listBusTemplates } from '../trips/bus-templates'
@@ -695,6 +696,115 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
       await assert.rejects(writes.create(users[0], sessions[0], { fullName: 'Denied write' }), { status: 403 })
     } finally { await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { isActive: true } }) }
   })
+  it('serializes an authorized write ahead of a concurrent membership revocation', async () => {
+    const scope = await new CompanyScopeService(prisma).resolveSession(users[0], sessions[0])
+    const fullName = `Synthetic in-flight write ${suffix}`
+    let unlockWrite!: () => void
+    let reportAuthorized!: () => void
+    const holdWrite = new Promise<void>(resolve => { unlockWrite = resolve })
+    const authorized = new Promise<void>(resolve => { reportAuthorized = resolve })
+    // The gate is invoked after the server-side write authorization has locked
+    // its persisted identity rows, but before the transaction commits.
+    const pendingWrite = prisma.$transaction(async tx => {
+      await lockCompanyWrite(tx, scope)
+      reportAuthorized()
+      await holdWrite
+      return (await tx.client.create({
+        data: { companyId: companies[0], fullName }, select: { id: true },
+      })).id
+    }, { timeout: 10_000 }).then(id => ({ id, error: null as unknown }),
+      error => ({ id: null as string | null, error }))
+    let revoke: Promise<unknown> | undefined
+    try {
+      await authorized
+      let revocationCommitted = false
+      revoke = prisma.companyMembership.updateMany({
+        where: { companyId: companies[0], userId: users[0] },
+        data: { isActive: false },
+      }).then(() => { revocationCommitted = true })
+      await new Promise(resolve => setTimeout(resolve, 150))
+      assert.equal(revocationCommitted, false,
+        'Revocation must wait until the already-authorized transaction commits')
+      unlockWrite()
+      const result = await pendingWrite
+      assert.equal(result.error, null, 'Previously authorized transaction should commit first')
+      assert.ok(result.id)
+      await revoke
+      assert.equal((await prisma.client.findUnique({ where: { id: result.id! } }))?.companyId, companies[0])
+      assert.equal((await call('/admin/clients', tokens[0])).status, 403)
+      const otherTenant = await call('/admin/clients', tokens[1])
+      assert.equal(otherTenant.status, 200)
+      assert.ok((await otherTenant.json() as { id: string }[]).some(client => client.id === clients[1]))
+      const stale = new CompanyClientsService(prisma,
+        { resolveSession: async () => scope } as unknown as CompanyScopeService)
+      await assert.rejects(stale.create(users[0], sessions[0],
+        { fullName: 'Must fail after concurrent revocation' }), { status: 403 })
+    } finally {
+      unlockWrite()
+      await pendingWrite
+      await revoke?.catch(() => {})
+      await prisma.companyMembership.updateMany({
+        where: { companyId: companies[0], userId: users[0] }, data: { isActive: true },
+      })
+      await prisma.client.deleteMany({ where: { companyId: companies[0], fullName } })
+    }
+  })
+
+  it('denies a stale-scope write when membership role changes while authorization waits', async () => {
+    const resolvedScope = await new CompanyScopeService(prisma).resolveSession(users[0], sessions[0])
+    let announceLocked!: () => void
+    let finishChange!: () => void
+    const locked = new Promise<void>(resolve => { announceLocked = resolve })
+    const holdRole = new Promise<void>(resolve => { finishChange = resolve })
+    // Simulate a concurrent role downgrade holding the membership row.
+    // An earlier scope resolution must never overrule the committed new role.
+    const change = prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT "id" FROM "CompanyMembership"
+        WHERE "companyId" = ${companies[0]} AND "userId" = ${users[0]} FOR UPDATE`
+      announceLocked()
+      await holdRole
+      await tx.companyMembership.updateMany({ where: {
+        companyId: companies[0], userId: users[0],
+      }, data: { role: 'FINANCE' } })
+    }, { timeout: 10_000 })
+    // Attach a rejection handler so an unexpected database failure cannot become
+    // an unhandled rejection while a barrier is still outstanding.
+    const changeResult = change.then(() => ({ error: null as unknown }),
+      error => ({ error }))
+    let attempt: Promise<{ error: unknown }> | undefined
+    const fullName = `Synthetic denied downgrade ${suffix}`
+    try {
+      await locked
+      let enteredScope!: () => void
+      const entered = new Promise<void>(resolve => { enteredScope = resolve })
+      const stale = new CompanyClientsService(prisma, {
+        resolveSession: async () => { enteredScope(); return resolvedScope },
+      } as unknown as CompanyScopeService)
+      attempt = stale.create(users[0], sessions[0], { fullName })
+        .then(() => ({ error: null as unknown }), error => ({ error }))
+      await entered
+      // Give the transaction a chance to contend for the membership lock.
+      await new Promise(resolve => setTimeout(resolve, 50))
+      finishChange()
+      const changed = await changeResult
+      assert.equal(changed.error, null)
+      const outcome = await attempt
+      assert.equal((outcome.error as { status?: number } | null)?.status, 403,
+        'A write using the previously resolved ADMIN role must fail after downgrade')
+      assert.equal(await prisma.client.count({ where: { companyId: companies[0], fullName } }), 0)
+      assert.equal((await call('/admin/clients', tokens[0], 'POST', { fullName })).status, 403)
+      assert.equal((await call('/admin/clients', tokens[1])).status, 200)
+    } finally {
+      finishChange()
+      await attempt?.catch(() => {})
+      await changeResult
+      await prisma.companyMembership.updateMany({ where: {
+        companyId: companies[0], userId: users[0],
+      }, data: { role: 'ADMIN' } })
+      await prisma.client.deleteMany({ where: { companyId: companies[0], fullName } })
+    }
+  })
+
   it('serializes concurrent CPF creation in the same company', async () => {
     const responses = await Promise.all([0, 1].map(() => call('/admin/clients', tokens[0], 'POST', {
       fullName: 'Synthetic concurrent', document: '11144477735',
