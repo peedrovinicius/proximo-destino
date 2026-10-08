@@ -208,8 +208,13 @@ export class AdminController {
   }
 
   @Get('reservations/:id/finance')
+  @Header('Cache-Control', 'no-store')
+  @CompanyRead()
   @Roles(...FINANCE_ROLES)
-  reservationFinance(@Param('id') id: string) {
+  reservationFinance(@Param('id') id: string, @Req() request: AuthenticatedRequest) {
+    if (request.companyScope) {
+      return this.scoped.reservationFinanceSummary(request.user.id, request.user.sessionId, id)
+    }
     return this.admin.reservationFinance(id)
   }
 

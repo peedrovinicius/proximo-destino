@@ -471,6 +471,31 @@ impede respostas antigas após saída da tela; botões impedem ações simultân
 Não há alteração de poltronas, passageiros, pagamentos ou cancelamento.
 Interface segue fora de produção e a API conserva as duas flags obrigatórias.
 
+## Resumo financeiro por reserva (consulta multiempresa, sem cobranças)
+
+GET `/admin/reservations/:id/finance` agora recebe `@CompanyRead` e oferece
+uma projeção **somente leitura** para ADMIN e FINANCE com sessão persistida e
+vínculo ativo. AGENT permanece proibido. A reserva precisa pertencer à empresa
+da sessão **e** possuir cliente e viagem da mesma empresa; IDs externos e ausentes
+recebem 404, sem consultar ou revelar dados financeiros estrangeiros.
+Sessões legadas explicitamente sem empresa preservam o handler anterior.
+
+A consulta em transação RepeatableRead devolve apenas ID/status da reserva,
+quantidade de passageiros, preço unitário *indicativo* da viagem, status e totais
+do pedido online, além de contagens/somas de recebimentos manuais e reversões.
+Não inclui nome/CPF/e-mail, detalhes de provedor, identificador de pagamento,
+notas, motivos de estorno, hashes ou documentos. Os canais online e manual
+permanecem separados: este resumo **não calcula saldo devedor**, não declara
+pagamento quitado, não confirma reserva e não efetua movimentação financeira.
+`operationalPaymentsEnabled=false` explicita o bloqueio.
+
+Valores negativos, reembolsos maiores que o pedido, somas fora do intervalo
+seguro e vínculos manuais inconsistentes são recusados com 409. A resposta usa
+Cache-Control no-store. Conciliação, registro manual, estorno e reembolso
+continuam bloqueados para sessões de empresa, e nenhuma migração, chave de
+pagamento ou integração externa é ativada. Testes HTTP usam banco isolado,
+duas empresas, perfis, vínculos revogados e dados financeiros fictícios.
+
 ## Emissão e revogação de código por administrador da empresa
 
 `POST /admin/reservations/:id/company-portal-code` exige sessão administrativa
