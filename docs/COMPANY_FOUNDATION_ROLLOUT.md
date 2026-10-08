@@ -48,9 +48,17 @@ ao banco de produção nesta etapa.
 
 O início desta etapa adiciona `AuthSession.companyId` opcional e um resolvedor
 server-only `CompanyScopeService`. Ele verifica sessão vigente e do usuário,
-empresa ativa, conta ativa e vínculo vigente compatível com o papel atual.
+empresa ativa, conta ativa, marcador permanente `User.companyManaged=true` e
+vínculo vigente compatível com o papel atual.
 Não recebe companyId do navegador e não atribui sessões antigas a uma empresa.
-Sessões antigas sem vínculo são recusadas pelo resolvedor. O resolvedor está
+Sessões antigas sem vínculo são recusadas pelo resolvedor.
+O resolvedor rejeita **conta legada não gerenciada** mesmo quando há sessão de
+empresa, vínculo ativo e papel aparentemente compatíveis. O teste unitário
+cobre ADMIN/AGENT/FINANCE com marcador ausente e preserva sessões legadas
+sem escopo nas rotas legadas. Esta é uma defesa antecipada consistente com
+`lockCompanyRead`, `lockCompanyWrite` e RLS por sessão; não equivale a
+liberação operacional ou comprovação de credenciais de produção.
+ O resolvedor está
 ligado às leituras administrativas descritas abaixo; não representa isolamento
 operacional concluído.
 
