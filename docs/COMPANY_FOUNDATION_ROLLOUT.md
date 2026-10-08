@@ -44,6 +44,31 @@
 O script de provisionamento não foi executado. Nenhuma migração foi aplicada
 ao banco de produção nesta etapa.
 
+## Gate de privilégios de identidade no papel runtime
+
+O `scripts/security/assert-runtime.sql` é executado em transação **somente
+leitura** pela própria conexão candidata. Além da verificação de RLS,
+propriedade, auditoria e migrations, agora rejeita privilégio **efetivo**
+`UPDATE` ou `DELETE` em `User`, `AuthSession`, `Company` ou
+`CompanyMembership`, bem como `INSERT` direto em
+`CompanyMembership`. Esses acessos permitiriam alterar identidades,
+sessões ou vínculos à margem dos controles transacionais do tenant.
+
+O teste `runtime-gate-identity.spec.ts` abre um LOGIN PostgreSQL temporário,
+`NOSUPERUSER/NOBYPASSRLS/NOINHERIT`, com privilégios operacionais
+mínimos em tabelas cobertas por RLS. Comprova que o gate aprova a
+configuração restrita e **recusa cada concessão perigosa** separadamente;
+depois de cada `REVOKE`, volta a aprová-la. Nenhuma identidade real é
+alterada, nenhum secret de produção é utilizado e nenhuma política é
+trocada por `USING(true)`.
+
+**Ainda pendente:** configurar a credencial efetiva de execução no ambiente
+de homologação, rodar `check-runtime.sql` e `assert-runtime.sql` com essa
+própria conexão e arquivar somente evidência redigida, sem segredos. A
+aprovação do papel efêmero no CI **não libera** produção, login operacional,
+conciliação nem ativação de empresas; a arquitetura de escrita de identidade
+deve permanecer fail-closed até aprovação dos fluxos pertinentes.
+
 ## Ensaio ampliado: documentos, passageiros, assentos e sessão do portal
 
 O teste `tenant-session-rls.spec.ts` agora usa um LOGIN PostgreSQL
