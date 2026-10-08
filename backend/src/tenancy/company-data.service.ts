@@ -90,6 +90,128 @@ export class CompanyDataService {
     }, { isolationLevel: 'RepeatableRead' })
   }
 
+
+  /** Page-scoped discrepancy review. No provider access, payment changes or PII. */
+  async financeDiscrepancyReport(userId: string, sessionId: string, after?: unknown) {
+    if (after !== undefined && (typeof after !== 'string' || !/^[A-Za-z0-9_-]{1,191}$/.test(after))) {
+      throw new BadRequestException('Cursor de paginação inválido')
+    }
+    const scope = await this.scopes.resolveSession(userId, sessionId)
+    if (scope.role === 'AGENT') throw new ForbiddenException('Perfil sem acesso ao relatório financeiro')
+    const cursor = (after as string | undefined) ?? ''
+    return this.prisma.$transaction(async tx => {
+      await lockCompanyRead(tx, scope)
+      type ReportRow = {
+        reservationId: string; reservationPassengers: number; orderStatus: string | null
+        orderTotalCents: number | null; orderUnitCents: number | null
+        orderPassengers: number | null; orderRefundedCents: number | null
+        hasProviderReference: boolean
+        manualCount: bigint; manualReceivedCount: bigint
+        manualReceivedCents: bigint; manualReversedCents: bigint
+        invalidManualAmounts: bigint; invalidManualLinks: bigint
+      }
+      // Bound the result set BEFORE joining payment data. Parent tenant checks
+      // and transaction-local RLS context are enforced on every page.
+      const rows = await tx.$queryRaw<ReportRow[]>`
+        WITH page AS (
+          SELECT r."id", r."passengerCount"
+          FROM "Reservation" r
+          JOIN "Client" c ON c."id" = r."clientId"
+          JOIN "Trip" t ON t."id" = r."tripId"
+          WHERE r."companyId" = ${scope.companyId}
+            AND c."companyId" = ${scope.companyId}
+            AND t."companyId" = ${scope.companyId}
+            AND r."id" > ${cursor}
+          ORDER BY r."id" ASC
+          LIMIT 51
+        )
+        SELECT page."id" AS "reservationId", page."passengerCount" AS "reservationPassengers",
+          p."status"::text AS "orderStatus",
+          p."totalCents" AS "orderTotalCents", p."unitPriceCents" AS "orderUnitCents",
+          p."passengerCount" AS "orderPassengers", p."refundedCents" AS "orderRefundedCents",
+          (p."providerPaymentId" IS NOT NULL OR p."providerOrderId" IS NOT NULL) AS "hasProviderReference",
+          m."count" AS "manualCount", m."receivedCount" AS "manualReceivedCount",
+          m."receivedCents" AS "manualReceivedCents", m."reversedCents" AS "manualReversedCents",
+          m."invalidAmounts" AS "invalidManualAmounts", m."invalidLinks" AS "invalidManualLinks"
+        FROM page
+        LEFT JOIN "PurchaseOrder" p ON p."reservationId" = page."id"
+        LEFT JOIN LATERAL (
+          SELECT COUNT(*) AS "count",
+            COUNT(*) FILTER (WHERE x."status" = 'RECEIVED') AS "receivedCount",
+            COALESCE(SUM(x."amountCents") FILTER (WHERE x."status" = 'RECEIVED'), 0) AS "receivedCents",
+            COALESCE(SUM(x."amountCents") FILTER (WHERE x."status" = 'REVERSED'), 0) AS "reversedCents",
+            COUNT(*) FILTER (WHERE x."amountCents" <= 0) AS "invalidAmounts",
+            COUNT(*) FILTER (WHERE
+              (x."financePlanId" IS NOT NULL AND (plan."reservationId" IS DISTINCT FROM page."id"
+                OR quote."reservationId" IS DISTINCT FROM page."id"))
+              OR (x."installmentId" IS NOT NULL AND (ip."reservationId" IS DISTINCT FROM page."id"
+                OR iq."reservationId" IS DISTINCT FROM page."id"
+                OR (x."financePlanId" IS NOT NULL AND inst."financePlanId" IS DISTINCT FROM x."financePlanId")))
+            ) AS "invalidLinks"
+          FROM "ManualPayment" x
+          LEFT JOIN "FinancePlan" plan ON plan."id" = x."financePlanId"
+          LEFT JOIN "Quote" quote ON quote."id" = plan."quoteId"
+          LEFT JOIN "Installment" inst ON inst."id" = x."installmentId"
+          LEFT JOIN "FinancePlan" ip ON ip."id" = inst."financePlanId"
+          LEFT JOIN "Quote" iq ON iq."id" = ip."quoteId"
+          WHERE x."reservationId" = page."id"
+        ) m ON true
+        ORDER BY page."id" ASC
+      `
+      const page = rows.slice(0, 50)
+      const flagged = []
+      let totalFlags = 0
+      for (const row of page) {
+        const values = [row.manualCount, row.manualReceivedCount, row.manualReceivedCents,
+          row.manualReversedCents, row.invalidManualAmounts, row.invalidManualLinks]
+        if (values.some(value => !Number.isSafeInteger(Number(value)))) {
+          throw new ConflictException('Montantes ou contagens excedem o limite seguro')
+        }
+        const issues: string[] = []
+        if (row.orderStatus !== null) {
+          const total = row.orderTotalCents!, unit = row.orderUnitCents!
+          const passengers = row.orderPassengers!, refunded = row.orderRefundedCents!
+          if (total <= 0 || unit <= 0 || passengers <= 0 || refunded < 0 ||
+            refunded > total || unit * passengers !== total) issues.push('ORDER_AMOUNT_MISMATCH')
+          if ((row.orderStatus === 'REFUNDED' && refunded !== total) ||
+            (row.orderStatus === 'PARTIALLY_REFUNDED' && (refunded <= 0 || refunded >= total)) ||
+            (!['REFUNDED', 'PARTIALLY_REFUNDED'].includes(row.orderStatus) && refunded > 0)) {
+            issues.push('REFUND_STATUS_MISMATCH')
+          }
+          if (row.orderPassengers !== row.reservationPassengers) issues.push('PASSENGER_COUNT_MISMATCH')
+          if (['PAID', 'PARTIALLY_REFUNDED', 'REFUNDED'].includes(row.orderStatus) &&
+            !row.hasProviderReference) issues.push('PROVIDER_REFERENCE_MISSING')
+        }
+        if (row.invalidManualAmounts > 0n) issues.push('INVALID_MANUAL_AMOUNT')
+        if (row.invalidManualLinks > 0n) issues.push('MANUAL_ASSOCIATION_MISMATCH')
+        if (row.manualReceivedCount > 0n &&
+          ['PAID', 'PARTIALLY_REFUNDED'].includes(row.orderStatus ?? '')) {
+          issues.push('MIXED_PAYMENT_CHANNELS_REVIEW')
+        }
+        if (issues.length) {
+          totalFlags += issues.length
+          flagged.push({ reservationId: row.reservationId, issues,
+            online: row.orderStatus === null ? null : {
+              status: row.orderStatus, totalCents: row.orderTotalCents,
+              refundedCents: row.orderRefundedCents,
+            },
+            manual: { receivedCount: Number(row.manualReceivedCount),
+              receivedCents: Number(row.manualReceivedCents),
+              reversedCents: Number(row.manualReversedCents) },
+          })
+        }
+      }
+      return {
+        reportOnly: true, pageScoped: true, providerContacted: false,
+        dataModified: false, paymentsEnabled: false,
+        scannedReservations: page.length, flaggedReservations: flagged.length,
+        issueCount: totalFlags, pageSize: 50,
+        nextCursor: rows.length > 50 ? page[page.length - 1].reservationId : null,
+        divergences: flagged,
+      }
+    }, { isolationLevel: 'RepeatableRead' })
+  }
+
   /** Finance-only projection for one reservation. No checkout, receipt, refund or balance changes. */
   async reservationFinanceSummary(userId: string, sessionId: string, id: string) {
     const scope = await this.scopes.resolveSession(userId, sessionId)
