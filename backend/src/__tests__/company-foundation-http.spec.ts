@@ -22,7 +22,7 @@ describe('company foundation HTTP boundary (synthetic database adapter)', () => 
   let writes: Record<string, unknown>[] = []
   const data = { tradeName: 'Empresa fictícia', slug: 'empresa-teste', contactEmail: 'contato@example.invalid',
     responsibleName: 'Responsável fictício', responsibleEmail: 'responsavel@example.invalid' }
-  const adminData = { displayName: 'Administrador fictício', email: 'ADMIN@example.invalid', password: 'synthetic-password-12345' }
+  const adminData = { displayName: 'Administrador fictício', email: 'ADMIN@example.invalid' }
   const database = {
     user: { findUnique: async () => ({ role: 'CREATOR', isActive: active, mfaEnabled: mfa, mfaEnrolledAt: mfa ? new Date('2026-01-01') : null }),
       findFirst: async () => null,
@@ -152,6 +152,7 @@ describe('company foundation HTTP boundary (synthetic database adapter)', () => 
     assert.equal(result.user.isActive, false); assert.equal(result.isActive, false)
     assert.equal(JSON.stringify(result).includes('password'), false)
     assert.equal(writes.at(-2)!.role, 'ADMIN'); assert.equal(writes.at(-2)!.companyManaged, true)
+    assert.equal((writes.at(-2)!.passwordHash as string).startsWith('$argon2id$'), true)
     assert.equal(writes.at(-1)!.companyId, 'synthetic-company')
   })
   it('protects invitation issuance and denies public onboarding when disabled', async () => {
@@ -184,8 +185,8 @@ describe('company foundation HTTP boundary (synthetic database adapter)', () => 
       ] as const) assert.equal((await callOnboarding(path, body)).status, 403)
     } finally { enabled = true }
   })
-  it('rejects short passwords, missing name, invalid email and injected privilege fields', async () => {
-    for (const extra of [{ password: 'short' }, { displayName: '' }, { email: 'invalid' },
+  it('rejects creator-supplied passwords, missing identity and privilege injection', async () => {
+    for (const extra of [{ password: 'synthetic-unwanted-provisional-password' }, { displayName: '' }, { email: 'invalid' },
       { role: 'CREATOR' }, { isActive: true }, { companyId: 'other' }, { companyManaged: false }]) {
       const count = writes.length
       assert.equal((await call('CREATOR', { ...adminData, ...extra }, '/synthetic-company/admins')).status, 400)
