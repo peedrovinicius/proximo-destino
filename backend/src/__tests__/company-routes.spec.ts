@@ -234,6 +234,72 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
       await prisma.trip.deleteMany({ where: { id: { in: tripIds } } })
     }
   })
+  it('reads one tenant reservation finance without leaking another tenant or payment-provider details', async () => {
+    const ownOrder = await prisma.purchaseOrder.create({ data: { reservationId: reservations[0],
+      paymentMethod: 'PIX', passengerCount: 1, unitPriceCents: 1500, totalCents: 1500,
+      refundedCents: 200, status: 'PARTIALLY_REFUNDED', providerPaymentId: 'private-payment-id',
+      providerStatus: 'private-provider-status' } })
+    const foreignOrder = await prisma.purchaseOrder.create({ data: { reservationId: reservations[1],
+      paymentMethod: 'PIX', passengerCount: 1, unitPriceCents: 9000, totalCents: 9000, status: 'PAID' } })
+    const receipt = await prisma.manualPayment.create({ data: { reservationId: reservations[0], method: 'CASH',
+      amountCents: 250, paidAt: new Date(), note: 'private-receipt-note' } })
+    const reversal = await prisma.manualPayment.create({ data: { reservationId: reservations[0], method: 'TRANSFER',
+      status: 'REVERSED', amountCents: 70, paidAt: new Date(), reversedReason: 'private-reversal-reason' } })
+    const foreignReceipt = await prisma.manualPayment.create({ data: { reservationId: reservations[1], method: 'CASH',
+      amountCents: 9999, paidAt: new Date(), note: 'foreign-note' } })
+    try {
+      const before = await prisma.authAuditEvent.count({ where: { userId: { in: users } } })
+      const response = await call(`/admin/reservations/${reservations[0]}/finance`)
+      assert.equal(response.status, 200)
+      assert.equal(response.headers.get('cache-control'), 'no-store')
+      const body = await response.json()
+      assert.deepEqual(body, { summaryOnly: true, operationalPaymentsEnabled: false,
+        reservationId: reservations[0], reservationStatus: 'PENDING', passengerCount: 1,
+        indicativeTripUnitPriceCents: null,
+        onlineOrder: { status: 'PARTIALLY_REFUNDED', totalCents: 1500, refundedCents: 200 },
+        manual: { receivedCount: 1, receivedCents: 250, reversedCount: 1, reversedCents: 70 } })
+      const serialized = JSON.stringify(body)
+      for (const secret of ['private-payment-id', 'private-provider-status', 'private-receipt-note',
+        'private-reversal-reason', 'foreign-note', clients[1], companies[1]]) {
+        assert.equal(serialized.includes(secret), false)
+      }
+      assert.equal((await call(`/admin/reservations/${reservations[1]}/finance`)).status, 404)
+      assert.equal((await call('/admin/reservations/absent/finance')).status, 404)
+      assert.equal((await call(`/admin/reservations/${reservations[0]}/finance`, tokens[1])).status, 404)
+      assert.equal((await call(`/admin/reservations/${reservations[0]}/finance`, unboundToken)).status, 403)
+      assert.equal(await prisma.authAuditEvent.count({ where: { userId: { in: users } } }), before)
+      assert.equal((await call(`/admin/reservations/${reservations[0]}/finance/reconcile`, tokens[0], 'POST')).status, 403)
+      await prisma.purchaseOrder.update({ where: { id: ownOrder.id }, data: { refundedCents: 1501 } })
+      assert.equal((await call(`/admin/reservations/${reservations[0]}/finance`)).status, 409)
+      await prisma.purchaseOrder.update({ where: { id: ownOrder.id }, data: { refundedCents: 200 } })
+      await prisma.manualPayment.update({ where: { id: receipt.id }, data: { amountCents: -1 } })
+      assert.equal((await call(`/admin/reservations/${reservations[0]}/finance`)).status, 409)
+    } finally {
+      await prisma.manualPayment.deleteMany({ where: { id: { in: [receipt.id, reversal.id, foreignReceipt.id] } } })
+      await prisma.purchaseOrder.deleteMany({ where: { id: { in: [ownOrder.id, foreignOrder.id] } } })
+    }
+  })
+  it('denies finance reservation reads to AGENT and revalidates current FINANCE or ADMIN session', async () => {
+    const path = `/admin/reservations/${reservations[0]}/finance`
+    for (const role of ['AGENT', 'FINANCE'] as const) {
+      await prisma.user.update({ where: { id: users[0] }, data: { role } })
+      await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { role } })
+      try { assert.equal((await call(path)).status, role === 'FINANCE' ? 200 : 403) }
+      finally {
+        await prisma.user.update({ where: { id: users[0] }, data: { role: 'ADMIN' } })
+        await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { role: 'ADMIN' } })
+      }
+    }
+    const scopes = new CompanyScopeService(prisma), scope = await scopes.resolveSession(users[0], sessions[0])
+    const stale = new CompanyDataService(prisma, { resolveSession: async () => scope } as unknown as CompanyScopeService)
+    await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { isActive: false } })
+    try {
+      assert.equal((await call(path)).status, 403)
+      await assert.rejects(stale.reservationFinanceSummary(users[0], sessions[0], reservations[0]), { status: 403 })
+    } finally {
+      await prisma.companyMembership.updateMany({ where: { userId: users[0] }, data: { isActive: true } })
+    }
+  })
   it('revalidates financial authorization and supports Finance without exposing operational details', async () => {
     const scopes = new CompanyScopeService(prisma), scope = await scopes.resolveSession(users[0], sessions[0])
     const stale = new CompanyDataService(prisma, { resolveSession: async () => scope } as unknown as CompanyScopeService)
