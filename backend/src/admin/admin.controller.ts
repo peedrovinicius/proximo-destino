@@ -102,6 +102,15 @@ export class AdminController {
     return this.admin.listReservations(request.user.role)
   }
 
+  @Get('payments/reconciliation/report')
+  @Header('Cache-Control', 'no-store')
+  @CompanyRead()
+  @Roles(...FINANCE_ROLES)
+  financeDiscrepancyReport(@Req() request: AuthenticatedRequest, @Query('after') after?: string) {
+    if (!request.companyScope) throw new ForbiddenException('Sessão de empresa obrigatória')
+    return this.scoped.financeDiscrepancyReport(request.user.id, request.user.sessionId, after)
+  }
+
   @Get('payments/orders')
   @Header('Cache-Control', 'no-store')
   @CompanyRead()
