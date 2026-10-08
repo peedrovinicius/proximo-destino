@@ -206,8 +206,8 @@ describe('session-backed tenant RLS with a restricted PostgreSQL login', () => {
         verificationCode: `denied-verification-${suffix}`,
         snapshot: { denied: true },
       } })), /row-level security|P2004|P2010/i)
-    assert.equal((await owner.travelDocument.findUniqueOrThrow({ where: { id: documents[1] } }))
-      .snapshot && true, true)
+    assert.deepEqual((await owner.travelDocument.findUniqueOrThrow({ where: { id: documents[1] } }))
+      .snapshot, { label: 'fictitious document', tenant: 1 })
     assert.equal((await owner.reservationPassenger.findUniqueOrThrow({ where: { id: passengers[1] } }))
       .fullName, 'Synthetic passenger 1')
     assert.equal((await owner.seatAssignment.findUniqueOrThrow({ where: { id: seats[1] } }))
@@ -219,7 +219,7 @@ describe('session-backed tenant RLS with a restricted PostgreSQL login', () => {
     // this table holds hashed bearer tokens and must not be readable by SQL tenants.
     await assert.rejects(scoped(companies[0], users[0], sessions[0], tx =>
       tx.companyClientPortalSession.findMany({ select: { id: true, tokenHash: true } })),
-    /permission denied|P2010|P2004/i)
+    /permission denied|P1010|P2010|P2004/i)
     assert.equal(await owner.companyClientPortalSession.count({ where: { id: { in: portalSessions } } }), 2)
   })
 
