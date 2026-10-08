@@ -149,6 +149,64 @@ export class CompanyDataService {
     }, { isolationLevel: 'RepeatableRead' })
   }
 
+
+  /** Local preflight only. Never contacts a provider or mutates a payment/ledger. */
+  async reconciliationPreflight(userId: string, sessionId: string, reservationId: string) {
+    const scope = await this.scopes.resolveSession(userId, sessionId)
+    if (scope.role === 'AGENT') throw new ForbiddenException('Perfil sem acesso ao diagnóstico financeiro')
+    return this.prisma.$transaction(async tx => {
+      await lockCompanyRead(tx, scope)
+      const own = await tx.reservation.findFirst({ where: { id: reservationId, companyId: scope.companyId,
+        client: { companyId: scope.companyId }, trip: { companyId: scope.companyId } },
+        select: { id: true } })
+      if (!own) throw new NotFoundException('Reserva não encontrada')
+      const order = await tx.purchaseOrder.findUnique({ where: { reservationId: own.id },
+        select: { status: true, totalCents: true, refundedCents: true,
+          providerPaymentId: true, providerOrderId: true } })
+      if (order && (order.totalCents <= 0 || order.refundedCents < 0 ||
+        order.refundedCents > order.totalCents)) {
+        throw new ConflictException('Pedido com valores inconsistentes impede a pré-conciliação')
+      }
+
+      // Validate associations before describing mixed online/manual channels as reviewable.
+      const [manual] = await tx.$queryRaw<{ count: bigint; received: bigint; invalid: bigint }[]>`
+        SELECT COUNT(*) AS count,
+          COUNT(*) FILTER (WHERE m."status" = 'RECEIVED') AS received,
+          COUNT(*) FILTER (WHERE m."amountCents" <= 0
+            OR (m."financePlanId" IS NOT NULL AND (p."reservationId" IS DISTINCT FROM m."reservationId"
+              OR pq."reservationId" IS DISTINCT FROM m."reservationId"))
+            OR (m."installmentId" IS NOT NULL AND (ip."reservationId" IS DISTINCT FROM m."reservationId"
+              OR iq."reservationId" IS DISTINCT FROM m."reservationId"
+              OR (m."financePlanId" IS NOT NULL AND i."financePlanId" IS DISTINCT FROM m."financePlanId")))) AS invalid
+        FROM "ManualPayment" m
+        LEFT JOIN "FinancePlan" p ON p."id" = m."financePlanId"
+        LEFT JOIN "Quote" pq ON pq."id" = p."quoteId"
+        LEFT JOIN "Installment" i ON i."id" = m."installmentId"
+        LEFT JOIN "FinancePlan" ip ON ip."id" = i."financePlanId"
+        LEFT JOIN "Quote" iq ON iq."id" = ip."quoteId"
+        WHERE m."reservationId" = ${own.id}`
+      if (!manual || manual.invalid > 0n ||
+        !Number.isSafeInteger(Number(manual.count)) || !Number.isSafeInteger(Number(manual.received))) {
+        throw new ConflictException('Recebimentos inconsistentes impedem a pré-conciliação')
+      }
+      const hasProviderReference = Boolean(order?.providerPaymentId || order?.providerOrderId)
+      const blockers = [
+        ...(!order ? ['ONLINE_ORDER_MISSING'] : []),
+        ...(order && !hasProviderReference ? ['PROVIDER_REFERENCE_MISSING'] : []),
+        ...(manual.received > 0n ? ['MANUAL_RECEIPTS_REQUIRE_REVIEW'] : []),
+        'COMPANY_RECONCILIATION_DISABLED',
+      ]
+      return {
+        previewOnly: true, providerContacted: false, dataModified: false, reconciliationEnabled: false,
+        reservationId: own.id,
+        onlineOrder: order ? { status: order.status, totalCents: order.totalCents,
+          refundedCents: order.refundedCents, hasProviderReference } : null,
+        manualEntryCount: Number(manual.count),
+        blockers,
+      }
+    }, { isolationLevel: 'RepeatableRead' })
+  }
+
   async search(userId: string, sessionId: string, rawQuery: string) {
     const scope = await this.scopes.resolveSession(userId, sessionId)
     if (scope.role === 'FINANCE') throw new ForbiddenException('Perfil sem acesso à pesquisa operacional')
