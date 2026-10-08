@@ -107,11 +107,49 @@ node scripts/neon-http-rehearsal.mjs
 
 O processo não herda segredos de provedores, chaves reais de PII ou flags de
 backfill; usa segredos fictícios próprios e captura saída dos subprocessos sem
-publicá-la. A execução remota está preparada, mas não foi concluída: em
-2026-10-07 o ambiente de execução disponível não resolve o hostname PostgreSQL
+publicá-la. Inicialmente, a execução local não resolveu o hostname PostgreSQL
 da branch (gaierror). O conector SQL não oferece seleção de credencial/runtime.
-Não foi criada senha ou login remoto desnecessário, nem aberto acesso de rede.
-Os testes do guard local passaram; isso não comprova execução HTTP no Neon.
+Essa limitação foi contornada executando o ensaio no GitHub Actions, conforme
+resultado abaixo, sem abrir acesso de rede no ambiente local.
 
 Para ensaio após a expiração, primeiro criar/verificar outra branch pelo conector
 e revisar o hostname e prazo fixos no guard. Não apontar esse script à produção.
+
+## Prova HTTP real concluída pelo GitHub Actions
+
+Em 07/10/2026 às 21:14 de Fortaleza (2026-10-08T00:14:19Z), o workflow
+[Isolated Neon HTTP rehearsal, execução 37706611662](https://github.com/peedrovinicius/proximo-destino/actions/runs/37706611662)
+concluiu com sucesso no commit `4212a0e1150e119d3bf9211c3e1bad5411b9dfeb`.
+Job `113082367286`: 8 testes, 8 aprovados, zero falhas/cancelamentos/skips.
+
+O proprietário cadastrou a conexão da branch temporária como segredo do GitHub.
+Um banco vazio de nome aleatório foi criado nessa branch; Prisma migrate deploy
+aplicou as migrations; a suíte NestJS/Prisma utilizou login PostgreSQL independente,
+NOSUPERUSER/NOBYPASSRLS e sem privilégios de identidade para gravação. Confirmou
+leituras A/B, IDs externos recusados, gravações preparatórias próprias, pais
+mistos recusados, rollback de cliente/reserva/passageiro após falha de auditoria
+e revogação da autorização após resolver o escopo. Não fez envio externo.
+
+As primeiras tentativas recusaram a conexão antes de acessar banco: o guard
+foi ajustado para aceitar apenas channel_binding=require adicional e o
+proprietário desativou pooling na conexão. Posteriormente, o primeiro ensaio
+HTTP descartou o banco, mas deixou um papel de teste: no PostgreSQL 18, o
+criador não superusuário recebe ADMIN sem SET no novo papel. O teste passou a
+conceder SET do papel de teste ao criador para permitir DROP OWNED na limpeza,
+sem conceder membership ou privilégios elevados ao runtime.
+
+Após o sucesso, o papel residual da tentativa anterior foi removido somente
+depois de confirmar ausência de dependências em bancos e poderes administrativos.
+Consulta posterior: zero bancos validation_pr34_http_* e zero papéis http_tenant_*
+remanescentes na cópia. Produção manteve 27 migrations, Company ausente e zero
+papéis HTTP fictícios. O compute da cópia foi suspenso novamente.
+
+O workflow temporário de execução foi removido após concluir a prova para evitar
+novas execuções. O segredo cadastrado pode ser removido pelo proprietário; não
+é necessário para CI comum, produção ou as funcionalidades da aplicação.
+
+Esse sucesso encerra a pendência da prova HTTP A/B independente no Neon para
+as rotas cobertas. Não valida os privilégios de todas as rotas de autenticação,
+Criador, portal, financeiro e integrações, nem aprova trocar a conexão de
+produção ou ativar empresas. Backup externo real e custódia de chaves continuam
+pendentes.
