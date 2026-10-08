@@ -29,6 +29,7 @@ try {
     const errors = []; const unexpected = []; const drafts = []; const writes = []; const admins = []
     let authenticated = false
     let adminFails = true, passwordCalls = 0
+    let readinessFails = true, readinessCalls = 0
     let inviteActive = false
     let accepted = 0
     const inviteCode = 's'.repeat(43)
@@ -88,6 +89,14 @@ try {
       }
       if (url.pathname.startsWith('/api/v1/platform/companies')) {
         assert.equal(request.headers().authorization, 'Bearer synthetic-creator-token')
+        if (url.pathname.endsWith('/readiness')) {
+          assert.equal(request.method(), 'GET')
+          readinessCalls++
+          if (readinessFails) { readinessFails = false; return respond(503, { message: 'Diagnostic unavailable' }) }
+          return respond(200, { companyId: 'synthetic-company', status: 'DRAFT', activationAllowed: false,
+            administrators: { total: admins.length, preparedWithMfa: 0, activeWithMfa: 0 },
+            blockers: ['TENANT_ISOLATION_INCOMPLETE', 'SECURE_ADMIN_ONBOARDING_REQUIRED', 'PRODUCTION_BACKFILL_AND_ACCEPTANCE_REQUIRED'] })
+        }
         if (url.pathname.endsWith('/invitation/revoke')) {
           assert.equal(request.method(), 'POST'); inviteActive = false
           if (admins.length) admins[0].inviteUsedAt = null
@@ -160,6 +169,17 @@ try {
     await page.getByRole('button', { name: 'Salvar rascunho' }).click()
     await page.getByRole('heading', { name: 'Agência sintética revisada', exact: true }).waitFor()
     assert.equal(writes.length, 2)
+    await page.getByRole('button', { name: 'Ver pendências de ativação de Agência sintética revisada' }).click()
+    await page.getByRole('alert').filter({ hasText: 'Não foi possível consultar as pendências' }).waitFor()
+    await page.getByRole('button', { name: 'Ver pendências de ativação de Agência sintética revisada' }).click()
+    const readiness = page.getByRole('region', { name: 'Prontidão de Agência sintética revisada' })
+    await readiness.getByText('Ativação indisponível', { exact: true }).waitFor()
+    assert.equal(await readiness.locator('li').count(), 3)
+    assert.equal(await readiness.getByText('Administradores cadastrados: 1. Com MFA preparado: 0.').count(), 1)
+    assert.equal(await page.getByRole('button', { name: 'Ativar empresa' }).count(), 0)
+    assert.equal(readinessCalls, 2)
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1))
+    await page.screenshot({ path: resolve(output, `creator-readiness-${width}.png`), fullPage: true })
     await page.getByRole('button', { name: 'Administradores de Agência sintética revisada' }).click()
     await page.getByText('Administrador sintético', { exact: true }).waitFor()
     await page.getByText('Acesso inativo', { exact: true }).waitFor()

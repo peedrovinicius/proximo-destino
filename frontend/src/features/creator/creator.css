@@ -17,4 +17,8 @@
 .creator-company-list { list-style: none; margin: 0; padding: 0; }
 .creator-company-list li { padding: 18px 0; border-bottom: 1px solid #e2e8f0; overflow-wrap: anywhere; }
 .creator-company-list h3 { margin: 0 0 8px; }
+.creator-readiness { margin-top: 12px; padding: 16px; border: 1px solid #d6dce5; border-radius: 12px; background: #f8fafc; color: #1e293b; }
+.creator-readiness p { margin: 8px 0; }
+.creator-readiness ul { margin: 8px 0; padding-left: 22px; }
+.creator-company-list .creator-readiness li { list-style: disc; padding: 4px 0; border: 0; overflow-wrap: anywhere; }
 @media (max-width: 760px) { .creator-columns { grid-template-columns: 1fr; } .creator-heading { flex-direction: column; } .creator-panel { padding: 18px; } }

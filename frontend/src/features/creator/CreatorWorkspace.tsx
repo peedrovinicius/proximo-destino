@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { AdminLogin } from '../admin/AdminLogin'
 import { logoutAdmin, refreshAdminSession } from '../../lib/adminAuth'
 import './creator.css'
@@ -11,6 +11,15 @@ type CompanyFields = {
   responsibleName: string; responsibleEmail: string;
 }
 type Company = CompanyFields & { id: string; status: 'DRAFT' | 'ACTIVE' | 'SUSPENDED' }
+type ActivationReadiness = {
+  companyId: string; activationAllowed: boolean; blockers: string[]
+  administrators: { total: number; preparedWithMfa: number; activeWithMfa: number }
+}
+const activationBlockers: Record<string, string> = {
+  TENANT_ISOLATION_INCOMPLETE: 'Isolamento e operações entre empresas ainda não homologados.',
+  SECURE_ADMIN_ONBOARDING_REQUIRED: 'Um administrador precisa concluir a preparação segura e o MFA.',
+  PRODUCTION_BACKFILL_AND_ACCEPTANCE_REQUIRED: 'Migração da operação atual, recuperação e homologação final pendentes.',
+}
 const emptyFields: CompanyFields = {
   tradeName: '', slug: '', legalName: '', registrationNumber: '', contactEmail: '',
   contactPhone: '', address: '', responsibleName: '', responsibleEmail: '',
@@ -55,6 +64,11 @@ export function CreatorWorkspace({ onBack }: { onBack: () => void }) {
   const [adminCompany, setAdminCompany] = useState<Company | null>(null)
   const [guided, setGuided] = useState(false)
   const [changingPassword, setChangingPassword] = useState(false)
+  const [readiness, setReadiness] = useState<ActivationReadiness | null>(null)
+  const [checkingReadinessId, setCheckingReadinessId] = useState<string | null>(null)
+  const [readinessError, setReadinessError] = useState<{ companyId: string; message: string } | null>(null)
+  const readinessController = useRef<AbortController | null>(null)
+  useEffect(() => () => { readinessController.current?.abort() }, [token])
 
   useEffect(() => {
     let active = true
@@ -88,6 +102,32 @@ export function CreatorWorkspace({ onBack }: { onBack: () => void }) {
     return () => { active = false; window.clearInterval(interval) }
   }, [token])
 
+  async function inspectReadiness(companyId: string) {
+    if (!token || checkingReadinessId) return
+    readinessController.current?.abort()
+    const controller = new AbortController()
+    readinessController.current = controller
+    setCheckingReadinessId(companyId); setReadiness(null); setReadinessError(null)
+    try {
+      const response = await fetch(`${API_BASE}/platform/companies/${encodeURIComponent(companyId)}/readiness`, {
+        headers: { Authorization: `Bearer ${token}` }, cache: 'no-store', credentials: 'omit', signal: controller.signal,
+      })
+      if (!response.ok) throw new Error('Não foi possível consultar as pendências. Tente novamente.')
+      const result = await response.json() as ActivationReadiness
+      if (result.companyId !== companyId || typeof result.activationAllowed !== 'boolean' ||
+        !Array.isArray(result.blockers) || !result.administrators ||
+        !Number.isInteger(result.administrators.total) || !Number.isInteger(result.administrators.preparedWithMfa)) {
+        throw new Error('O diagnóstico retornou dados inválidos.')
+      }
+      if (!controller.signal.aborted) setReadiness(result)
+    } catch (cause) {
+      if (!controller.signal.aborted) setReadinessError({ companyId,
+        message: cause instanceof Error ? cause.message : 'Diagnóstico indisponível.' })
+    } finally {
+      if (!controller.signal.aborted) setCheckingReadinessId(null)
+    }
+  }
+
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!token || saving) return
@@ -95,6 +135,7 @@ export function CreatorWorkspace({ onBack }: { onBack: () => void }) {
     try {
       const company = await companyRequest(token, editingId ? `/${encodeURIComponent(editingId)}` : '', fields) as Company
       setCompanies(current => [company, ...current.filter(item => item.id !== company.id)].slice(0, 100))
+      setReadiness(null); setReadinessError(null)
       if (!editingId) { setAdminCompany(company); setGuided(true) }
       setEditingId(null); setFields({ ...emptyFields })
       setNotice('Empresa salva em rascunho. Nenhum acesso operacional foi ativado.')
@@ -146,6 +187,19 @@ export function CreatorWorkspace({ onBack }: { onBack: () => void }) {
               setEditingId(company.id); setNotice(''); setFields(Object.fromEntries(Object.keys(labels).map(key => [key, company[key as keyof CompanyFields] ?? ''])) as CompanyFields)
             }}>Editar rascunho de {company.tradeName}</button> : null}
             {company.status === 'DRAFT' ? <button type="button" disabled={saving} onClick={() => { setAdminCompany(company); setGuided(false) }}>Administradores de {company.tradeName}</button> : null}
+            <button type="button" disabled={saving || checkingReadinessId !== null}
+              onClick={() => void inspectReadiness(company.id)}>Ver pendências de ativação de {company.tradeName}</button>
+            {checkingReadinessId === company.id ? <p role="status">Consultando pendências da empresa…</p> : null}
+            {readinessError?.companyId === company.id ? <p role="alert">{readinessError.message}</p> : null}
+            {readiness?.companyId === company.id ? <section className="creator-readiness"
+              aria-label={`Prontidão de ${company.tradeName}`}>
+              <strong>{readiness.activationAllowed ? 'Sem bloqueios indicados pelo diagnóstico' : 'Ativação indisponível'}</strong>
+              <p>Administradores cadastrados: {readiness.administrators.total}. Com MFA preparado: {readiness.administrators.preparedWithMfa}.</p>
+              {readiness.blockers.length ? <ul>{readiness.blockers.map(code =>
+                <li key={code}>{activationBlockers[code] ?? 'Há uma pendência adicional que exige revisão.'}</li>)}</ul>
+                : <p>O diagnóstico não relatou pendências, mas a ativação ainda exige homologação e aprovação controlada.</p>}
+              <p>Consulta informativa. Nenhuma empresa ou conta é ativada por esta ação.</p>
+            </section> : null}
           </li>)}
         </ul>}
       </section>
