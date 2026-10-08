@@ -14,7 +14,8 @@ const server = createServer(async (request, response) => {
     const pathname = new URL(request.url, 'http://localhost').pathname
     const path = resolve(root, '.' + (pathname === '/' ? '/index.html' : pathname))
     if (!path.startsWith(root + '/')) return response.writeHead(403).end()
-    response.writeHead(200, { 'Content-Type': types[extname(path)] || 'application/octet-stream' }).end(await readFile(path))
+    const body = await readFile(path)
+    response.writeHead(200, { 'Content-Type': types[extname(path)] || 'application/octet-stream' }).end(body)
   } catch { response.writeHead(404).end() }
 })
 await new Promise(done => server.listen(0, '127.0.0.1', done))
