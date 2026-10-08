@@ -496,6 +496,31 @@ continuam bloqueados para sessões de empresa, e nenhuma migração, chave de
 pagamento ou integração externa é ativada. Testes HTTP usam banco isolado,
 duas empresas, perfis, vínculos revogados e dados financeiros fictícios.
 
+## Pré-conciliação financeira por reserva — somente leitura
+
+`GET /admin/reservations/:id/finance/reconcile/preview` oferece um **diagnóstico
+local** ao ADMIN ou FINANCE com sessão persistida de empresa ativa. O backend
+revalida autorização no PostgreSQL dentro de uma transação de leitura com escopo
+de empresa, cliente e viagem. Reserva externa/inexistente retorna 404; AGENT,
+sessões antigas e vínculos revogados são recusados. O retorno usa `no-store`.
+
+O diagnóstico verifica a presença de pedido online, existência **booleana** de
+referência do provedor, integridade básica dos valores e quantidade de registros
+manuais. Vínculos inconsistentes com planos, parcelas e cotações são recusados.
+Retorna códigos `ONLINE_ORDER_MISSING`, `PROVIDER_REFERENCE_MISSING` e
+`MANUAL_RECEIPTS_REQUIRE_REVIEW`, conforme os dados, e sempre
+`COMPANY_RECONCILIATION_DISABLED`. Não expõe referências do Mercado Pago,
+dados pessoais, notas, documentos, chaves ou identificadores de transações.
+
+`previewOnly=true`, `providerContacted=false`, `dataModified=false` e
+`reconciliationEnabled=false` deixam explícito que **nenhuma conciliação
+foi executada**. Não chama Mercado Pago ou outros serviços, não altera pedido,
+recebimento, pagamento, saldo, reserva ou histórico de auditoria e não calcula
+quitação. `POST /admin/reservations/:id/finance/reconcile` continua proibido
+para sessões empresariais. Não há nova migration, flag, credencial ou ativação.
+Testes de HTTP com PostgreSQL descartável verificam isolamento A/B, papéis,
+falhas de integridade, ausência de dados sensíveis e read-only.
+
 ## Emissão e revogação de código por administrador da empresa
 
 `POST /admin/reservations/:id/company-portal-code` exige sessão administrativa

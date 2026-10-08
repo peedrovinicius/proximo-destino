@@ -218,6 +218,15 @@ export class AdminController {
     return this.admin.reservationFinance(id)
   }
 
+  @Get('reservations/:id/finance/reconcile/preview')
+  @Header('Cache-Control', 'no-store')
+  @CompanyRead()
+  @Roles(...FINANCE_ROLES)
+  reconciliationPreflight(@Param('id') id: string, @Req() request: AuthenticatedRequest) {
+    if (!request.companyScope) throw new ForbiddenException('Sessão de empresa obrigatória')
+    return this.scoped.reconciliationPreflight(request.user.id, request.user.sessionId, id)
+  }
+
   @Post('reservations/:id/finance/reconcile')
   @Roles(...FINANCE_ROLES)
   reconcileReservationPayment(
