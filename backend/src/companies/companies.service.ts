@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { CreateCompanyDto, CreateCompanyAdminDto } from './company.dto'
 import argon2 from 'argon2'
+import { randomBytes } from 'node:crypto'
 import { lockCreatorWrite } from './creator-write-lock'
 
 const fields = {
@@ -45,7 +46,8 @@ export class CompaniesService {
 
   async createPendingAdmin(actorId: string, sessionId: string, companyId: string, body: CreateCompanyAdminDto) {
     const email = body.email.trim().toLowerCase()
-    const passwordHash = await argon2.hash(body.password, { type: argon2.argon2id })
+    // No creator-chosen password: only the invited administrator can set credentials.
+    const passwordHash = await argon2.hash(randomBytes(32).toString('base64url'), { type: argon2.argon2id })
     try {
       return await this.prisma.$transaction(async tx => {
         await lockCreatorWrite(tx, actorId, sessionId)
