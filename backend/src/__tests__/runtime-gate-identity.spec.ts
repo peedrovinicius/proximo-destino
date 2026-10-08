@@ -62,6 +62,96 @@ describe('runtime production gate: synthetic restricted LOGIN', () => {
     assert.equal(probe.stdout.trim(), `${role}|${role}|0`)
   })
 
+  it('rejects a tampered tenant SECURITY DEFINER function that exposes a synthetic row', async () => {
+    const original = await owner.$queryRaw<Array<{ definition: string }>>`
+      SELECT pg_get_functiondef('public.company_tenant_authorized(text)'::regprocedure) AS definition
+    `
+    assert.equal(original.length, 1)
+    const client = await owner.client.create({ data: { fullName: `Definer bypass synthetic ${suffix}` } })
+    const count = () => spawnSync('psql', [runtimeUrl.toString(), '-X', '-A', '-t',
+      '--set=ON_ERROR_STOP=1',
+      `--command=SELECT count(*) FROM public."Client" WHERE "id" = '${client.id}'`],
+    { encoding: 'utf8', timeout: 10_000 })
+    try {
+      const before = count()
+      assert.equal(before.status, 0, before.stderr)
+      assert.equal(before.stdout.trim(), '0')
+      // Keep SECURITY DEFINER, STABLE and name, which satisfied the old gate.
+      await owner.$executeRawUnsafe(`CREATE OR REPLACE FUNCTION public.company_tenant_authorized(target_company TEXT)
+        RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER
+        SET search_path = pg_catalog AS 'SELECT true'`)
+      const exposed = count()
+      assert.equal(exposed.status, 0, exposed.stderr)
+      assert.equal(exposed.stdout.trim(), '1')
+      const gate = runGate()
+      assert.notEqual(gate.status, 0)
+      assert.match(gate.stderr, /GATE_RUNTIME: integridade de funcao SECURITY DEFINER/)
+    } finally {
+      await owner.$executeRawUnsafe(original[0].definition)
+      await owner.client.delete({ where: { id: client.id } })
+    }
+    const restored = runGate()
+    assert.equal(restored.status, 0, restored.stderr)
+  })
+
+  it('rejects replacement of authorization lock with an unconditional true response', async () => {
+    const original = await owner.$queryRaw<Array<{ definition: string }>>`
+      SELECT pg_get_functiondef('public.company_write_authorized(text,text,text,text)'::regprocedure) AS definition
+    `
+    assert.equal(original.length, 1)
+    try {
+      await owner.$executeRawUnsafe(`CREATE OR REPLACE FUNCTION public.company_write_authorized(
+        target_company TEXT, target_user TEXT, target_session TEXT, target_role TEXT)
+        RETURNS BOOLEAN LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+        SET search_path = pg_catalog AS 'BEGIN RETURN true; END;'`)
+      const tested = spawnSync('psql', [runtimeUrl.toString(), '-X', '-A', '-t',
+        '--set=ON_ERROR_STOP=1',
+        '--command=SELECT public.company_write_authorized(\'not-a-company\',\'not-a-user\',\'not-a-session\',\'ADMIN\')'],
+      { encoding: 'utf8', timeout: 10_000 })
+      assert.equal(tested.status, 0, tested.stderr)
+      assert.equal(tested.stdout.trim(), 't')
+      const gate = runGate()
+      assert.notEqual(gate.status, 0)
+      assert.match(gate.stderr, /GATE_RUNTIME: integridade de funcao SECURITY DEFINER/)
+    } finally {
+      await owner.$executeRawUnsafe(original[0].definition)
+    }
+    assert.equal(runGate().status, 0)
+  })
+
+  it('denies unsafe search_path for a trusted SECURITY DEFINER function', async () => {
+    try {
+      await owner.$executeRawUnsafe(`ALTER FUNCTION public.company_tenant_authorized(text)
+        SET search_path = public`)
+      const gate = runGate()
+      assert.notEqual(gate.status, 0)
+      assert.match(gate.stderr, /GATE_RUNTIME: integridade de funcao SECURITY DEFINER/)
+    } finally {
+      await owner.$executeRawUnsafe(`ALTER FUNCTION public.company_tenant_authorized(text)
+        SET search_path = pg_catalog`)
+    }
+    assert.equal(runGate().status, 0)
+  })
+
+  it('captures canonical function bodies only from the disposable PostgreSQL test database', async () => {
+    const rows = await owner.$queryRaw<Array<{ name: string; digest: string; path: string | null; owner: string }>>`
+      SELECT p.proname AS name, md5(p.prosrc) AS digest,
+        array_to_string(p.proconfig, ',') AS path,
+        pg_get_userbyid(p.proowner) AS owner
+      FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+      WHERE n.nspname='public' AND p.proname IN
+        ('company_tenant_authorized','company_write_authorized')
+      ORDER BY p.proname
+    `
+    assert.equal(rows.length, 2)
+    assert.ok(rows.every(row => /^[a-f0-9]{32}$/.test(row.digest) &&
+      row.path === 'search_path=pg_catalog' && row.owner !== role))
+    // Digests are not secrets and contain no customer data. Only the approved
+    // migration, not a live database, can supply the gate's reference hashes.
+    console.log('SYNTHETIC_DEFINER_BASELINE ' +
+      JSON.stringify(rows.map(({ name, digest }) => ({ name, digest }))))
+  })
+
   it('fails closed on UPDATE/DELETE to tenant identity, even when normal tables remain scoped', async () => {
     for (const table of ['User', 'AuthSession', 'Company', 'CompanyMembership']) {
       for (const privilege of ['UPDATE', 'DELETE']) {
