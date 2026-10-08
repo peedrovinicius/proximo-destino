@@ -246,17 +246,17 @@ describe('runtime production gate: synthetic restricted LOGIN', () => {
   })
 
   it('rejects a runtime connection that cannot execute the required authorization function', async () => {
+    // The suite uses direct grants and denies PUBLIC by default. Revoke
+    // only the explicit runtime grant to prove the existing EXECUTE guard.
     await owner.$executeRawUnsafe(`REVOKE EXECUTE ON FUNCTION
-      public.company_tenant_authorized(text) FROM PUBLIC`)
+      public.company_tenant_authorized(text) FROM "${role}"`)
     try {
       const gate = runGate()
       assert.notEqual(gate.status, 0)
       assert.match(gate.stderr, /GATE_RUNTIME: integridade de funcao SECURITY DEFINER/)
     } finally {
-      // PostgreSQL's migration-default EXECUTE privilege was PUBLIC.
-      // Restore only the original effective privilege in this disposable DB.
       await owner.$executeRawUnsafe(`GRANT EXECUTE ON FUNCTION
-        public.company_tenant_authorized(text) TO PUBLIC`)
+        public.company_tenant_authorized(text) TO "${role}"`)
     }
     assert.equal(runGate().status, 0)
   })
