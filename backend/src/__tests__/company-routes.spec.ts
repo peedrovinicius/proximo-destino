@@ -1243,8 +1243,10 @@ describe('company HTTP reads and legacy route gate in isolated PostgreSQL', () =
     try {
       await assert.rejects(reservationsService.passengers(users[0], sessions[0], reservations[0]), { status: 403 })
       await assert.rejects(tripsService.seatMap(users[0], sessions[0], trips[0]), { status: 403 })
-      assert.equal((await call(`/admin/reservations/${reservations[0]}/passengers`)).status, 403)
-      assert.equal((await call(`/admin/trips/${trips[0]}/seats`)).status, 403)
+      // HTTP authentication rejects revoked bearer sessions before tenant
+      // authorization: 401 here, while direct stale scoped services return 403.
+      assert.equal((await call(`/admin/reservations/${reservations[0]}/passengers`)).status, 401)
+      assert.equal((await call(`/admin/trips/${trips[0]}/seats`)).status, 401)
       assert.equal((await call(`/admin/reservations/${reservations[1]}/passengers`, tokens[1])).status, 200)
     } finally {
       await prisma.authSession.update({ where: { id: sessions[0] }, data: { revokedAt: null } })
