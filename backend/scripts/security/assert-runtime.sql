@@ -127,6 +127,22 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'GATE_RUNTIME: politica RLS permissiva para tabela sensivel';
   END IF;
+
+  -- The runtime must not modify persisted authorization directly. All
+  -- mutations to company identity/session/membership require a separately
+  -- reviewed path; these privileges can bypass API-level tenancy guards.
+  -- Check effective privileges, including grants inherited via PUBLIC.
+  IF EXISTS (
+    SELECT 1 FROM (VALUES
+      ('User'), ('AuthSession'), ('Company'), ('CompanyMembership')
+    ) AS protected(table_name)
+    WHERE has_table_privilege(current_user,
+      format('public.%I', protected.table_name), 'UPDATE')
+      OR has_table_privilege(current_user,
+        format('public.%I', protected.table_name), 'DELETE')
+  ) OR has_table_privilege(current_user, 'public."CompanyMembership"', 'INSERT') THEN
+    RAISE EXCEPTION 'GATE_RUNTIME: escrita direta em identidade ou vinculos de tenant';
+  END IF;
 END
 $gate$;
 
