@@ -133,10 +133,36 @@ describe('fluxos reais com conexão PostgreSQL runtime restrita', () => {
     assert.equal(challenge.status, 'mfa_setup_required')
     assert.ok('challengeToken' in challenge)
     const setup = await service.beginMfaSetup(challenge.challengeToken)
-    const signed = await service.confirmMfaSetup(challenge.challengeToken, totp(setup.manualKey), {})
+    // Two requests racing on the same still-valid enrollment challenge must
+    // never issue two fresh MFA authenticators/recovery-code collections.
+    const confirmations = await Promise.allSettled([
+      service.confirmMfaSetup(challenge.challengeToken, totp(setup.manualKey), {}),
+      service.confirmMfaSetup(challenge.challengeToken, totp(setup.manualKey), {}),
+    ])
+    assert.equal(confirmations.filter(result => result.status === 'fulfilled').length, 1)
+    assert.equal(confirmations.filter(result => result.status === 'rejected').length, 1)
+    const winner = confirmations.find(result => result.status === 'fulfilled')
+    assert.ok(winner && winner.status === 'fulfilled')
+    const signed = winner.value
     assert.equal(signed.status, 'authenticated')
     assert.ok(signed.recoveryCodes.length)
     httpRecoveryCode = signed.recoveryCodes[1]
+
+    // The signed five-minute setup token stays cryptographically valid, but
+    // it must not reopen MFA after enrollment or change the registered secret.
+    await assert.rejects(service.beginMfaSetup(challenge.challengeToken), UnauthorizedException)
+    await assert.rejects(
+      service.confirmMfaSetup(challenge.challengeToken, totp(setup.manualKey), {}),
+      UnauthorizedException,
+    )
+    const enrolled = await db().user.findUniqueOrThrow({
+      where: { id: actorId },
+      select: { mfaEnabled: true, mfaPendingSecretEncrypted: true, mfaEnrolledAt: true },
+    })
+    assert.equal(enrolled.mfaEnabled, true)
+    assert.equal(enrolled.mfaPendingSecretEncrypted, null)
+    assert.ok(enrolled.mfaEnrolledAt)
+    assert.equal(await db().mfaRecoveryCode.count({ where: { userId: actorId, usedAt: null } }), 10)
     const next = await service.loginAdmin(actorEmail, password, {})
     assert.equal(next.status, 'mfa_required')
     assert.ok('challengeToken' in next)
