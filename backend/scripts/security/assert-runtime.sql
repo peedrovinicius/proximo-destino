@@ -164,6 +164,45 @@ BEGIN
     RAISE EXCEPTION 'GATE_RUNTIME: EXECUTE via PUBLIC em funcao SECURITY DEFINER';
   END IF;
 
+  -- The public inventory is not enough when the runtime can invoke a
+  -- privileged helper in an extension/application schema. A SECURITY DEFINER
+  -- executes as its owner even if this runtime cannot CREATE in that schema.
+  -- Inspect effective USAGE + EXECUTE, not just schema ownership or PUBLIC ACL.
+  IF EXISTS (
+    SELECT 1 FROM pg_proc fn
+    JOIN pg_namespace n ON n.oid = fn.pronamespace
+    WHERE n.nspname <> 'public'
+      AND n.nspname <> 'information_schema'
+      AND n.nspname !~ '^pg_'
+      AND fn.prosecdef
+      AND has_schema_privilege(current_user, n.oid, 'USAGE')
+      AND has_function_privilege(current_user, fn.oid, 'EXECUTE')
+  ) THEN
+    RAISE EXCEPTION 'GATE_RUNTIME: funcao SECURITY DEFINER acessivel fora de public';
+  END IF;
+
+  -- EXECUTE granted directly to an unrelated LOGIN or intermediary group
+  -- also crosses this authority boundary. Only the reviewed runtime login
+  -- and the function owner may hold named EXECUTE grants. PUBLIC is rejected
+  -- separately above, including when proacl is NULL.
+  IF EXISTS (
+    SELECT 1 FROM pg_proc fn
+    JOIN pg_namespace n ON n.oid = fn.pronamespace
+    CROSS JOIN LATERAL aclexplode(
+      COALESCE(fn.proacl, acldefault('f', fn.proowner))
+    ) granted
+    WHERE n.nspname = 'public'
+      AND fn.proname IN ('company_tenant_authorized', 'company_write_authorized')
+      AND granted.privilege_type = 'EXECUTE'
+      AND granted.grantee <> 0
+      AND granted.grantee <> fn.proowner
+      AND granted.grantee <> (
+        SELECT oid FROM pg_roles WHERE rolname = current_user
+      )
+  ) THEN
+    RAISE EXCEPTION 'GATE_RUNTIME: EXECUTE concedido a papel estranho em funcao SECURITY DEFINER';
+  END IF;
+
   IF EXISTS (
     SELECT 1
     FROM (VALUES
