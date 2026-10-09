@@ -71,11 +71,24 @@ somente no banco sintético; e (4) repetir para um schema fictício fora
 de `public`. Cada cenário restaura o estado no `finally` e exige
 que o gate original volte a passar.
 
-A validação opera apenas no schema `public` para inventário de
-`SECURITY DEFINER`; eventuais funções de extensões em outros schemas
-requerem avaliação operacional separada. Não há migration nem alteração
-de grants reais. A compatibilidade de runtime **efetivo** só poderá
-ser aprovada em homologação controlada, sem expor credenciais.
+O inventário de `SECURITY DEFINER` também detecta funções em outros
+schemas **não sistêmicos** quando o login runtime tem simultaneamente
+`USAGE` no schema e `EXECUTE` na rotina (inclusive via `PUBLIC`).
+Mesmo sem `CREATE`, funções já existentes podem executar com a autoridade
+de seu proprietário. Rotinas inacessíveis não são rejeitadas automaticamente;
+qualquer novo acesso requer revisão. Schemas internos `pg_*` e
+`information_schema` são excluídos deste controle.
+
+Nas duas funções canônicas em `public`, `EXECUTE` explícito a outro papel
+(usuário ou grupo) também reprova o gate. Apenas grants nominais ao próprio
+login runtime e ao proprietário da função são aceitos; `PUBLIC` continua
+proibido. O ensaio cria login estranho e schema extra exclusivamente no
+PostgreSQL descartável, comprova chamadas usando a autoridade do proprietário,
+exige recusa em cada cenário e volta a aprovar após a limpeza.
+
+Não há migration nem alteração de grants reais. A compatibilidade do runtime
+**efetivo** só poderá ser aprovada em homologação controlada, sem credenciais
+ou dados de produção neste ensaio.
 
 ## EXECUTE herdado de PUBLIC nas funções SECURITY DEFINER
 
