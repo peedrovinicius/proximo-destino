@@ -137,6 +137,82 @@ describe('runtime production gate: synthetic restricted LOGIN', () => {
     }
   })
 
+
+  it('rejects an unrelated LOGIN with direct EXECUTE on either reviewed definer', async () => {
+    const stranger = `direct_exec_${suffix}`
+    const password = randomUUID()
+    const strangerUrl = new URL(runtimeUrl)
+    strangerUrl.username = stranger
+    strangerUrl.password = password
+    await owner.$executeRawUnsafe(`CREATE ROLE "${stranger}" LOGIN PASSWORD '${password}'
+      NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOINHERIT`)
+    try {
+      await owner.$executeRawUnsafe(`GRANT USAGE ON SCHEMA public TO "${stranger}"`)
+      for (const signature of authorizers) {
+        assert.equal(runGate().status, 0)
+        await owner.$executeRawUnsafe(`GRANT EXECUTE ON FUNCTION ${signature} TO "${stranger}"`)
+        try {
+          const expression = signature === authorizers[0]
+            ? "public.company_tenant_authorized('synthetic-missing-company')"
+            : "public.company_write_authorized('missing','missing','missing','ADMIN')"
+          const call = spawnSync('psql', [strangerUrl.toString(), '-X', '-A', '-t',
+            '--set=ON_ERROR_STOP=1', `--command=SELECT ${expression}`],
+          { encoding: 'utf8', timeout: 10_000 })
+          assert.equal(call.status, 0, call.stderr)
+          assert.equal(call.stdout.trim(), 'f', 'No persisted session authorizes this call')
+          // Prior gate checked PUBLIC EXECUTE only and silently passed here.
+          const gate = runGate()
+          assert.notEqual(gate.status, 0)
+          assert.match(gate.stderr,
+            /GATE_RUNTIME: EXECUTE concedido a papel estranho em funcao SECURITY DEFINER/)
+        } finally {
+          await owner.$executeRawUnsafe(`REVOKE EXECUTE ON FUNCTION ${signature} FROM "${stranger}"`)
+        }
+        assert.equal(runGate().status, 0)
+      }
+    } finally {
+      await owner.$executeRawUnsafe(`DROP OWNED BY "${stranger}"`)
+      await owner.$executeRawUnsafe(`DROP ROLE "${stranger}"`)
+    }
+    assert.equal(runGate().status, 0)
+  })
+
+  it('rejects a reachable non-public SECURITY DEFINER despite no schema CREATE grant', async () => {
+    const schema = `synthetic_authority_${suffix}`
+    const signature = `"${schema}".privileged_read()`
+    const sql = (expression: string) => spawnSync('psql', [runtimeUrl.toString(),
+      '-X', '-A', '-t', '--set=ON_ERROR_STOP=1', `--command=SELECT ${expression}`],
+    { encoding: 'utf8', timeout: 10_000 })
+    assert.equal(runGate().status, 0)
+    await owner.$executeRawUnsafe(`CREATE SCHEMA "${schema}"`)
+    try {
+      await owner.$executeRawUnsafe(`CREATE FUNCTION ${signature}
+        RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER
+        SET search_path = pg_catalog AS
+        'SELECT has_table_privilege(current_user, ''public."AuthSession"'', ''SELECT'')'`)
+      await owner.$executeRawUnsafe(`GRANT USAGE ON SCHEMA "${schema}" TO "${role}"`)
+      const direct = sql(`has_table_privilege(current_user, 'public."AuthSession"', 'SELECT')`)
+      assert.equal(direct.status, 0, direct.stderr)
+      assert.equal(direct.stdout.trim(), 'f')
+      const definer = sql(signature)
+      assert.equal(definer.status, 0, definer.stderr)
+      assert.equal(definer.stdout.trim(), 't', 'Unreviewed owner privileges were callable')
+      let gate = runGate()
+      assert.notEqual(gate.status, 0)
+      assert.match(gate.stderr, /GATE_RUNTIME: funcao SECURITY DEFINER acessivel fora de public/)
+
+      // The reachability test cannot depend on PUBLIC alone.
+      await owner.$executeRawUnsafe(`GRANT EXECUTE ON FUNCTION ${signature} TO "${role}"`)
+      await owner.$executeRawUnsafe(`REVOKE EXECUTE ON FUNCTION ${signature} FROM PUBLIC`)
+      gate = runGate()
+      assert.notEqual(gate.status, 0)
+      assert.match(gate.stderr, /GATE_RUNTIME: funcao SECURITY DEFINER acessivel fora de public/)
+    } finally {
+      await owner.$executeRawUnsafe(`DROP SCHEMA "${schema}" CASCADE`)
+    }
+    assert.equal(runGate().status, 0)
+  })
+
   it('rejects an unreviewed PUBLIC SECURITY DEFINER that runs with owner privileges', async () => {
     const helper = `unreviewed_authority_${suffix}`
     const signature = `public."${helper}"()`
