@@ -153,10 +153,14 @@ export class AuthService {
     const payload = await this.verifyMfaChallenge(challengeToken, 'setup')
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
-      select: { id: true, email: true, isActive: true, role: true },
+      select: { id: true, email: true, isActive: true, role: true, mfaEnabled: true },
     })
 
-    if (!user?.isActive || (user.role !== UserRole.ADMIN && user.role !== UserRole.CREATOR)) {
+    // A setup challenge is a one-time enrollment capability, not permission to
+    // replace MFA after the first enrollment. MfaService enforces the same
+    // predicate atomically if a concurrent enrollment completes here.
+    if (!user?.isActive || user.mfaEnabled ||
+      (user.role !== UserRole.ADMIN && user.role !== UserRole.CREATOR)) {
       throw new UnauthorizedException('Desafio inválido')
     }
 
