@@ -45,13 +45,14 @@ permitido e `mfaEnabled=false` também no UPDATE condicional. A confirmação
 usa comparação atômica do segredo pendente dentro da transação; apenas uma
 confirmação instala a credencial e seus dez códigos de recuperação.
 Revogações, mudanças de papel, novas inscrições e confirmações repetidas
-falham fechadas. Os testes executam o fluxo com login PostgreSQL efêmero
-em banco descartável, usam desafios e códigos fictícios e verificam que
-uma tentativa repetida não substitui o MFA já instalado.
+falham fechadas. Os testes executam os fluxos ADMIN e CREATOR com login PostgreSQL
+efêmero em banco descartável, usam desafios e códigos fictícios, verificam
+que uma tentativa repetida não substitui o MFA já instalado e que a
+revogação das sessões do Criador invalida access/refresh tokens.
 
-**Limite desta prova:** o teste de MFA com runtime restrito cobre o login
-administrativo legado. Os testes de escopo e autorização do Criador e do
-portal empresarial são complementares e não homologam esses dois fluxos
+**Limite desta prova:** os testes de MFA com runtime restrito cobrem
+login do ADMIN legado e login/MFA/revogação do CREATOR. Os testes de gestão
+de empresas e do portal empresarial são complementares e não homologam esses fluxos
 com a credencial operacional real. Não conceder UPDATE/INSERT em tabelas
 de identidade e `CompanyClientPortalSession` ao runtime por conveniência:
 se o fluxo falhar fechado com menor privilégio, permanece bloqueado até
