@@ -31,6 +31,34 @@
   do convite privado e depois prepara MFA. Isso não ativa empresa nem conta.
   A migração adiciona User.displayName.
 
+## Proteção do desafio inicial de MFA (runtime PostgreSQL restrito)
+
+O desafio de configuração MFA dura cinco minutos, mas sua validade
+criptográfica não pode permitir **reinscrição** depois que o fator já está
+ativo. A auditoria identificou que o endpoint de início não examinava
+`mfaEnabled` e podia substituir `mfaPendingSecretEncrypted` com um
+desafio prévio ainda válido. Além disso, duas confirmações concorrentes
+podiam ler a mesma configuração pendente antes da primeira gravação.
+
+A primeira inscrição de ADMIN/CREATOR agora exige conta ativa, papel
+permitido e `mfaEnabled=false` também no UPDATE condicional. A confirmação
+usa comparação atômica do segredo pendente dentro da transação; apenas uma
+confirmação instala a credencial e seus dez códigos de recuperação.
+Revogações, mudanças de papel, novas inscrições e confirmações repetidas
+falham fechadas. Os testes executam os fluxos ADMIN e CREATOR com login PostgreSQL
+efêmero em banco descartável, usam desafios e códigos fictícios, verificam
+que uma tentativa repetida não substitui o MFA já instalado e que a
+revogação das sessões do Criador invalida access/refresh tokens.
+
+**Limite desta prova:** os testes de MFA com runtime restrito cobrem
+login do ADMIN legado e login/MFA/revogação do CREATOR. Os testes de gestão
+de empresas e do portal empresarial são complementares e não homologam esses fluxos
+com a credencial operacional real. Não conceder UPDATE/INSERT em tabelas
+de identidade e `CompanyClientPortalSession` ao runtime por conveniência:
+se o fluxo falhar fechado com menor privilégio, permanece bloqueado até
+projeto explícito de autorização e prova isolada. Nenhum dado, role,
+credencial ou configuração de produção é alterado por esta correção.
+
 ## Pré-condições para usar em ambiente isolado
 
 1. Banco exclusivamente de testes: aplicar migrações e gerar Prisma Client.

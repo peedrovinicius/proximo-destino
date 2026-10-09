@@ -36,12 +36,15 @@ describe('fluxos reais com conexão PostgreSQL runtime restrita', () => {
   const suffix = randomUUID().replaceAll('-', '')
   const role = `flow_${suffix}`
   const actorId = `flow-user-${suffix}`
+  const creatorId = `flow-creator-${suffix}`
   const tripId = `flow-trip-${suffix}`
   const actorEmail = `flow-admin-${suffix}@example.com`
+  const creatorEmail = `flow-creator-${suffix}@example.invalid`
   const clientEmail = `flow-client-${suffix}@example.com`
   const otherEmail = `flow-other-${suffix}@example.com`
   const httpEmail = `flow-http-${suffix}@example.com`
   const password = `Synthetic-${randomUUID()}`
+  const creatorPassword = `Synthetic-Creator-${randomUUID()}`
   let connected = false
   let roleCreated = false
   let runtime: PrismaService | undefined
@@ -54,6 +57,7 @@ describe('fluxos reais com conexão PostgreSQL runtime restrita', () => {
     JWT_ACCESS_SECRET: `synthetic-access-${suffix}`, JWT_REFRESH_SECRET: `synthetic-refresh-${suffix}`,
     JWT_MFA_SECRET: `synthetic-mfa-${suffix}`, AUDIT_HASH_KEY: `synthetic-audit-${suffix}`,
     MFA_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
+    COMPANY_FOUNDATION_ENABLED: 'true',
   })
   const jwt = new JwtService()
   const db = () => { assert.ok(runtime); return runtime }
@@ -88,8 +92,10 @@ describe('fluxos reais com conexão PostgreSQL runtime restrita', () => {
     assert.equal(identity.current, role)
     assert.equal(identity.session, role)
     assert.equal(restrictedAuditWriter(await readDatabaseSecurityState(runtime)), true)
-    await runtime.user.create({ data: { id: actorId, email: actorEmail,
-      passwordHash: await argon2.hash(password), role: UserRole.ADMIN } })
+    await runtime.user.createMany({ data: [
+      { id: actorId, email: actorEmail, passwordHash: await argon2.hash(password), role: UserRole.ADMIN },
+      { id: creatorId, email: creatorEmail, passwordHash: await argon2.hash(creatorPassword), role: UserRole.CREATOR },
+    ] })
     await runtime.trip.create({ data: { id: tripId, title: 'Synthetic restricted flow',
       origin: 'Synthetic origin', destination: 'Synthetic destination',
       departureDate: new Date(Date.now() + 7 * 86400000), status: TripStatus.SCHEDULED,
@@ -111,8 +117,8 @@ describe('fluxos reais com conexão PostgreSQL runtime restrita', () => {
       await owner.reservation.deleteMany({ where: { tripId } })
       await owner.client.deleteMany({ where: { email: { in: [clientEmail, otherEmail, httpEmail] } } })
       await owner.trip.deleteMany({ where: { id: tripId } })
-      await owner.authAuditEvent.deleteMany({ where: { userId: actorId } })
-      await owner.user.deleteMany({ where: { id: actorId } })
+      await owner.authAuditEvent.deleteMany({ where: { userId: { in: [actorId, creatorId] } } })
+      await owner.user.deleteMany({ where: { id: { in: [actorId, creatorId] } } })
       if (roleCreated) {
         const policy = `api_runtime_${createHash('md5').update(role).digest('hex')}`
         const policies = await owner.$queryRaw<Array<{ tablename: string }>>`
@@ -133,10 +139,36 @@ describe('fluxos reais com conexão PostgreSQL runtime restrita', () => {
     assert.equal(challenge.status, 'mfa_setup_required')
     assert.ok('challengeToken' in challenge)
     const setup = await service.beginMfaSetup(challenge.challengeToken)
-    const signed = await service.confirmMfaSetup(challenge.challengeToken, totp(setup.manualKey), {})
+    // Two requests racing on the same still-valid enrollment challenge must
+    // never issue two fresh MFA authenticators/recovery-code collections.
+    const confirmations = await Promise.allSettled([
+      service.confirmMfaSetup(challenge.challengeToken, totp(setup.manualKey), {}),
+      service.confirmMfaSetup(challenge.challengeToken, totp(setup.manualKey), {}),
+    ])
+    assert.equal(confirmations.filter(result => result.status === 'fulfilled').length, 1)
+    assert.equal(confirmations.filter(result => result.status === 'rejected').length, 1)
+    const winner = confirmations.find(result => result.status === 'fulfilled')
+    assert.ok(winner && winner.status === 'fulfilled')
+    const signed = winner.value
     assert.equal(signed.status, 'authenticated')
     assert.ok(signed.recoveryCodes.length)
     httpRecoveryCode = signed.recoveryCodes[1]
+
+    // The signed five-minute setup token stays cryptographically valid, but
+    // it must not reopen MFA after enrollment or change the registered secret.
+    await assert.rejects(service.beginMfaSetup(challenge.challengeToken), UnauthorizedException)
+    await assert.rejects(
+      service.confirmMfaSetup(challenge.challengeToken, totp(setup.manualKey), {}),
+      UnauthorizedException,
+    )
+    const enrolled = await db().user.findUniqueOrThrow({
+      where: { id: actorId },
+      select: { mfaEnabled: true, mfaPendingSecretEncrypted: true, mfaEnrolledAt: true },
+    })
+    assert.equal(enrolled.mfaEnabled, true)
+    assert.equal(enrolled.mfaPendingSecretEncrypted, null)
+    assert.ok(enrolled.mfaEnrolledAt)
+    assert.equal(await db().mfaRecoveryCode.count({ where: { userId: actorId, usedAt: null } }), 10)
     const next = await service.loginAdmin(actorEmail, password, {})
     assert.equal(next.status, 'mfa_required')
     assert.ok('challengeToken' in next)
@@ -147,6 +179,28 @@ describe('fluxos reais com conexão PostgreSQL runtime restrita', () => {
     await service.logout(actorId, payload.sid, {})
     await assert.rejects(service.refresh(refreshed.refreshToken, {}), UnauthorizedException)
     assert.ok(await db().authAuditEvent.count({ where: { userId: actorId, eventType: 'LOGIN_SUCCESS' } }))
+  })
+
+  it('Creator enrolls MFA only once and revokes sessions under the restricted runtime', async () => {
+    const service = auth()
+    const challenge = await service.loginCreator(creatorEmail, creatorPassword, {})
+    assert.equal(challenge.status, 'mfa_setup_required')
+    assert.ok('challengeToken' in challenge)
+    const enrollment = await service.beginMfaSetup(challenge.challengeToken)
+    const completed = await service.confirmMfaSetup(challenge.challengeToken, totp(enrollment.manualKey), {})
+    assert.equal(completed.status, 'authenticated')
+    assert.equal(completed.user.role, UserRole.CREATOR)
+    await assert.rejects(service.beginMfaSetup(challenge.challengeToken), UnauthorizedException)
+
+    const next = await service.loginCreator(creatorEmail, creatorPassword, {})
+    assert.equal(next.status, 'mfa_required')
+    assert.ok('challengeToken' in next)
+    const verified = await service.verifyMfa(next.challengeToken, completed.recoveryCodes[0], {})
+    const refreshed = await service.refresh(verified.refreshToken, {})
+    await service.revokeAllSessions(creatorId, {})
+    await assert.rejects(service.refresh(refreshed.refreshToken, {}), UnauthorizedException)
+    await assert.rejects(service.verifyAccessToken(refreshed.accessToken), UnauthorizedException)
+    assert.equal(await db().mfaRecoveryCode.count({ where: { userId: creatorId, usedAt: null } }), 9)
   })
 
   it('reserva, troca assentos, recusa colisão e libera no cancelamento', async () => {
