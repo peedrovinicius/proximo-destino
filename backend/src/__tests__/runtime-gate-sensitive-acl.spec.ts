@@ -115,4 +115,46 @@ describe('sensitive PostgreSQL ACLs: unrelated synthetic LOGIN', () => {
       }
     }
   })
+  it('rejects PUBLIC grants across the sensitive ACL matrix', async () => {
+    assert.equal(runGate().status, 0)
+    for (const table of sensitiveTables) {
+      for (const privilege of privileges) {
+        const name = `public."${table}"`
+        await owner.$executeRawUnsafe(`GRANT ${privilege} ON TABLE ${name} TO PUBLIC`)
+        try {
+          const gate = runGate()
+          assert.notEqual(gate.status, 0, `PUBLIC ${privilege} on ${table} was accepted`)
+          assert.match(gate.stderr, /GATE_RUNTIME: ACL sensivel concedida a papel nao autorizado/)
+        } finally {
+          await owner.$executeRawUnsafe(`REVOKE ${privilege} ON TABLE ${name} FROM PUBLIC`)
+        }
+        assert.equal(runGate().status, 0)
+      }
+    }
+  })
+
+  it('preserves explicitly authorized runtime grants on sensitive tables', async () => {
+    assert.equal(runGate().status, 0)
+    for (const table of sensitiveTables) {
+      for (const privilege of privileges) {
+        const name = `public."${table}"`
+        await owner.$executeRawUnsafe(
+          `GRANT ${privilege} ON TABLE ${name} TO "${runtimeRole}"`)
+        try {
+          const effective = await owner.$queryRawUnsafe<Array<{ allowed: boolean }>>(
+            'SELECT has_table_privilege($1, $2, $3) AS allowed',
+            runtimeRole, name, privilege)
+          assert.equal(effective[0].allowed, true)
+          const gate = runGate()
+          assert.equal(gate.status, 0,
+            `Runtime ${privilege} on ${table} was unexpectedly denied: ${gate.stderr}`)
+        } finally {
+          await owner.$executeRawUnsafe(
+            `REVOKE ${privilege} ON TABLE ${name} FROM "${runtimeRole}"`)
+        }
+        assert.equal(runGate().status, 0)
+      }
+    }
+  })
+
 })
