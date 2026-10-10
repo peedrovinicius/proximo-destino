@@ -246,4 +246,32 @@ describe('sensitive PostgreSQL ACLs: unrelated synthetic LOGIN', () => {
     assert.equal(runGate().status, 0)
   })
 
+  it('accepts least-privilege runtime ACL without DELETE on portal and payment config', async () => {
+    const protectedNames = ['CompanyClientPortalSession', 'PaymentPlatformConfig'] as const
+    for (const table of protectedNames) {
+      const name = `public."${table}"`
+      await owner.$executeRawUnsafe(
+        `GRANT SELECT, INSERT, UPDATE ON TABLE ${name} TO "${runtimeRole}"`)
+      try {
+        for (const privilege of ['SELECT', 'INSERT', 'UPDATE'] as const) {
+          const rows = await owner.$queryRawUnsafe<Array<{ allowed: boolean }>>(
+            'SELECT has_table_privilege($1, $2, $3) AS allowed',
+            runtimeRole, name, privilege)
+          assert.equal(rows[0].allowed, true, `${table} must permit ${privilege}`)
+        }
+        const deleteRows = await owner.$queryRawUnsafe<Array<{ allowed: boolean }>>(
+          'SELECT has_table_privilege($1, $2, $3) AS allowed',
+          runtimeRole, name, 'DELETE')
+        assert.equal(deleteRows[0].allowed, false,
+          `${table} must deny DELETE`)
+        const gate = runGate()
+        assert.equal(gate.status, 0, gate.stderr)
+      } finally {
+        await owner.$executeRawUnsafe(
+          `REVOKE SELECT, INSERT, UPDATE ON TABLE ${name} FROM "${runtimeRole}"`)
+      }
+      assert.equal(runGate().status, 0)
+    }
+  })
+
 })
