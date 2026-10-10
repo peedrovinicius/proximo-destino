@@ -183,6 +183,26 @@ describe('sensitive PostgreSQL ACLs: unrelated synthetic LOGIN', () => {
     assert.equal(runGate().status, 0)
   })
 
+  it('rejects an additional permissive portal policy while default deny remains', async () => {
+    assert.equal(runGate().status, 0)
+    await owner.$executeRawUnsafe(`GRANT SELECT ON TABLE public."CompanyClientPortalSession" TO "${runtimeRole}"`)
+    await owner.$executeRawUnsafe(`CREATE POLICY synthetic_portal_leak ON public."CompanyClientPortalSession"
+      FOR SELECT TO "${runtimeRole}" USING ("id" IS NOT NULL)`)
+    try {
+      const effective = await owner.$queryRawUnsafe<Array<{ allowed: boolean }>>(
+        'SELECT has_table_privilege($1, $2, $3) AS allowed',
+        runtimeRole, 'public."CompanyClientPortalSession"', 'SELECT')
+      assert.equal(effective[0].allowed, true)
+      const gate = runGate()
+      assert.notEqual(gate.status, 0, 'Additional permissive portal policy escaped attestation')
+      assert.match(gate.stderr, /GATE_RUNTIME:/)
+    } finally {
+      await owner.$executeRawUnsafe('DROP POLICY synthetic_portal_leak ON public."CompanyClientPortalSession"')
+      await owner.$executeRawUnsafe(`REVOKE SELECT ON TABLE public."CompanyClientPortalSession" FROM "${runtimeRole}"`)
+    }
+    assert.equal(runGate().status, 0)
+  })
+
   it('rejects foreign role inherited ACL grants', async () => {
     const parent = `acl_group_${suffix}`
     await owner.$executeRawUnsafe(`CREATE ROLE "${parent}" NOLOGIN`)
