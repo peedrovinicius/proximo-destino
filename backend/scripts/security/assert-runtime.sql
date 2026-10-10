@@ -354,6 +354,28 @@ BEGIN
     RAISE EXCEPTION 'GATE_RUNTIME: expressao RLS aprovada foi alterada';
   END IF;
 
+  -- The client portal stores bearer token hashes. It must exist and retain
+  -- RLS and the reviewed default-deny policy even if ACLs look restrictive.
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+      AND c.relname = 'CompanyClientPortalSession'
+      AND c.relkind IN ('r','p')
+      AND c.relrowsecurity
+  ) OR NOT EXISTS (
+    SELECT 1 FROM pg_policies p
+    WHERE p.schemaname = 'public'
+      AND p.tablename = 'CompanyClientPortalSession'
+      AND p.policyname = 'api_only_company_client_portal_session'
+      AND p.cmd = 'ALL'
+      AND p.roles = ARRAY['public']::name[]
+      AND lower(regexp_replace(coalesce(p.qual, ''), '[[:space:]()]', '', 'g')) = 'false'
+      AND lower(regexp_replace(coalesce(p.with_check, ''), '[[:space:]()]', '', 'g')) = 'false'
+  ) THEN
+    RAISE EXCEPTION 'GATE_RUNTIME: protecao RLS do portal ausente ou alterada';
+  END IF;
+
   -- Secrets and portal/OAuth tokens are not tenant-operational tables.
   -- Fail closed if PUBLIC or any role besides the table owner and this
   -- attested runtime LOGIN has explicit read/write access. This reads the
