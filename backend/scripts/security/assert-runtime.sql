@@ -12,6 +12,10 @@ DECLARE
     'SeatAssignment', 'PurchaseOrder', 'Quote', 'QuoteItem', 'ReservationService', 'FinancePlan',
     'Installment', 'TravelDocument', 'ManualPayment', 'ClientCreditTransaction'
   ];
+  sensitive_tables TEXT[] := ARRAY[
+    'CompanyClientPortalSession', 'EmailOAuthState', 'PaymentOAuthState',
+    'EmailProviderConnection', 'PaymentProviderConnection', 'PaymentPlatformConfig'
+  ];
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_roles r
@@ -354,6 +358,18 @@ BEGIN
     RAISE EXCEPTION 'GATE_RUNTIME: expressao RLS aprovada foi alterada';
   END IF;
 
+  -- An ACL inventory over existing relations silently skips a missing table.
+  -- Require the complete reviewed credential inventory before checking grants.
+  IF (
+    SELECT count(*) FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+      AND c.relkind IN ('r','p')
+      AND c.relname = ANY(sensitive_tables)
+  ) <> cardinality(sensitive_tables) THEN
+    RAISE EXCEPTION 'GATE_RUNTIME: tabela de credenciais sensivel ausente';
+  END IF;
+
   -- The client portal stores bearer token hashes. It must exist and retain
   -- RLS and the reviewed default-deny policy even if ACLs look restrictive.
   IF NOT EXISTS (
@@ -409,14 +425,7 @@ BEGIN
     ) acl
     WHERE n.nspname = 'public'
       AND c.relkind IN ('r','p')
-      AND c.relname IN (
-        'CompanyClientPortalSession',
-        'EmailOAuthState',
-        'PaymentOAuthState',
-        'EmailProviderConnection',
-        'PaymentProviderConnection',
-        'PaymentPlatformConfig'
-      )
+      AND c.relname = ANY(sensitive_tables)
       AND acl.privilege_type IN ('SELECT', 'INSERT', 'UPDATE', 'DELETE')
       AND acl.grantee <> c.relowner
       AND acl.grantee <> (
