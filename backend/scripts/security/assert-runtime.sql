@@ -52,6 +52,8 @@ BEGIN
   IF has_table_privilege(current_user, 'public."AuthAuditEvent"', 'UPDATE')
     OR has_table_privilege(current_user, 'public."AuthAuditEvent"', 'DELETE')
     OR has_table_privilege(current_user, 'public."AuthAuditEvent"', 'TRUNCATE')
+    -- Runtime uses applied migrations but must never forge migration records.
+    OR has_table_privilege(current_user, 'public."_prisma_migrations"', 'INSERT')
     OR has_table_privilege(current_user, 'public."_prisma_migrations"', 'SELECT')
     OR has_table_privilege(current_user, 'public."_prisma_migrations"', 'UPDATE')
     OR has_table_privilege(current_user, 'public."_prisma_migrations"', 'DELETE') THEN
