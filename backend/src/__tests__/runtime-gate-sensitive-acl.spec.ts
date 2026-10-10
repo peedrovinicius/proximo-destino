@@ -274,4 +274,45 @@ describe('sensitive PostgreSQL ACLs: unrelated synthetic LOGIN', () => {
     }
   })
 
+  it('runs synthetic payment configuration DML without DELETE privilege', async () => {
+    const table = 'public."PaymentPlatformConfig"'
+    const provider = 'SYNTHETIC_' + suffix
+    await owner.$executeRawUnsafe('GRANT SELECT, INSERT, UPDATE ON TABLE ' + table + ' TO "' + runtimeRole + '"')
+    const query = (sql: string) => spawnSync('psql', [runtimeUrl.toString(), '-X',
+      '--set=ON_ERROR_STOP=1', '-At', '-c', sql], { encoding: 'utf8', timeout: 10_000 })
+    try {
+      const created = query(`INSERT INTO ${table} ("id","provider","clientId","clientSecretEncrypted","webhookSecretEncrypted","configuredAt","updatedAt")
+        VALUES ('${provider}','${provider}','initial','synthetic-a','synthetic-b',now(),now())`)
+      assert.equal(created.status, 0, created.stderr)
+      const changed = query(`UPDATE ${table} SET "clientId"='updated' WHERE "provider"='${provider}'`)
+      assert.equal(changed.status, 0, changed.stderr)
+      const read = query(`SELECT "clientId" FROM ${table} WHERE "provider"='${provider}'`)
+      assert.equal(read.status, 0, read.stderr)
+      assert.equal(read.stdout.trim(), 'updated')
+      const forbidden = query(`DELETE FROM ${table} WHERE "provider"='${provider}'`)
+      assert.notEqual(forbidden.status, 0)
+      assert.match(forbidden.stderr, /permission denied/i)
+      assert.equal(runGate().status, 0)
+    } finally {
+      await owner.paymentPlatformConfig.deleteMany({ where: { provider } })
+      await owner.$executeRawUnsafe('REVOKE SELECT, INSERT, UPDATE ON TABLE ' + table + ' FROM "' + runtimeRole + '"')
+    }
+  })
+
+  it('proves default deny portal RLS blocks runtime from reading synthetic sessions', async () => {
+    const table = 'public."CompanyClientPortalSession"'
+    await owner.$executeRawUnsafe('GRANT SELECT ON TABLE ' + table + ' TO "' + runtimeRole + '"')
+    try {
+      const result = spawnSync('psql', [runtimeUrl.toString(), '-X',
+        '--set=ON_ERROR_STOP=1', '-At', '-c',
+        'SELECT count(*) FROM public."CompanyClientPortalSession"'],
+      { encoding: 'utf8', timeout: 10_000 })
+      assert.equal(result.status, 0, result.stderr)
+      assert.equal(result.stdout.trim(), '0')
+      assert.equal(runGate().status, 0)
+    } finally {
+      await owner.$executeRawUnsafe('REVOKE SELECT ON TABLE ' + table + ' FROM "' + runtimeRole + '"')
+    }
+  })
+
 })
