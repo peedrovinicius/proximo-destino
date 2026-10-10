@@ -364,4 +364,71 @@ describe('sensitive PostgreSQL ACLs: unrelated synthetic LOGIN', () => {
     }
   })
 
+  it('keeps two synthetic tenant portal sessions invisible to restricted runtime', async () => {
+    const tag = 'tenants_' + suffix
+    const actor = await owner.user.create({ data: {
+      id: 'actor_' + tag, email: tag + '@example.invalid',
+      passwordHash: 'synthetic-unusable', role: 'CREATOR',
+    } })
+    const companyIds: string[] = []
+    try {
+      for (const tenant of ['a', 'b']) {
+        const key = tag + '_' + tenant
+        const company = await owner.company.create({ data: {
+          id: 'company_' + key, slug: 'test-' + key,
+          tradeName: 'Synthetic ' + tenant, contactEmail: key + '@example.invalid',
+          responsibleName: 'Synthetic', responsibleEmail: key + '@example.invalid',
+          status: 'ACTIVE', createdById: actor.id,
+        } })
+        companyIds.push(company.id)
+        const client = await owner.client.create({ data: {
+          id: 'client_' + key, companyId: company.id,
+          fullName: 'Synthetic', email: 'client_' + key + '@example.invalid',
+        } })
+        const trip = await owner.trip.create({ data: {
+          id: 'trip_' + key, companyId: company.id, title: 'Synthetic',
+          origin: 'Test', destination: 'Test',
+          departureDate: new Date(Date.now() + 86_400_000), status: 'ACTIVE',
+        } })
+        const reservation = await owner.reservation.create({ data: {
+          id: 'reservation_' + key, companyId: company.id, clientId: client.id, tripId: trip.id,
+        } })
+        await owner.companyClientPortalSession.create({ data: {
+          id: 'session_' + key, tokenHash: 'token_' + key,
+          companyId: company.id, clientId: client.id, reservationId: reservation.id,
+          credentialVersion: 'synthetic', expiresAt: new Date(Date.now() + 3_600_000),
+        } })
+      }
+      await owner.$executeRawUnsafe(
+        'GRANT SELECT, UPDATE ON TABLE public."CompanyClientPortalSession" TO "' + runtimeRole + '"')
+      try {
+        const query = (sql: string) => spawnSync('psql', [runtimeUrl.toString(), '-X',
+          '--set=ON_ERROR_STOP=1', '-At', '-c', sql], { encoding: 'utf8', timeout: 10_000 })
+        const visible = query('SELECT count(*) FROM public."CompanyClientPortalSession"')
+        assert.equal(visible.status, 0, visible.stderr)
+        assert.equal(visible.stdout.trim(), '0', 'Neither tenant may be exposed')
+        const mutation = query(
+          'UPDATE public."CompanyClientPortalSession" SET "revokedAt" = NOW() WHERE "id" LIKE ' +
+          "'session_" + tag + "%'")
+        assert.equal(mutation.status, 0, mutation.stderr)
+        assert.match(mutation.stdout, /UPDATE 0/)
+        const unchanged = await owner.companyClientPortalSession.count({
+          where: { companyId: { in: companyIds }, revokedAt: null },
+        })
+        assert.equal(unchanged, 2, 'Restricted runtime must not revoke foreign sessions')
+        assert.equal(runGate().status, 0)
+      } finally {
+        await owner.$executeRawUnsafe(
+          'REVOKE SELECT, UPDATE ON TABLE public."CompanyClientPortalSession" FROM "' + runtimeRole + '"')
+      }
+    } finally {
+      await owner.companyClientPortalSession.deleteMany({ where: { companyId: { in: companyIds } } })
+      await owner.reservation.deleteMany({ where: { companyId: { in: companyIds } } })
+      await owner.trip.deleteMany({ where: { companyId: { in: companyIds } } })
+      await owner.client.deleteMany({ where: { companyId: { in: companyIds } } })
+      await owner.company.deleteMany({ where: { id: { in: companyIds } } })
+      await owner.user.delete({ where: { id: actor.id } })
+    }
+  })
+
 })
