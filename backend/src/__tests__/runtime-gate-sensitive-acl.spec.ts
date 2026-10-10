@@ -157,4 +157,54 @@ describe('sensitive PostgreSQL ACLs: unrelated synthetic LOGIN', () => {
     }
   })
 
+  it('rejects a missing protected portal session table', async () => {
+    assert.equal(runGate().status, 0)
+    await owner.$executeRawUnsafe('ALTER TABLE public."CompanyClientPortalSession" RENAME TO "synthetic_hidden_portal_session"')
+    try {
+      const gate = runGate()
+      assert.notEqual(gate.status, 0, 'Missing protected portal table must fail closed')
+      assert.match(gate.stderr, /GATE_RUNTIME:/)
+    } finally {
+      await owner.$executeRawUnsafe('ALTER TABLE public."synthetic_hidden_portal_session" RENAME TO "CompanyClientPortalSession"')
+    }
+    assert.equal(runGate().status, 0)
+  })
+
+  it('rejects disabled RLS on portal sessions', async () => {
+    assert.equal(runGate().status, 0)
+    await owner.$executeRawUnsafe('ALTER TABLE public."CompanyClientPortalSession" DISABLE ROW LEVEL SECURITY')
+    try {
+      const gate = runGate()
+      assert.notEqual(gate.status, 0, 'Disabled portal RLS must fail closed')
+      assert.match(gate.stderr, /GATE_RUNTIME:/)
+    } finally {
+      await owner.$executeRawUnsafe('ALTER TABLE public."CompanyClientPortalSession" ENABLE ROW LEVEL SECURITY')
+    }
+    assert.equal(runGate().status, 0)
+  })
+
+  it('rejects foreign role inherited ACL grants', async () => {
+    const parent = `acl_group_${suffix}`
+    await owner.$executeRawUnsafe(`CREATE ROLE "${parent}" NOLOGIN`)
+    try {
+      await owner.$executeRawUnsafe(`GRANT "${parent}" TO "${strangerRole}"`)
+      await owner.$executeRawUnsafe(`GRANT SELECT ON TABLE public."CompanyClientPortalSession" TO "${parent}"`)
+      try {
+        const effective = await owner.$queryRawUnsafe<Array<{ allowed: boolean }>>(
+          'SELECT has_table_privilege($1, $2, $3) AS allowed',
+          strangerRole, 'public."CompanyClientPortalSession"', 'SELECT')
+        assert.equal(effective[0].allowed, true)
+        const gate = runGate()
+        assert.notEqual(gate.status, 0, 'Inherited foreign role grant must fail closed')
+        assert.match(gate.stderr, /GATE_RUNTIME:/)
+      } finally {
+        await owner.$executeRawUnsafe(`REVOKE SELECT ON TABLE public."CompanyClientPortalSession" FROM "${parent}"`)
+        await owner.$executeRawUnsafe(`REVOKE "${parent}" FROM "${strangerRole}"`)
+      }
+    } finally {
+      await owner.$executeRawUnsafe(`DROP ROLE "${parent}"`)
+    }
+    assert.equal(runGate().status, 0)
+  })
+
 })
