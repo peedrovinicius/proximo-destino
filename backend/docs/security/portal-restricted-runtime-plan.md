@@ -31,3 +31,18 @@ Status: **BLOCKED — design only, not an approved database change**. This file 
 ## Non-goals and safety limits
 
 No changes to `main`, production, real database, credentials, deployment or company activation. Keep PR #67 in draft. **Do not claim the end-to-end customer portal is validated until its service methods pass with a restricted connection**, not merely because ACL catalog checks or denied INSERT assertions pass.
+
+## Explicit authorization architecture review (2026-10-10)
+
+**Verified limitation:** the customer portal begins with an unauthenticated code/email submission, while the existing tenant helper proves *staff* membership via `AuthSession`. Assigning `app.company_id`, `app.user_id` or `app.session_id` is not an authentication primitive and cannot securely bridge the bootstrap. Furthermore the portal login queries four operational tables whose RLS is scoped to staff membership. Making just the session table writable is neither sufficient nor safe.
+
+**Candidate boundary — not yet implemented:**
+
+- An internal portal-authentication component owns a narrow, audited transaction that looks up the company/reservation/client/trip relationship, verifies normalized email and Argon2-hashed code, enforces expiration/lockout, rotates prior sessions, inserts a single token hash and audit events; input is never accepted as proof merely because a tenant ID matches.
+- Subsequent customer operations are limited to the verified reservation and company bound to an unrevoked, unexpired bearer-token hash and current access-code version. Revocation, logout and concurrent logins must serialize on the reservation/session row.
+- Do not widen `company_tenant_authorized` to accept portal sessions: staff and customer permissions must remain distinct. No table-wide PUBLIC policies, arbitrary tenant context setters, unconditional definer or broad owner grants.
+- If a database definer is needed, its execution owner must have narrowly scoped access rather than all-table ownership. A definer cannot safely take a boolean `code_verified` from a caller as proof. A trusted backend may validate Argon2, but the DB privilege boundary must account explicitly for a compromised/misused runtime. Treat a second trusted component/connection as a new privilege boundary that requires a dedicated security review.
+- The gate must reject unexpected SECURITY DEFINER functions and unexpected EXECUTE grants; any reviewed new function requires its exact signature, body fingerprint, owner and grants to be pinned and negative-tested.
+- A dedicated test-only harness should instantiate the **real** CompanyClientPortalService through a restricted PostgreSQL connection for both A and B; verify that valid login, token access, rotation and logout succeed, that cross-company and expired/revoked attempts fail, and that direct SQL ACL/RLS probes still fail. The existing 13 passing SQL tests do not satisfy this.
+
+**Review decision:** keep the repair blocked until an authorization design can meet every criterion without turning a caller-controlled datum into a privilege. No migration, executable privileged function or gate allowlist was introduced by this design update.
