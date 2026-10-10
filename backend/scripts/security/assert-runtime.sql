@@ -354,6 +354,34 @@ BEGIN
     RAISE EXCEPTION 'GATE_RUNTIME: expressao RLS aprovada foi alterada';
   END IF;
 
+  -- These tables store bearer-token hashes, OAuth state/verifiers and
+  -- encrypted provider credentials. They are not covered by the reviewed
+  -- session-backed tenant RLS policies and some have no tenant key at all.
+  -- The restricted tenant runtime must not receive direct data privileges
+  -- on them; a future purpose-scoped service role requires separate review.
+  -- Check effective table AND column grants (including PUBLIC), rather than
+  -- only inspecting explicit ACL entries for the current role.
+  IF EXISTS (
+    SELECT 1 FROM (VALUES
+      ('CompanyClientPortalSession'),
+      ('PaymentProviderConnection'),
+      ('PaymentPlatformConfig'),
+      ('EmailProviderConnection'),
+      ('EmailOAuthState'),
+      ('PaymentOAuthState')
+    ) AS secret(table_name)
+    CROSS JOIN LATERAL (
+      SELECT to_regclass(format('public.%I', secret.table_name)) AS relation
+    ) object
+    WHERE object.relation IS NULL
+      OR has_any_column_privilege(current_user, object.relation, 'SELECT')
+      OR has_any_column_privilege(current_user, object.relation, 'INSERT')
+      OR has_any_column_privilege(current_user, object.relation, 'UPDATE')
+      OR has_table_privilege(current_user, object.relation, 'DELETE')
+  ) THEN
+    RAISE EXCEPTION 'GATE_RUNTIME: acesso direto a tokens ou segredos de integracao';
+  END IF;
+
   -- The runtime must not modify persisted authorization directly. All
   -- mutations to company identity/session/membership require a separately
   -- reviewed path; these privileges can bypass API-level tenancy guards.

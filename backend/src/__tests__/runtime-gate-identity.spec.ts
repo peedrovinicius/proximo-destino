@@ -432,6 +432,123 @@ describe('runtime production gate: synthetic restricted LOGIN', () => {
     assert.equal(runGate().status, 0)
   })
 
+  it('rejects effective read/write grants across every protected portal/OAuth secret table', async () => {
+    const tables = [
+      'CompanyClientPortalSession', 'PaymentProviderConnection',
+      'PaymentPlatformConfig', 'EmailProviderConnection',
+      'EmailOAuthState', 'PaymentOAuthState',
+    ]
+    for (const table of tables) {
+      for (const operation of ['SELECT', 'INSERT', 'UPDATE', 'DELETE']) {
+        assert.equal(runGate().status, 0)
+        await owner.$executeRawUnsafe(`GRANT ${operation} ON TABLE public."${table}" TO "${role}"`)
+        try {
+          const privilege = await owner.$queryRawUnsafe<Array<{ allowed: boolean }>>(
+            `SELECT has_table_privilege($1, 'public."${table}"', $2) AS allowed`,
+            role, operation,
+          )
+          assert.equal(privilege[0].allowed, true, `Expected grant on ${table} ${operation}`)
+          const gate = runGate()
+          assert.notEqual(gate.status, 0, `Unexpected runtime approval: ${table} ${operation}`)
+          assert.match(gate.stderr, /GATE_RUNTIME: acesso direto a tokens ou segredos de integracao/)
+        } finally {
+          await owner.$executeRawUnsafe(`REVOKE ${operation} ON TABLE public."${table}" FROM "${role}"`)
+        }
+      }
+    }
+    assert.equal(runGate().status, 0)
+  })
+
+  it('detects column-only grants without requiring access to the entire sensitive table', async () => {
+    const cases = [
+      { table: 'CompanyClientPortalSession', column: 'tokenHash', operation: 'SELECT' },
+      { table: 'PaymentProviderConnection', column: 'accessTokenEncrypted', operation: 'SELECT' },
+      { table: 'PaymentPlatformConfig', column: 'clientSecretEncrypted', operation: 'SELECT' },
+      { table: 'EmailProviderConnection', column: 'apiKeyEncrypted', operation: 'SELECT' },
+      { table: 'EmailOAuthState', column: 'codeVerifierEncrypted', operation: 'SELECT' },
+      { table: 'PaymentOAuthState', column: 'stateHash', operation: 'UPDATE' },
+    ]
+    for (const { table, column, operation } of cases) {
+      await owner.$executeRawUnsafe(
+        `GRANT ${operation} ("${column}") ON TABLE public."${table}" TO "${role}"`)
+      try {
+        const privilege = await owner.$queryRawUnsafe<Array<{ allowed: boolean }>>(
+          `SELECT has_column_privilege($1, 'public."${table}"', $2, $3) AS allowed`,
+          role, column, operation,
+        )
+        assert.equal(privilege[0].allowed, true)
+        const gate = runGate()
+        assert.notEqual(gate.status, 0, `Column grant not detected: ${table}.${column}`)
+        assert.match(gate.stderr, /GATE_RUNTIME: acesso direto a tokens ou segredos de integracao/)
+      } finally {
+        await owner.$executeRawUnsafe(
+          `REVOKE ${operation} ("${column}") ON TABLE public."${table}" FROM "${role}"`)
+      }
+      assert.equal(runGate().status, 0)
+    }
+  })
+
+  it('rejects privilege inheritance from PUBLIC on portal and OAuth state tables', async () => {
+    for (const [table, privilege] of [
+      ['CompanyClientPortalSession', 'SELECT'],
+      ['EmailOAuthState', 'UPDATE'],
+      ['PaymentOAuthState', 'DELETE'],
+      ['PaymentProviderConnection', 'SELECT'],
+    ] as const) {
+      await owner.$executeRawUnsafe(`GRANT ${privilege} ON TABLE public."${table}" TO PUBLIC`)
+      try {
+        const granted = await owner.$queryRawUnsafe<Array<{ allowed: boolean }>>(
+          `SELECT has_table_privilege($1, 'public."${table}"', $2) AS allowed`,
+          role, privilege,
+        )
+        assert.equal(granted[0].allowed, true)
+        const gate = runGate()
+        assert.notEqual(gate.status, 0)
+        assert.match(gate.stderr, /GATE_RUNTIME: acesso direto a tokens ou segredos de integracao/)
+      } finally {
+        await owner.$executeRawUnsafe(`REVOKE ${privilege} ON TABLE public."${table}" FROM PUBLIC`)
+      }
+      assert.equal(runGate().status, 0)
+    }
+  })
+
+  it('blocks a real SQL read of a synthetic encrypted secret before a tenant runtime is approved', async () => {
+    const provider = `SYNTHETIC_GATE_${suffix}`
+    const syntheticSecret = 'synthetic-secret-not-a-real-credential'
+    await owner.paymentPlatformConfig.create({ data: {
+      provider, clientId: `synthetic-id-${suffix}`,
+      clientSecretEncrypted: syntheticSecret,
+      webhookSecretEncrypted: 'synthetic-webhook-not-real',
+    } })
+    try {
+      const sql = spawnSync('psql', [runtimeUrl.toString(), '-X', '-A', '-t',
+        '--set=ON_ERROR_STOP=1',
+        `--command=SELECT "clientSecretEncrypted" FROM public."PaymentPlatformConfig"
+          WHERE "provider" = '${provider}'`],
+      { encoding: 'utf8', timeout: 10_000 })
+      assert.notEqual(sql.status, 0)
+      assert.match(sql.stderr, /permission denied/i)
+      await owner.$executeRawUnsafe(`GRANT SELECT ON TABLE public."PaymentPlatformConfig" TO "${role}"`)
+      try {
+        const exposed = spawnSync('psql', [runtimeUrl.toString(), '-X', '-A', '-t',
+          '--set=ON_ERROR_STOP=1',
+          `--command=SELECT "clientSecretEncrypted" FROM public."PaymentPlatformConfig"
+            WHERE "provider" = '${provider}'`],
+        { encoding: 'utf8', timeout: 10_000 })
+        assert.equal(exposed.status, 0, exposed.stderr)
+        assert.equal(exposed.stdout.trim(), syntheticSecret)
+        const gate = runGate()
+        assert.notEqual(gate.status, 0)
+        assert.match(gate.stderr, /GATE_RUNTIME: acesso direto a tokens ou segredos de integracao/)
+      } finally {
+        await owner.$executeRawUnsafe(`REVOKE SELECT ON TABLE public."PaymentPlatformConfig" FROM "${role}"`)
+      }
+      assert.equal(runGate().status, 0)
+    } finally {
+      await owner.paymentPlatformConfig.delete({ where: { provider } })
+    }
+  })
+
   it('fails closed on UPDATE/DELETE to tenant identity, even when normal tables remain scoped', async () => {
     for (const table of ['User', 'AuthSession', 'Company', 'CompanyMembership']) {
       for (const privilege of ['UPDATE', 'DELETE']) {
