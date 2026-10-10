@@ -44,6 +44,44 @@
 O script de provisionamento não foi executado. Nenhuma migração foi aplicada
 ao banco de produção nesta etapa.
 
+## Gate de leitura e escrita em tokens de portal, OAuth e segredos
+
+A credencial **tenant runtime restrita** ainda não possui RLS empresarial
+revisado para as tabelas `CompanyClientPortalSession`,
+`PaymentProviderConnection`, `PaymentPlatformConfig`,
+`EmailProviderConnection`, `EmailOAuthState` e
+`PaymentOAuthState`. Essas estruturas armazenam hashes de tokens,
+estados/PKCE de autorização ou segredos de integrações; várias têm
+chaves globais e não possuem `companyId` para isolamento por empresa.
+
+O gate somente leitura `scripts/security/assert-runtime.sql` agora recusa
+qualquer privilégio **efetivo** `SELECT`, `INSERT`, `UPDATE` ou
+`DELETE` da credencial tenant runtime nessas seis tabelas, incluindo grants
+herdados de `PUBLIC` e permissões restritas a colunas. O verificador usa
+`has_any_column_privilege` para evitar que `GRANT SELECT
+(clientSecretEncrypted)` escape à inspeção de privilégios de tabela e
+`has_table_privilege` para `DELETE`. Nenhum valor de segredo é retornado
+pelo gate.
+
+A suíte `runtime-gate-identity.spec.ts` prova, com uma conta
+`LOGIN` temporária em PostgreSQL descartável, os quatro tipos de grants,
+exposições herdadas de `PUBLIC` e grants limitados a colunas de token/segredo.
+Uma configuração `PaymentPlatformConfig` **inteiramente fictícia** também
+demonstra que `SELECT` na tabela permitiria recuperar uma string sintética
+de segredo sem relação empresarial, e que o novo gate recusa tal permissão.
+Os grants e a fixture são removidos em `finally`.
+
+**Compatibilidade e bloqueio operacional:** este controle é destinado
+somente ao papel PostgreSQL **restrito ao isolamento por tenant**. Os fluxos
+legítimos de login no portal, conexão OAuth, renovação de tokens e envio
+de mensagens podem precisar dessas tabelas; portanto, a API completa
+**não deve ser transferida às cegas** para esse papel. Antes da ativação,
+é necessário desenhar e homologar uma identidade de serviço separada,
+escopar integrações por empresa e validar os contratos de acesso sem
+conceder permissões globais ao runtime tenant. O gate não provisiona esse
+serviço e este PR não altera grants, migrations, aplicações ou produção.
+Permanece bloqueada a aprovação operacional da issue #44.
+
 ## Inventário de funções privilegiadas e poderes DDL do runtime
 
 O gate somente leitura `scripts/security/assert-runtime.sql` faz inventário
