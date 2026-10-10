@@ -90,6 +90,21 @@ Não há migration nem alteração de grants reais. A compatibilidade do runtime
 **efetivo** só poderá ser aprovada em homologação controlada, sem credenciais
 ou dados de produção neste ensaio.
 
+## Proteção do histórico de migrações do PostgreSQL
+
+O gate somente leitura `scripts/security/assert-runtime.sql` também recusa
+`INSERT` efetivo em `public."_prisma_migrations"`, além de `SELECT`,
+`UPDATE` e `DELETE`, já proibidos. Um papel runtime com `INSERT`
+poderia adulterar o histórico de migrations sem necessariamente ter acesso
+às definições ou aos dados dos demais tenants.
+
+O teste em PostgreSQL descartável cria um login restrito, concede
+temporariamente apenas `INSERT` na tabela de migrações, verifica que a
+credencial falha no gate e restaura a ACL anterior. **Nenhuma linha é
+inserida, nenhuma migration é executada e nenhum grant operacional é
+alterado.** A implantação continuará dependendo de teste com a credencial
+efetiva da API e de aprovação manual; o PR #34 permanece em rascunho.
+
 ## EXECUTE herdado de PUBLIC nas funções SECURITY DEFINER
 
 O PostgreSQL concede `EXECUTE` a `PUBLIC` em funções recém-criadas por

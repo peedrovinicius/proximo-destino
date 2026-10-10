@@ -409,6 +409,29 @@ describe('runtime production gate: synthetic restricted LOGIN', () => {
     assert.equal(runGate().status, 0)
   })
 
+  it('rejects migration-history INSERT privilege without writing migration rows', async () => {
+    // This synthetic grant was not covered by the original SELECT/UPDATE/DELETE
+    // gate. Never insert data into migration history, even in the disposable DB.
+    const privilege = await owner.$queryRaw<Array<{ granted: boolean }>>`
+      SELECT has_table_privilege(${role}, 'public."_prisma_migrations"', 'INSERT') AS granted
+    `
+    assert.equal(privilege[0].granted, false)
+    assert.equal(runGate().status, 0)
+    await owner.$executeRawUnsafe(`GRANT INSERT ON TABLE public."_prisma_migrations" TO "${role}"`)
+    try {
+      const now = await owner.$queryRaw<Array<{ granted: boolean }>>`
+        SELECT has_table_privilege(${role}, 'public."_prisma_migrations"', 'INSERT') AS granted
+      `
+      assert.equal(now[0].granted, true)
+      const gate = runGate()
+      assert.notEqual(gate.status, 0, 'Runtime with migration INSERT must fail attestation')
+      assert.match(gate.stderr, /GATE_RUNTIME: auditoria ou migrations acessiveis indevidamente/)
+    } finally {
+      await owner.$executeRawUnsafe(`REVOKE INSERT ON TABLE public."_prisma_migrations" FROM "${role}"`)
+    }
+    assert.equal(runGate().status, 0)
+  })
+
   it('fails closed on UPDATE/DELETE to tenant identity, even when normal tables remain scoped', async () => {
     for (const table of ['User', 'AuthSession', 'Company', 'CompanyMembership']) {
       for (const privilege of ['UPDATE', 'DELETE']) {
