@@ -230,4 +230,20 @@ describe('sensitive PostgreSQL ACLs: unrelated synthetic LOGIN', () => {
     assert.equal(runGate().status, 0)
   })
 
+  it('documents owner/superuser RLS bypass versus restricted runtime', async () => {
+    const ownerStatus = await owner.$queryRawUnsafe<Array<{ active: boolean }>>(
+      'SELECT row_security_active($1::regclass) AS active',
+      'public."CompanyClientPortalSession"')
+    assert.equal(ownerStatus[0].active, false,
+      'Migration owner/superuser should bypass RLS without FORCE')
+    const runtime = spawnSync('psql', [runtimeUrl.toString(), '-X', '-At',
+      '--set=ON_ERROR_STOP=1', '-c',
+      'SELECT row_security_active(\'public."CompanyClientPortalSession"\'::regclass)'],
+    { encoding: 'utf8', timeout: 10_000 })
+    assert.equal(runtime.status, 0, runtime.stderr)
+    assert.equal(runtime.stdout.trim(), 't',
+      'Restricted runtime must be covered by portal RLS')
+    assert.equal(runGate().status, 0)
+  })
+
 })
