@@ -187,7 +187,7 @@ describe('sensitive PostgreSQL ACLs: unrelated synthetic LOGIN', () => {
     const parent = `acl_group_${suffix}`
     await owner.$executeRawUnsafe(`CREATE ROLE "${parent}" NOLOGIN`)
     try {
-      await owner.$executeRawUnsafe(`GRANT "${parent}" TO "${strangerRole}"`)
+      await owner.$executeRawUnsafe(`GRANT "${parent}" TO "${strangerRole}" WITH INHERIT TRUE`)
       await owner.$executeRawUnsafe(`GRANT SELECT ON TABLE public."CompanyClientPortalSession" TO "${parent}"`)
       try {
         const effective = await owner.$queryRawUnsafe<Array<{ allowed: boolean }>>(
