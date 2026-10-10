@@ -3,6 +3,10 @@ import { randomUUID } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { after, before, describe, it } from 'node:test'
 import { PrismaService } from '../prisma/prisma.service'
+import { PrismaClient } from '@prisma/client'
+import { ConfigService } from '@nestjs/config'
+import { CompanyClientPortalService } from '../portal/company-client-portal.service'
+import * as argon2 from 'argon2'
 
 // RED regression proof for GitHub CI's disposable postgres:18 service ONLY.
 // Never run against managed, staging, or production PostgreSQL.
@@ -428,6 +432,75 @@ describe('sensitive PostgreSQL ACLs: unrelated synthetic LOGIN', () => {
       await owner.client.deleteMany({ where: { companyId: { in: companyIds } } })
       await owner.company.deleteMany({ where: { id: { in: companyIds } } })
       await owner.user.delete({ where: { id: actor.id } })
+    }
+  })
+
+  it('reproduces restricted service login denial for two synthetic companies without weakening RLS', async () => {
+    const marker = 'service_' + suffix
+    const accessCode = 'ONLY-SYNTHETIC-ACCESS'
+    const codeHash = await argon2.hash(accessCode)
+    const actorId = 'creator_' + marker
+    const companies: string[] = []
+    await owner.user.create({ data: {
+      id: actorId, email: marker + '@example.invalid',
+      passwordHash: 'synthetic-unusable', role: 'CREATOR',
+    } })
+    const restricted = new PrismaClient({ datasources: { db: { url: runtimeUrl.toString() } } })
+    try {
+      for (const tenant of ['a', 'b']) {
+        const id = marker + '_' + tenant
+        const companyId = 'company_' + id
+        companies.push(companyId)
+        await owner.company.create({ data: {
+          id: companyId, slug: 'svc-' + id,
+          tradeName: 'Synthetic ' + tenant, contactEmail: id + '@example.invalid',
+          responsibleName: 'Synthetic', responsibleEmail: id + '@example.invalid',
+          status: 'ACTIVE', createdById: actorId,
+        } })
+        await owner.client.create({ data: {
+          id: 'client_' + id, companyId, fullName: 'Synthetic Client',
+          email: 'client_' + id + '@example.invalid',
+        } })
+        await owner.trip.create({ data: {
+          id: 'trip_' + id, companyId, title: 'Synthetic',
+          origin: 'Test', destination: 'Test',
+          departureDate: new Date(Date.now() + 86_400_000), status: 'ACTIVE',
+        } })
+        await owner.reservation.create({ data: {
+          id: 'reservation_' + id, companyId, clientId: 'client_' + id,
+          tripId: 'trip_' + id, accessCodeHash: codeHash,
+          companyPortalCodeExpiresAt: new Date(Date.now() + 3_600_000),
+        } })
+      }
+      const service = new CompanyClientPortalService(
+        restricted as unknown as PrismaService,
+        new ConfigService({
+          COMPANY_FOUNDATION_ENABLED: 'true',
+          COMPANY_CLIENT_PORTAL_ENABLED: 'true',
+        }),
+      )
+      await restricted.$connect()
+      for (const tenant of ['a', 'b']) {
+        const id = marker + '_' + tenant
+        await assert.rejects(service.login('svc-' + id, {
+          reservationId: 'reservation_' + id,
+          email: 'client_' + id + '@example.invalid',
+          code: accessCode,
+        }), 'Restricted runtime must not bypass staff tenant RLS during portal bootstrap')
+        const sessions = await owner.companyClientPortalSession.count({
+          where: { companyId: 'company_' + id },
+        })
+        assert.equal(sessions, 0, 'Rejected login cannot create a customer session')
+      }
+      assert.equal(runGate().status, 0)
+    } finally {
+      await restricted.$disconnect()
+      await owner.companyClientPortalSession.deleteMany({ where: { companyId: { in: companies } } })
+      await owner.reservation.deleteMany({ where: { companyId: { in: companies } } })
+      await owner.trip.deleteMany({ where: { companyId: { in: companies } } })
+      await owner.client.deleteMany({ where: { companyId: { in: companies } } })
+      await owner.company.deleteMany({ where: { id: { in: companies } } })
+      await owner.user.deleteMany({ where: { id: actorId } })
     }
   })
 
