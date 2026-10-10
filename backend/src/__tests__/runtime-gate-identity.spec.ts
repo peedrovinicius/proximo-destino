@@ -488,6 +488,30 @@ describe('runtime production gate: synthetic restricted LOGIN', () => {
     }
   })
 
+  it('rejects privilege inheritance from PUBLIC on portal and OAuth state tables', async () => {
+    for (const [table, privilege] of [
+      ['CompanyClientPortalSession', 'SELECT'],
+      ['EmailOAuthState', 'UPDATE'],
+      ['PaymentOAuthState', 'DELETE'],
+      ['PaymentProviderConnection', 'SELECT'],
+    ] as const) {
+      await owner.$executeRawUnsafe(`GRANT ${privilege} ON TABLE public."${table}" TO PUBLIC`)
+      try {
+        const granted = await owner.$queryRawUnsafe<Array<{ allowed: boolean }>>(
+          `SELECT has_table_privilege($1, 'public."${table}"', $2) AS allowed`,
+          role, privilege,
+        )
+        assert.equal(granted[0].allowed, true)
+        const gate = runGate()
+        assert.notEqual(gate.status, 0)
+        assert.match(gate.stderr, /GATE_RUNTIME: acesso direto a tokens ou segredos de integracao/)
+      } finally {
+        await owner.$executeRawUnsafe(`REVOKE ${privilege} ON TABLE public."${table}" FROM PUBLIC`)
+      }
+      assert.equal(runGate().status, 0)
+    }
+  })
+
   it('blocks a real SQL read of a synthetic encrypted secret before a tenant runtime is approved', async () => {
     const provider = `SYNTHETIC_GATE_${suffix}`
     const syntheticSecret = 'synthetic-secret-not-a-real-credential'
