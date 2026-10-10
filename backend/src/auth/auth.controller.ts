@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   HttpCode,
   Param,
   Post,
@@ -22,6 +23,8 @@ import { MfaChallengeDto, MfaVerifyDto } from './dto/mfa.dto'
 import { JwtAuthGuard, type AuthenticatedRequest } from './jwt-auth.guard'
 import { Roles } from './roles.decorator'
 import { RolesGuard } from './roles.guard'
+import { OwnSessionAccess } from '../tenancy/company-access.decorator'
+import { PasswordChangeDto } from './dto/password-change.dto'
 
 const REFRESH_COOKIE = 'pd_refresh'
 
@@ -46,6 +49,19 @@ export class AuthController {
       this.context(request),
     )
     return this.respondWithAuth(result, response)
+  }
+
+  @Post('creator/login')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @HttpCode(200)
+  async loginCreator(
+    @Body() body: LoginDto,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    return this.respondWithAuth(await this.auth.loginCreator(
+      body.email, body.password, this.context(request),
+    ), response)
   }
 
   @Post('mfa/setup')
@@ -104,6 +120,7 @@ export class AuthController {
   }
 
   @Post('logout')
+  @OwnSessionAccess()
   @UseGuards(JwtAuthGuard)
   @HttpCode(204)
   async logout(
@@ -118,13 +135,24 @@ export class AuthController {
     response.clearCookie(REFRESH_COOKIE, this.cookieOptions())
   }
 
+  @Post('password/change') @OwnSessionAccess() @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } }) @HttpCode(200) @Header('Cache-Control', 'no-store')
+  async changePassword(@Body() body: PasswordChangeDto, @Req() request: AuthenticatedRequest,
+    @Res({ passthrough: true }) response: Response) {
+    const result = await this.auth.changePassword(request.user.id, request.user.sessionId, body.currentPassword, body.newPassword)
+    response.clearCookie(REFRESH_COOKIE, this.cookieOptions())
+    return result
+  }
+
   @Get('sessions')
+  @OwnSessionAccess()
   @UseGuards(JwtAuthGuard)
   sessions(@Req() request: AuthenticatedRequest) {
     return this.auth.listSessions(request.user.id, request.user.sessionId)
   }
 
   @Delete('sessions/:sessionId')
+  @OwnSessionAccess()
   @UseGuards(JwtAuthGuard)
   @HttpCode(204)
   async revokeSession(
@@ -143,6 +171,7 @@ export class AuthController {
   }
 
   @Post('sessions/revoke-all')
+  @OwnSessionAccess()
   @UseGuards(JwtAuthGuard)
   @HttpCode(204)
   async revokeAll(

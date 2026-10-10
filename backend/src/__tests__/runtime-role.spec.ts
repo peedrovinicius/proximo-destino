@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { after, before, describe, it } from 'node:test'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { createHash } from 'node:crypto'
 import { PrismaService } from '../prisma/prisma.service'
@@ -100,5 +100,57 @@ describe('papel runtime sem bypass em PostgreSQL isolado', () => {
       SELECT has_table_privilege(${outsider}, 'public."User"', 'INSERT') AS allowed
     `
     assert.equal(privilege.allowed, false)
+  })
+  it('diagnóstico somente leitura distingue papel restrito e proprietário sem conceder permissões', async () => {
+    const check = (target?: string) => execFileSync('psql', [database.toString(), '-X', '-A', '-t',
+      '--set=ON_ERROR_STOP=1', ...(target ? [`--command=SET ROLE "${target}"`] : []),
+      '--file=scripts/security/check-runtime.sql'], { encoding: 'utf8', stdio: 'pipe' })
+    const restricted = check(role)
+    assert.ok(restricted.split('\n').includes('t|f|t|t|t|t|t|t'), restricted)
+    assert.ok(restricted.split('\n').includes('15'), restricted)
+    const owner = check()
+    assert.equal(owner.split('\n').includes('t|f|t|t|t|t|t|t'), false)
+    const [access] = await prisma.$queryRaw<Array<{ forbidden: boolean }>>`
+      SELECT has_table_privilege(${role}, 'public."AuthAuditEvent"', 'UPDATE') AS forbidden`
+    assert.equal(access.forbidden, false)
+  })
+  const productionGate = async () => {
+    // The rehearsal role deliberately has a permissive synthetic RLS policy.
+    // Isolate that test from PostgreSQL's default function EXECUTE on PUBLIC
+    // so we are asserting the intended RLS failure, not an earlier ACL gate.
+    // PostgreSQL is disposable; restore the test database's original grants.
+    const signatures = [
+      'public.company_tenant_authorized(text)',
+      'public.company_write_authorized(text,text,text,text)',
+    ].join(', ')
+    await prisma.$executeRawUnsafe(`GRANT EXECUTE ON FUNCTION ${signatures} TO "${role}"`)
+    try {
+      await prisma.$executeRawUnsafe(`REVOKE EXECUTE ON FUNCTION ${signatures} FROM PUBLIC`)
+      return spawnSync('psql',
+        [database.toString(), '-X', '--set=ON_ERROR_STOP=1',
+          `--command=SET ROLE "${role}"`, '--file=scripts/security/assert-runtime.sql'],
+        { encoding: 'utf8' })
+    } finally {
+      await prisma.$executeRawUnsafe(`GRANT EXECUTE ON FUNCTION ${signatures} TO PUBLIC`)
+      await prisma.$executeRawUnsafe(`REVOKE EXECUTE ON FUNCTION ${signatures} FROM "${role}"`)
+    }
+  }
+
+  it('bloqueia produção se Trip perder RLS mesmo após a migração', async () => {
+    // Never alter production; this suite uses a disposable local test database.
+    await prisma.$executeRawUnsafe('ALTER TABLE "Trip" DISABLE ROW LEVEL SECURITY')
+    try {
+      const gate = await productionGate()
+      assert.equal(gate.status, 3, gate.stderr)
+      assert.match(gate.stderr, /GATE_RUNTIME: tabela sensivel sem RLS/)
+    } finally {
+      await prisma.$executeRawUnsafe('ALTER TABLE "Trip" ENABLE ROW LEVEL SECURITY')
+    }
+  })
+
+  it('rejeita políticas RLS permissivas do papel de ensaio', async () => {
+    const gate = await productionGate()
+    assert.equal(gate.status, 3, gate.stderr)
+    assert.match(gate.stderr, /GATE_RUNTIME: politica RLS permissiva para tabela sensivel/)
   })
 })

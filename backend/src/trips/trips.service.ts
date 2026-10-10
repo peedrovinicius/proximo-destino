@@ -134,6 +134,7 @@ export class TripsService {
 
     const trips = await this.prisma.trip.findMany({
       where: {
+        companyId: null,
         status: { in: [TripStatus.ACTIVE, TripStatus.SCHEDULED] },
         departureDate: dateFilter,
         ...(origin?.trim()
@@ -174,6 +175,7 @@ export class TripsService {
     const trip = await this.prisma.trip.findFirst({
       where: {
         id,
+        companyId: null,
         status: { in: [TripStatus.ACTIVE, TripStatus.SCHEDULED] },
         departureDate: { gte: new Date() },
       },
@@ -1579,6 +1581,7 @@ export class TripsService {
     const image = await this.prisma.trip.findFirst({
       where: {
         id,
+        companyId: null,
         status: { in: [TripStatus.ACTIVE, TripStatus.SCHEDULED] },
       },
       select: {
@@ -1603,6 +1606,7 @@ export class TripsService {
     const trip = await this.prisma.trip.findFirst({
       where: {
         id,
+        companyId: null,
         status: { in: [TripStatus.ACTIVE, TripStatus.SCHEDULED] },
       },
       select: {

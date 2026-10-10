@@ -3,6 +3,8 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
+  ForbiddenException,
   Param,
   Patch,
   ParseIntPipe,
@@ -36,22 +38,29 @@ import {
   UpdateTripDto,
 } from './dto/admin-trip.dto'
 import { TripsService } from './trips.service'
+import { CompanyDataService } from '../tenancy/company-data.service'
+import { CompanyRead, CompanyWrite } from '../tenancy/company-access.decorator'
+import { CompanyTripsService } from '../tenancy/company-trips.service'
 
 @Controller('admin/trips')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(...STAFF_ROLES)
 export class AdminTripsController {
-  constructor(private readonly trips: TripsService) {}
+  constructor(private readonly trips: TripsService, private readonly scoped: CompanyDataService,
+    private readonly scopedWrites: CompanyTripsService) {}
 
   @Get('bus-templates')
+  @CompanyRead()
   @Roles(...OPERATIONS_ROLES)
   busTemplates() {
     return this.trips.busTemplates()
   }
 
   @Get()
+  @CompanyRead()
   @Roles(...OPERATIONS_ROLES)
-  list(@Query('q') query?: string) {
+  list(@Req() request: AuthenticatedRequest, @Query('q') query?: string) {
+    if (request.companyScope) return this.scoped.trips(request.user.id, request.user.sessionId, request.query.q as string | undefined)
     return this.trips.listAdmin(query)
   }
 
@@ -62,11 +71,13 @@ export class AdminTripsController {
   }
 
   @Post()
+  @CompanyWrite()
   @Roles(...OPERATIONS_ROLES)
   create(
     @Body() body: CreateTripDto,
     @Req() request: AuthenticatedRequest,
   ) {
+    if (request.companyScope) return this.scopedWrites.create(request.user.id, request.user.sessionId, body)
     return this.trips.create(body, request.user.id)
   }
 
@@ -96,12 +107,16 @@ export class AdminTripsController {
   }
 
   @Get(':id/seats')
+  @Header('Cache-Control', 'no-store')
+  @CompanyRead()
   @Roles(...ADMIN_ONLY_ROLES)
-  seatMap(@Param('id') id: string) {
+  seatMap(@Param('id') id: string, @Req() request: AuthenticatedRequest) {
+    if (request.companyScope) return this.scopedWrites.seatMap(request.user.id, request.user.sessionId, id)
     return this.trips.findAdminSeatMap(id)
   }
 
   @Post(':id/seats/:seatNumber/assignment')
+  @CompanyWrite()
   @Roles(...ADMIN_ONLY_ROLES)
   assignSeatClient(
     @Param('id') id: string,
@@ -109,10 +124,12 @@ export class AdminTripsController {
     @Body() body: AssignSeatClientDto,
     @Req() request: AuthenticatedRequest,
   ) {
+    if (request.companyScope) return this.scopedWrites.assignDraftSeat(request.user.id, request.user.sessionId, id, seatNumber, body)
     return this.trips.assignClientToSeat(id, seatNumber, body, request.user.id)
   }
 
   @Patch(':id/seats/:seatNumber/assignment')
+  @CompanyWrite()
   @Roles(...ADMIN_ONLY_ROLES)
   moveSeatAssignment(
     @Param('id') id: string,
@@ -120,6 +137,7 @@ export class AdminTripsController {
     @Body() body: MoveSeatAssignmentDto,
     @Req() request: AuthenticatedRequest,
   ) {
+    if (request.companyScope) return this.scopedWrites.moveDraftSeat(request.user.id, request.user.sessionId, id, seatNumber, body.toSeatNumber)
     return this.trips.moveSeatAssignment(
       id,
       seatNumber,
@@ -128,7 +146,17 @@ export class AdminTripsController {
     )
   }
 
+  @Delete(':id/seats/:seatNumber/assignment')
+  @CompanyWrite()
+  @Roles(...ADMIN_ONLY_ROLES)
+  releaseDraftSeat(@Param('id') id: string, @Param('seatNumber', ParseIntPipe) seatNumber: number,
+    @Req() request: AuthenticatedRequest) {
+    if (!request.companyScope) throw new ForbiddenException('Liberação preparatória exige sessão de empresa')
+    return this.scopedWrites.releaseDraftSeat(request.user.id, request.user.sessionId, id, seatNumber)
+  }
+
   @Patch(':id/seats/:seatNumber')
+  @CompanyWrite()
   @Roles(...ADMIN_ONLY_ROLES)
   updateSeat(
     @Param('id') id: string,
@@ -136,6 +164,7 @@ export class AdminTripsController {
     @Body() body: UpdateSeatBlockDto,
     @Req() request: AuthenticatedRequest,
   ) {
+    if (request.companyScope) return this.scopedWrites.setSeatBlocked(request.user.id, request.user.sessionId, id, seatNumber, body.blocked)
     return this.trips.setSeatBlocked(
       id,
       seatNumber,
@@ -145,8 +174,11 @@ export class AdminTripsController {
   }
 
   @Get(':id/audit')
+  @Header('Cache-Control', 'no-store')
+  @CompanyRead()
   @Roles(...ADMIN_ONLY_ROLES)
-  audit(@Param('id') id: string) {
+  audit(@Param('id') id: string, @Req() request: AuthenticatedRequest) {
+    if (request.companyScope) return this.scopedWrites.preparatoryAudit(request.user.id, request.user.sessionId, id)
     return this.trips.operationalAudit(id)
   }
 
@@ -211,12 +243,22 @@ export class AdminTripsController {
   }
 
   @Patch(':id')
+  @CompanyWrite()
   @Roles(...OPERATIONS_ROLES)
   update(
     @Param('id') id: string,
     @Body() body: UpdateTripDto,
     @Req() request: AuthenticatedRequest,
   ) {
+    if (request.companyScope) return this.scopedWrites.update(request.user.id, request.user.sessionId, id, body)
     return this.trips.update(id, body, request.user.id)
+  }
+
+  @Get(':id')
+  @CompanyRead()
+  @Roles(...OPERATIONS_ROLES)
+  detail(@Param('id') id: string, @Req() request: AuthenticatedRequest) {
+    if (!request.companyScope) throw new ForbiddenException('Consulta exige sessão de empresa')
+    return this.scoped.trip(request.user.id, request.user.sessionId, id)
   }
 }

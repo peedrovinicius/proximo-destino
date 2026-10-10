@@ -7,9 +7,10 @@ import { JwtAuthGuard } from './jwt-auth.guard'
 import { MfaService } from './mfa.service'
 import { RolesGuard } from './roles.guard'
 import { SessionService } from './session.service'
+import { TenancyModule } from '../tenancy/tenancy.module'
 
 @Module({
-  imports: [JwtModule.register({})],
+  imports: [JwtModule.register({}), TenancyModule],
   controllers: [AuthController],
   providers: [
     AuthService,
@@ -19,6 +20,6 @@ import { SessionService } from './session.service'
     JwtAuthGuard,
     RolesGuard,
   ],
-  exports: [AuthService, JwtAuthGuard, RolesGuard],
+  exports: [MfaService, AuthService, JwtAuthGuard, RolesGuard, TenancyModule],
 })
 export class AuthModule {}

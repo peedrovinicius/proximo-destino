@@ -54,11 +54,14 @@ describe('controles críticos de segurança', () => {
           AND c.relname IN (
             'Client',
             'Companion',
+            'Trip',
             'Reservation',
             'ReservationPassenger',
             'SeatAssignment',
             'PurchaseOrder',
             'Quote',
+            'QuoteItem',
+            'ReservationService',
             'FinancePlan',
             'Installment',
             'TravelDocument',
@@ -67,7 +70,7 @@ describe('controles críticos de segurança', () => {
           )
       `
 
-      assert.equal(rows.length, 12)
+      assert.equal(rows.length, 15)
       for (const row of rows) {
         assert.equal(
           row.enabled,

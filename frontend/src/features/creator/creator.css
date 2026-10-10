@@ -1,0 +1,24 @@
+.creator-workspace { max-width: 1200px; margin: 0 auto; padding: 32px 20px; }
+.creator-heading { display: flex; align-items: start; justify-content: space-between; gap: 24px; }
+.creator-heading h1 { margin: 8px 0; }
+.creator-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.creator-workspace button { min-height: 44px; padding: 10px 16px; border: 1px solid #cbd5e1; border-radius: 10px; background: white; color: #172554; cursor: pointer; }
+.creator-workspace button:disabled { opacity: .6; cursor: wait; }
+.creator-workspace button:focus-visible, .creator-workspace input:focus-visible { outline: 3px solid #2563eb; outline-offset: 3px; }
+.creator-warning { margin: 24px 0; padding: 18px; background: #fff7ed; color: #7c2d12; border: 1px solid #fed7aa; border-radius: 14px; }
+.creator-warning p { margin-bottom: 0; }
+.creator-columns { display: grid; grid-template-columns: 1.15fr 1fr; gap: 24px; }
+.creator-panel { padding: 24px; background: white; border: 1px solid #e2e8f0; border-radius: 16px; min-width: 0; }
+.creator-panel h2 { margin-top: 0; }
+.creator-fields { display: grid; gap: 16px; border: 0; padding: 0; min-width: 0; }
+.creator-fields label { display: grid; gap: 6px; font-weight: 600; }
+.creator-fields input { width: 100%; box-sizing: border-box; min-height: 44px; padding: 10px 12px; border: 1px solid #94a3b8; border-radius: 8px; background: white; color: #0f172a; }
+.creator-help { font-size: 14px; color: #475569; }
+.creator-company-list { list-style: none; margin: 0; padding: 0; }
+.creator-company-list li { padding: 18px 0; border-bottom: 1px solid #e2e8f0; overflow-wrap: anywhere; }
+.creator-company-list h3 { margin: 0 0 8px; }
+.creator-readiness { margin-top: 12px; padding: 16px; border: 1px solid #d6dce5; border-radius: 12px; background: #f8fafc; color: #1e293b; }
+.creator-readiness p { margin: 8px 0; }
+.creator-readiness ul { margin: 8px 0; padding-left: 22px; }
+.creator-company-list .creator-readiness li { list-style: disc; padding: 4px 0; border: 0; overflow-wrap: anywhere; }
+@media (max-width: 760px) { .creator-columns { grid-template-columns: 1fr; } .creator-heading { flex-direction: column; } .creator-panel { padding: 18px; } }

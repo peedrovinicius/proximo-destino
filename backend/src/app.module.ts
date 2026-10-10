@@ -16,6 +16,7 @@ import { PrismaModule } from './prisma/prisma.module'
 import { SecurityModule } from './security/security.module'
 import { TripsModule } from './trips/trips.module'
 import { UsersModule } from './users/users.module'
+import { CompaniesModule } from './companies/companies.module'
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { UsersModule } from './users/users.module'
     SecurityModule,
     PrismaModule,
     AuthModule,
+    CompaniesModule,
     UsersModule,
     ClientsModule,
     CommercialModule,

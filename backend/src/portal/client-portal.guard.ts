@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config'
 import { JwtService } from '@nestjs/jwt'
 import type { Request } from 'express'
+import { PrismaService } from '../prisma/prisma.service'
 
 export type ClientPortalRequest = Request & {
   portal: {
@@ -20,6 +21,7 @@ export class ClientPortalGuard implements CanActivate {
   constructor(
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly prisma: PrismaService,
   ) {}
 
   async canActivate(context: ExecutionContext) {
@@ -42,6 +44,12 @@ export class ClientPortalGuard implements CanActivate {
       if (payload.type !== 'client_portal' || !payload.sub || !payload.rid) {
         throw new Error('invalid')
       }
+
+      const reservation = await this.prisma.reservation.findFirst({
+        where: { id: payload.rid, clientId: payload.sub, companyId: null,
+          client: { companyId: null }, trip: { companyId: null } }, select: { id: true },
+      })
+      if (!reservation) throw new Error('invalid')
 
       request.portal = {
         clientId: payload.sub,
