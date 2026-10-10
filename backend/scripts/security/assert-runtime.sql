@@ -354,6 +354,36 @@ BEGIN
     RAISE EXCEPTION 'GATE_RUNTIME: expressao RLS aprovada foi alterada';
   END IF;
 
+  -- Secrets and portal/OAuth tokens are not tenant-operational tables.
+  -- Fail closed if PUBLIC or any role besides the table owner and this
+  -- attested runtime LOGIN has explicit read/write access. This reads the
+  -- effective ACL representation, including PostgreSQL default ACLs.
+  -- Retain legitimate runtime grants; do not modify grants here.
+  IF EXISTS (
+    SELECT 1 FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    CROSS JOIN LATERAL aclexplode(
+      COALESCE(c.relacl, acldefault('r', c.relowner))
+    ) acl
+    WHERE n.nspname = 'public'
+      AND c.relkind IN ('r','p')
+      AND c.relname IN (
+        'CompanyClientPortalSession',
+        'EmailOAuthState',
+        'PaymentOAuthState',
+        'EmailProviderConnection',
+        'PaymentProviderConnection',
+        'PaymentPlatformConfig'
+      )
+      AND acl.privilege_type IN ('SELECT', 'INSERT', 'UPDATE', 'DELETE')
+      AND acl.grantee <> c.relowner
+      AND acl.grantee <> (
+        SELECT oid FROM pg_roles WHERE rolname = current_user
+      )
+  ) THEN
+    RAISE EXCEPTION 'GATE_RUNTIME: ACL sensivel concedida a papel nao autorizado';
+  END IF;
+
   -- The runtime must not modify persisted authorization directly. All
   -- mutations to company identity/session/membership require a separately
   -- reviewed path; these privileges can bypass API-level tenancy guards.
