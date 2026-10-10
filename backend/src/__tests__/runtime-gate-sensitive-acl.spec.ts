@@ -315,4 +315,53 @@ describe('sensitive PostgreSQL ACLs: unrelated synthetic LOGIN', () => {
     }
   })
 
+  it('documents blocked portal login with an entirely synthetic company and reservation', async () => {
+    const id = 'fixture_' + suffix
+    const companyId = 'co_' + suffix
+    const clientId = 'cl_' + suffix
+    const tripId = 'tr_' + suffix
+    const reservationId = 'rs_' + suffix
+    const userId = 'usr_' + suffix
+    await owner.user.create({ data: { id: userId, email: id + '@example.invalid',
+      passwordHash: 'synthetic-unusable', role: 'CREATOR' } })
+    try {
+      await owner.company.create({ data: { id: companyId, slug: 'fixture-' + suffix,
+        tradeName: 'Synthetic', contactEmail: id + '@example.invalid',
+        responsibleName: 'Synthetic', responsibleEmail: id + '@example.invalid',
+        status: 'ACTIVE', createdById: userId } })
+      await owner.client.create({ data: { id: clientId, companyId, fullName: 'Synthetic Client',
+        email: 'client-' + suffix + '@example.invalid' } })
+      await owner.trip.create({ data: { id: tripId, companyId, title: 'Synthetic',
+        origin: 'Test', destination: 'Test', departureDate: new Date(Date.now() + 86400000),
+        status: 'ACTIVE' } })
+      await owner.reservation.create({ data: { id: reservationId, companyId, clientId, tripId,
+        accessCodeHash: 'synthetic-hash', companyPortalCodeExpiresAt: new Date(Date.now()+3600000) } })
+      await owner.$executeRawUnsafe(
+        'GRANT SELECT, INSERT, UPDATE ON TABLE public."CompanyClientPortalSession" TO "' + runtimeRole + '"')
+      try {
+        const sql = `INSERT INTO public."CompanyClientPortalSession"
+          ("id","tokenHash","companyId","clientId","reservationId","credentialVersion","expiresAt")
+          VALUES ('${id}','${'b'.repeat(64)}','${companyId}','${clientId}',
+            '${reservationId}','synthetic-version',NOW()+INTERVAL '30 minutes')`
+        const attempt = spawnSync('psql', [runtimeUrl.toString(), '-X',
+          '--set=ON_ERROR_STOP=1', '-c', sql], { encoding: 'utf8', timeout: 10000 })
+        assert.notEqual(attempt.status, 0, 'Default-deny RLS must block portal session creation')
+        assert.match(attempt.stderr, /row-level security|violates row-level security policy/i)
+        const count = await owner.companyClientPortalSession.count({ where: { reservationId } })
+        assert.equal(count, 0, 'Denied login must not persist a session')
+        assert.equal(runGate().status, 0)
+      } finally {
+        await owner.$executeRawUnsafe(
+          'REVOKE SELECT, INSERT, UPDATE ON TABLE public."CompanyClientPortalSession" FROM "' + runtimeRole + '"')
+      }
+    } finally {
+      await owner.companyClientPortalSession.deleteMany({ where: { reservationId } })
+      await owner.reservation.deleteMany({ where: { id: reservationId } })
+      await owner.trip.deleteMany({ where: { id: tripId } })
+      await owner.client.deleteMany({ where: { id: clientId } })
+      await owner.company.deleteMany({ where: { id: companyId } })
+      await owner.user.deleteMany({ where: { id: userId } })
+    }
+  })
+
 })
