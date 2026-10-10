@@ -1,0 +1,58 @@
+name: Disposable sensitive ACL proof
+
+on:
+  push:
+    branches:
+      - test/sensitive-acl-disposable-postgres
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-acl-proof:
+    name: Synthetic PostgreSQL ACL proof
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: proximo_destino
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d proximo_destino"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/proximo_destino?schema=public
+      NODE_ENV: test
+      JWT_ACCESS_SECRET: ci-access-secret-not-for-production
+      JWT_REFRESH_SECRET: ci-refresh-secret-not-for-production
+      JWT_MFA_SECRET: ci-mfa-secret-not-for-production
+      AUDIT_HASH_KEY: ci-audit-hash-key-not-for-production
+      MFA_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      PII_ENCRYPTION_KEY: ci-pii-encryption-key-not-for-production
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Prepare disposable PostgreSQL and client
+        run: |
+          npm run prisma:generate
+          npm run prisma:deploy
+      - name: Compile test
+        run: npm run build
+      - name: Run synthetic ACL regression
+        run: node --test --test-concurrency=1 dist/__tests__/runtime-gate-sensitive-acl.spec.js
