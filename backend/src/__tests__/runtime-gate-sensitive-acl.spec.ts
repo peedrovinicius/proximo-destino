@@ -157,17 +157,20 @@ describe('sensitive PostgreSQL ACLs: unrelated synthetic LOGIN', () => {
     }
   })
 
-  it('rejects a missing protected portal session table', async () => {
+  it('rejects each missing sensitive credential or session table', async () => {
     assert.equal(runGate().status, 0)
-    await owner.$executeRawUnsafe('ALTER TABLE public."CompanyClientPortalSession" RENAME TO "synthetic_hidden_portal_session"')
-    try {
-      const gate = runGate()
-      assert.notEqual(gate.status, 0, 'Missing protected portal table must fail closed')
-      assert.match(gate.stderr, /GATE_RUNTIME:/)
-    } finally {
-      await owner.$executeRawUnsafe('ALTER TABLE public."synthetic_hidden_portal_session" RENAME TO "CompanyClientPortalSession"')
+    for (const table of sensitiveTables) {
+      const hidden = `synthetic_hidden_${table}`
+      await owner.$executeRawUnsafe(`ALTER TABLE public."${table}" RENAME TO "${hidden}"`)
+      try {
+        const gate = runGate()
+        assert.notEqual(gate.status, 0, `Missing sensitive ${table} table escaped attestation`)
+        assert.match(gate.stderr, /GATE_RUNTIME:/)
+      } finally {
+        await owner.$executeRawUnsafe(`ALTER TABLE public."${hidden}" RENAME TO "${table}"`)
+      }
+      assert.equal(runGate().status, 0)
     }
-    assert.equal(runGate().status, 0)
   })
 
   it('rejects disabled RLS on portal sessions', async () => {
