@@ -3,14 +3,15 @@ import { randomUUID } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { after, before, describe, it } from 'node:test'
 import { PrismaService } from '../prisma/prisma.service'
-import { PrismaClient } from '@prisma/client'
+import { Prisma, PrismaClient } from '@prisma/client'
+import { UnauthorizedException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { CompanyClientPortalService } from '../portal/company-client-portal.service'
 import * as argon2 from 'argon2'
 
 // RED regression proof for GitHub CI's disposable postgres:18 service ONLY.
 // Never run against managed, staging, or production PostgreSQL.
-// This spec tests unsafe ACL grants without writing any sensitive table rows.
+// All roles, credential hashes and portal rows below are disposable synthetic fixtures.
 describe('sensitive PostgreSQL ACLs: unrelated synthetic LOGIN', () => {
   const owner = new PrismaService()
   const suffix = randomUUID().replaceAll('-', '').slice(0, 18)
@@ -435,7 +436,7 @@ describe('sensitive PostgreSQL ACLs: unrelated synthetic LOGIN', () => {
     }
   })
 
-  it('reproduces restricted service login denial for two synthetic companies without weakening RLS', async () => {
+  it('validates portal fixtures and lifecycle while pinpointing restricted SQL bootstrap denial', async () => {
     const marker = 'service_' + suffix
     const accessCode = 'ONLY-SYNTHETIC-ACCESS'
     const codeHash = await argon2.hash(accessCode)
@@ -452,7 +453,7 @@ describe('sensitive PostgreSQL ACLs: unrelated synthetic LOGIN', () => {
         const companyId = 'company_' + id
         companies.push(companyId)
         await owner.company.create({ data: {
-          id: companyId, slug: 'svc-' + id,
+          id: companyId, slug: 'svc-' + suffix + '-' + tenant,
           tradeName: 'Synthetic ' + tenant, contactEmail: id + '@example.invalid',
           responsibleName: 'Synthetic', responsibleEmail: id + '@example.invalid',
           status: 'ACTIVE', createdById: actorId,
@@ -472,26 +473,89 @@ describe('sensitive PostgreSQL ACLs: unrelated synthetic LOGIN', () => {
           companyPortalCodeExpiresAt: new Date(Date.now() + 3_600_000),
         } })
       }
+      const config = new ConfigService({
+        COMPANY_FOUNDATION_ENABLED: 'true',
+        COMPANY_CLIENT_PORTAL_ENABLED: 'true',
+      })
       const service = new CompanyClientPortalService(
-        restricted as unknown as PrismaService,
-        new ConfigService({
-          COMPANY_FOUNDATION_ENABLED: 'true',
-          COMPANY_CLIENT_PORTAL_ENABLED: 'true',
-        }),
+        restricted as unknown as PrismaService, config,
       )
+      // Positive control proves the same valid input reaches a working service
+      // under the disposable migration owner. This is NOT runtime acceptance.
+      const control = new CompanyClientPortalService(owner, config)
+      const input = (tenant: string) => ({
+        reservationId: 'reservation_' + marker + '_' + tenant,
+        email: 'client_' + marker + '_' + tenant + '@example.invalid',
+        code: accessCode,
+      })
+      const slug = (tenant: string) => 'svc-' + suffix + '-' + tenant
+      const unauthorized = (error: unknown) => {
+        assert.ok(error instanceof UnauthorizedException)
+        assert.equal(error.getStatus(), 401)
+        return true
+      }
       await restricted.$connect()
       for (const tenant of ['a', 'b']) {
-        const id = marker + '_' + tenant
-        await assert.rejects(service.login('svc-' + id, {
-          reservationId: 'reservation_' + id,
-          email: 'client_' + id + '@example.invalid',
-          code: accessCode,
-        }), 'Restricted runtime must not bypass staff tenant RLS during portal bootstrap')
-        const sessions = await owner.companyClientPortalSession.count({
-          where: { companyId: 'company_' + id },
-        })
-        assert.equal(sessions, 0, 'Rejected login cannot create a customer session')
+        assert.match(slug(tenant), /^[a-z0-9][a-z0-9-]{1,79}$/)
+        await assert.rejects(service.login(slug(tenant), input(tenant)), (error: unknown) => {
+          assert.ok(error instanceof Prisma.PrismaClientKnownRequestError)
+          assert.equal(error.code, 'P2010')
+          assert.equal(error.meta?.code, '42501')
+          assert.match(String(error.meta?.message), /permission denied for table Company/i)
+          return true
+        }, 'Bootstrap must reach SQL; an input validation error is not an RLS proof')
+        assert.equal(await owner.companyClientPortalSession.count({
+          where: { companyId: 'company_' + marker + '_' + tenant },
+        }), 0, 'SQL-denied login cannot create a customer session')
+        await assert.rejects(control.login(slug(tenant), {
+          ...input(tenant), code: 'WRONG-SYNTHETIC-CODE',
+        }), unauthorized)
+        await assert.rejects(control.login(slug(tenant), {
+          ...input(tenant), email: 'wrong@example.invalid',
+        }), unauthorized)
+        assert.equal(await owner.companyClientPortalSession.count({
+          where: { companyId: 'company_' + marker + '_' + tenant },
+        }), 0, 'Incorrect credentials cannot create a session')
       }
+      const a = await control.login(slug('a'), input('a'))
+      const b = await control.login(slug('b'), input('b'))
+      assert.equal((await control.portal(slug('a'), a.accessToken)).company.slug, slug('a'))
+      assert.equal((await control.portal(slug('b'), b.accessToken)).company.slug, slug('b'))
+      await assert.rejects(control.portal(slug('b'), a.accessToken), unauthorized)
+      await assert.rejects(control.login(slug('b'), input('a')), unauthorized)
+      await assert.rejects(control.logout(slug('b'), a.accessToken), unauthorized)
+      // With SELECT explicitly granted, default-deny RLS still hides both
+      // valid sessions from the restricted service. Test access AND logout.
+      await owner.$executeRawUnsafe(
+        'GRANT SELECT ON TABLE public."CompanyClientPortalSession" TO "' + runtimeRole + '"')
+      try {
+        for (const [tenant, session] of [['a', a], ['b', b]] as const) {
+          await assert.rejects(service.portal(slug(tenant), session.accessToken), unauthorized)
+          await assert.rejects(service.logout(slug(tenant), session.accessToken), unauthorized)
+        }
+        assert.equal(await owner.companyClientPortalSession.count({
+          where: { companyId: { in: companies }, revokedAt: null },
+        }), 2, 'Restricted logout must not mutate either control session')
+      } finally {
+        await owner.$executeRawUnsafe(
+          'REVOKE SELECT ON TABLE public."CompanyClientPortalSession" FROM "' + runtimeRole + '"')
+      }
+      const rotated = await control.login(slug('a'), input('a'))
+      await assert.rejects(control.portal(slug('a'), a.accessToken), unauthorized)
+      assert.equal(await owner.companyClientPortalSession.count({
+        where: { companyId: companies[0], revokedAt: null },
+      }), 1, 'Rotation must leave one active session')
+      await owner.companyClientPortalSession.updateMany({
+        where: { companyId: companies[0], revokedAt: null },
+        data: { expiresAt: new Date(Date.now() - 60_000) },
+      })
+      await assert.rejects(control.portal(slug('a'), rotated.accessToken), unauthorized)
+      const fresh = await control.login(slug('a'), input('a'))
+      assert.deepEqual(await control.logout(slug('a'), fresh.accessToken), { loggedOut: true })
+      await assert.rejects(control.portal(slug('a'), fresh.accessToken), unauthorized)
+      assert.equal((await control.portal(slug('b'), b.accessToken)).company.slug, slug('b'),
+        'A rotation, expiry and logout must not invalidate B')
+      assert.deepEqual(await control.logout(slug('b'), b.accessToken), { loggedOut: true })
       assert.equal(runGate().status, 0)
     } finally {
       await restricted.$disconnect()
