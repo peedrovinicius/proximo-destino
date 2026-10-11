@@ -551,7 +551,28 @@ describe('sensitive PostgreSQL ACLs: unrelated synthetic LOGIN', () => {
       })
       await assert.rejects(control.portal(slug('a'), rotated.accessToken), unauthorized)
       const fresh = await control.login(slug('a'), input('a'))
-      assert.deepEqual(await control.logout(slug('a'), fresh.accessToken), { loggedOut: true })
+      await owner.reservation.update({
+        where: { id: input('a').reservationId },
+        data: { accessCodeHash: await argon2.hash(accessCode) },
+      })
+      await assert.rejects(control.portal(slug('a'), fresh.accessToken), unauthorized)
+      const concurrent = await Promise.all([
+        control.login(slug('a'), input('a')),
+        control.login(slug('a'), input('a')),
+      ])
+      assert.equal(await owner.companyClientPortalSession.count({
+        where: { companyId: companies[0], revokedAt: null },
+      }), 1, 'Concurrent logins must serialize to one active session')
+      const accepted = await Promise.allSettled(concurrent.map(session =>
+        control.portal(slug('a'), session.accessToken)))
+      assert.equal(accepted.filter(result => result.status === 'fulfilled').length, 1)
+      const activeIndex = accepted.findIndex(result => result.status === 'fulfilled')
+      for (const result of accepted) {
+        if (result.status === 'rejected') unauthorized(result.reason)
+      }
+      assert.deepEqual(await control.logout(slug('a'), concurrent[activeIndex].accessToken),
+        { loggedOut: true })
+      await assert.rejects(control.portal(slug('a'), concurrent[activeIndex].accessToken), unauthorized)
       await assert.rejects(control.portal(slug('a'), fresh.accessToken), unauthorized)
       assert.equal((await control.portal(slug('b'), b.accessToken)).company.slug, slug('b'),
         'A rotation, expiry and logout must not invalidate B')

@@ -46,3 +46,14 @@ No changes to `main`, production, real database, credentials, deployment or comp
 - A dedicated test-only harness should instantiate the **real** CompanyClientPortalService through a restricted PostgreSQL connection for both A and B; verify that valid login, token access, rotation and logout succeed, that cross-company and expired/revoked attempts fail, and that direct SQL ACL/RLS probes still fail. The existing 13 passing SQL tests do not satisfy this.
 
 **Review decision:** keep the repair blocked until an authorization design can meet every criterion without turning a caller-controlled datum into a privilege. No migration, executable privileged function or gate allowlist was introduced by this design update.
+
+
+## Corrected service acceptance harness (2026-10-11)
+
+The prior service-denial test used `service_...` in company slugs. The service rejects underscores before SQL, so that assertion did **not** demonstrate runtime RLS or database access. Valid synthetic slugs now use hyphens, and the test requires Prisma P2010 / PostgreSQL 42501 naming Company; generic rejection is no longer sufficient.
+
+The same two-company fixtures are exercised as a positive control with the disposable migration-owner connection: incorrect code/email rejection, successful login and reservation reads, cross-company denial, session rotation, expiration, credential-version invalidation, concurrent login serialization, logout/replay rejection and preservation of the other company's session. These owner results are **fixture/service controls, not restricted-runtime acceptance**.
+
+The restricted connection must reach the Company SQL query and fail with the exact permission error. With only portal-table SELECT temporarily granted in the disposable database, its portal read and logout must return 401 for both otherwise valid control tokens, leave both sessions unchanged and keep the runtime gate passing. No production grants or policies are changed.
+
+**Remaining release blocker:** successful customer login/read/logout through a reviewed restricted authorization boundary is still unimplemented. Company `FOR SHARE` and the staff-scoped operational RLS path must be addressed together with portal session bootstrap. Do not mark this gate complete, approve merge or activate companies based on the passing owner controls or expected-denial tests.
