@@ -1,0 +1,714 @@
+import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
+import { spawnSync } from 'node:child_process'
+import { after, before, describe, it } from 'node:test'
+import { PrismaService } from '../prisma/prisma.service'
+import { Prisma, PrismaClient } from '@prisma/client'
+import { UnauthorizedException } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
+import { CompanyClientPortalService } from '../portal/company-client-portal.service'
+import * as argon2 from 'argon2'
+
+// RED regression proof for GitHub CI's disposable postgres:18 service ONLY.
+// Never run against managed, staging, or production PostgreSQL.
+// All roles, credential hashes and portal rows below are disposable synthetic fixtures.
+describe('sensitive PostgreSQL ACLs: unrelated synthetic LOGIN', () => {
+  const owner = new PrismaService()
+  const suffix = randomUUID().replaceAll('-', '').slice(0, 18)
+  const runtimeRole = `acl_runtime_${suffix}`
+  const strangerRole = `acl_stranger_${suffix}`
+  let connected = false
+  let rolesCreated = false
+  let publicExecuteRevoked = false
+  let runtimeUrl: URL
+  const functions = [
+    'public.company_tenant_authorized(text)',
+    'public.company_write_authorized(text,text,text,text)',
+  ] as const
+  const sensitiveTables = [
+    'CompanyClientPortalSession',
+    'EmailOAuthState',
+    'PaymentOAuthState',
+    'EmailProviderConnection',
+    'PaymentProviderConnection',
+    'PaymentPlatformConfig',
+  ] as const
+  const privileges = ['SELECT', 'INSERT', 'UPDATE', 'DELETE'] as const
+
+  const runGate = () => spawnSync('psql', [runtimeUrl.toString(), '-X',
+    '--set=ON_ERROR_STOP=1', '--file=scripts/security/assert-runtime.sql'],
+  { encoding: 'utf8', timeout: 10_000 })
+
+  before(async () => {
+    const dbUrl = new URL(process.env.DATABASE_URL ?? 'http://missing')
+    assert.equal(process.env.NODE_ENV, 'test')
+    assert.ok(['localhost', '127.0.0.1', 'postgres'].includes(dbUrl.hostname),
+      'Only disposable local/CI PostgreSQL is allowed')
+    // Require the dedicated CI database name, never a generic local database.
+    assert.equal(dbUrl.pathname, '/proximo_destino')
+    await owner.$connect()
+    connected = true
+    const runtimePassword = randomUUID()
+    const strangerPassword = randomUUID()
+    await owner.$executeRawUnsafe(`CREATE ROLE "${runtimeRole}" LOGIN PASSWORD '${runtimePassword}'
+      NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOINHERIT`)
+    rolesCreated = true
+    await owner.$executeRawUnsafe(`CREATE ROLE "${strangerRole}" LOGIN PASSWORD '${strangerPassword}'
+      NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOINHERIT`)
+    await owner.$executeRawUnsafe(`GRANT USAGE ON SCHEMA public TO "${runtimeRole}", "${strangerRole}"`)
+    await owner.$executeRawUnsafe(`GRANT SELECT, INSERT, UPDATE
+      ON TABLE public."Client", public."Trip", public."Reservation" TO "${runtimeRole}"`)
+    await owner.$executeRawUnsafe(`GRANT EXECUTE ON FUNCTION
+      ${functions.join(', ')} TO "${runtimeRole}"`)
+    await owner.$executeRawUnsafe(`REVOKE EXECUTE ON FUNCTION
+      ${functions.join(', ')} FROM PUBLIC`)
+    publicExecuteRevoked = true
+    dbUrl.username = runtimeRole
+    dbUrl.password = runtimePassword
+    dbUrl.searchParams.delete('schema')
+    runtimeUrl = dbUrl
+  })
+
+  after(async () => {
+    if (!connected) return
+    try {
+      if (publicExecuteRevoked) {
+        await owner.$executeRawUnsafe(`GRANT EXECUTE ON FUNCTION
+          ${functions.join(', ')} TO PUBLIC`)
+      }
+      if (rolesCreated) {
+        await owner.$executeRawUnsafe(`DROP OWNED BY "${strangerRole}"`)
+        await owner.$executeRawUnsafe(`DROP ROLE "${strangerRole}"`)
+        await owner.$executeRawUnsafe(`DROP OWNED BY "${runtimeRole}"`)
+        await owner.$executeRawUnsafe(`DROP ROLE "${runtimeRole}"`)
+      }
+    } finally {
+      await owner.$disconnect()
+    }
+  })
+
+  it('rejects each unexpected effective ACL on six secret and token tables', async () => {
+    const baseline = runGate()
+    assert.equal(baseline.status, 0, baseline.stderr)
+    for (const table of sensitiveTables) {
+      for (const privilege of privileges) {
+        const name = `public."${table}"`
+        const before = await owner.$queryRawUnsafe<Array<{ allowed: boolean }>>(
+          'SELECT has_table_privilege($1, $2, $3) AS allowed',
+          strangerRole, name, privilege)
+        assert.equal(before[0].allowed, false,
+          `Synthetic stranger must start without ${privilege} on ${table}`)
+
+        await owner.$executeRawUnsafe(
+          `GRANT ${privilege} ON TABLE ${name} TO "${strangerRole}"`)
+        try {
+          const effective = await owner.$queryRawUnsafe<Array<{ allowed: boolean }>>(
+            'SELECT has_table_privilege($1, $2, $3) AS allowed',
+            strangerRole, name, privilege)
+          assert.equal(effective[0].allowed, true,
+            `PostgreSQL did not apply synthetic ${privilege} grant on ${table}`)
+          const rejected = runGate()
+          assert.notEqual(rejected.status, 0,
+            `Unsafe ${table} ${privilege} grant escaped runtime attestation`)
+          assert.match(rejected.stderr, /GATE_RUNTIME:/)
+        } finally {
+          await owner.$executeRawUnsafe(
+            `REVOKE ${privilege} ON TABLE ${name} FROM "${strangerRole}"`)
+        }
+        const restored = runGate()
+        assert.equal(restored.status, 0, restored.stderr)
+      }
+    }
+  })
+  it('rejects PUBLIC grants across the sensitive ACL matrix', async () => {
+    assert.equal(runGate().status, 0)
+    for (const table of sensitiveTables) {
+      for (const privilege of privileges) {
+        const name = `public."${table}"`
+        await owner.$executeRawUnsafe(`GRANT ${privilege} ON TABLE ${name} TO PUBLIC`)
+        try {
+          const gate = runGate()
+          assert.notEqual(gate.status, 0, `PUBLIC ${privilege} on ${table} was accepted`)
+          assert.match(gate.stderr, /GATE_RUNTIME: ACL sensivel concedida a papel nao autorizado/)
+        } finally {
+          await owner.$executeRawUnsafe(`REVOKE ${privilege} ON TABLE ${name} FROM PUBLIC`)
+        }
+        assert.equal(runGate().status, 0)
+      }
+    }
+  })
+
+  it('preserves explicitly authorized runtime grants on sensitive tables', async () => {
+    assert.equal(runGate().status, 0)
+    for (const table of sensitiveTables) {
+      for (const privilege of privileges) {
+        const name = `public."${table}"`
+        await owner.$executeRawUnsafe(
+          `GRANT ${privilege} ON TABLE ${name} TO "${runtimeRole}"`)
+        try {
+          const effective = await owner.$queryRawUnsafe<Array<{ allowed: boolean }>>(
+            'SELECT has_table_privilege($1, $2, $3) AS allowed',
+            runtimeRole, name, privilege)
+          assert.equal(effective[0].allowed, true)
+          const gate = runGate()
+          assert.equal(gate.status, 0,
+            `Runtime ${privilege} on ${table} was unexpectedly denied: ${gate.stderr}`)
+        } finally {
+          await owner.$executeRawUnsafe(
+            `REVOKE ${privilege} ON TABLE ${name} FROM "${runtimeRole}"`)
+        }
+        assert.equal(runGate().status, 0)
+      }
+    }
+  })
+
+  const sensitiveColumns = [
+    ['CompanyClientPortalSession', 'tokenHash'],
+    ['EmailOAuthState', 'codeVerifierEncrypted'],
+    ['PaymentOAuthState', 'stateHash'],
+    ['EmailProviderConnection', 'accessTokenEncrypted'],
+    ['PaymentProviderConnection', 'accessTokenEncrypted'],
+    ['PaymentPlatformConfig', 'clientSecretEncrypted'],
+  ] as const
+
+  for (const recipient of ['stranger', 'PUBLIC', 'runtime'] as const) {
+    it(`attests column-only sensitive ACLs for ${recipient}`, async () => {
+      const grantee = recipient === 'PUBLIC' ? 'PUBLIC'
+        : '"' + (recipient === 'runtime' ? runtimeRole : strangerRole) + '"'
+      const role = recipient === 'runtime' ? runtimeRole : strangerRole
+      assert.equal(runGate().status, 0)
+      for (const [table, column] of sensitiveColumns) {
+        for (const privilege of ['SELECT', 'INSERT', 'UPDATE'] as const) {
+          const name = 'public."' + table + '"'
+          await owner.$executeRawUnsafe(
+            `GRANT ${privilege} ("${column}") ON TABLE ${name} TO ${grantee}`)
+          try {
+            const [effective] = await owner.$queryRawUnsafe<
+              Array<{ table_allowed: boolean; column_allowed: boolean }>
+            >(
+              'SELECT has_table_privilege($1, $2, $4) AS table_allowed, ' +
+              'has_column_privilege($1, $2, $3, $4) AS column_allowed',
+              role, name, column, privilege,
+            )
+            assert.equal(effective.table_allowed, false,
+              'Fixture must expose a column-only grant, not a table grant')
+            assert.equal(effective.column_allowed, true,
+              'PostgreSQL must apply the explicit or PUBLIC column grant')
+            const gate = runGate()
+            if (recipient === 'runtime') {
+              assert.equal(gate.status, 0, gate.stderr)
+            } else {
+              assert.notEqual(gate.status, 0,
+                `Unexpected ${recipient} ${privilege} on ${table}.${column} escaped attestation`)
+              assert.match(gate.stderr, /GATE_RUNTIME: ACL sensivel/)
+            }
+          } finally {
+            await owner.$executeRawUnsafe(
+              `REVOKE ${privilege} ("${column}") ON TABLE ${name} FROM ${grantee}`)
+          }
+          const restored = runGate()
+          assert.equal(restored.status, 0, restored.stderr)
+        }
+      }
+    })
+  }
+
+  it('rejects column-only runtime writes to persisted identity and membership', async () => {
+    const forbidden = [
+      ['User', 'role', 'UPDATE'],
+      ['AuthSession', 'revokedAt', 'UPDATE'],
+      ['Company', 'status', 'UPDATE'],
+      ['CompanyMembership', 'role', 'UPDATE'],
+      ['CompanyMembership', 'userId', 'INSERT'],
+    ] as const
+    assert.equal(runGate().status, 0)
+    for (const [table, column, privilege] of forbidden) {
+      const name = 'public."' + table + '"'
+      await owner.$executeRawUnsafe(
+        `GRANT ${privilege} ("${column}") ON TABLE ${name} TO "${runtimeRole}"`)
+      try {
+        const [effective] = await owner.$queryRawUnsafe<
+          Array<{ table_allowed: boolean; column_allowed: boolean }>
+        >(
+          'SELECT has_table_privilege($1, $2, $4) AS table_allowed, ' +
+          'has_column_privilege($1, $2, $3, $4) AS column_allowed',
+          runtimeRole, name, column, privilege,
+        )
+        assert.equal(effective.table_allowed, false)
+        assert.equal(effective.column_allowed, true)
+        const gate = runGate()
+        assert.notEqual(gate.status, 0,
+          `Column-only identity ${privilege} on ${table}.${column} escaped attestation`)
+        assert.match(gate.stderr, /GATE_RUNTIME: escrita direta em identidade/)
+      } finally {
+        await owner.$executeRawUnsafe(
+          `REVOKE ${privilege} ("${column}") ON TABLE ${name} FROM "${runtimeRole}"`)
+      }
+      const restored = runGate()
+      assert.equal(restored.status, 0, restored.stderr)
+    }
+  })
+
+  it('rejects column-only runtime access to audit, migrations and foreign-key authority', async () => {
+    const forbidden = [
+      ['AuthAuditEvent', 'metadata', 'UPDATE', /GATE_RUNTIME: auditoria ou migrations/],
+      ['_prisma_migrations', 'checksum', 'SELECT', /GATE_RUNTIME: auditoria ou migrations/],
+      ['_prisma_migrations', 'id', 'INSERT', /GATE_RUNTIME: auditoria ou migrations/],
+      ['_prisma_migrations', 'checksum', 'UPDATE', /GATE_RUNTIME: auditoria ou migrations/],
+      ['Client', 'id', 'REFERENCES', /GATE_RUNTIME: runtime possui DDL/],
+    ] as const
+    for (const [table, column, privilege, message] of forbidden) {
+      assert.equal(runGate().status, 0)
+      const name = 'public."' + table + '"'
+      await owner.$executeRawUnsafe(
+        `GRANT ${privilege} ("${column}") ON TABLE ${name} TO "${runtimeRole}"`)
+      try {
+        const [effective] = await owner.$queryRawUnsafe<
+          Array<{ table_allowed: boolean; column_allowed: boolean }>
+        >(
+          'SELECT has_table_privilege($1, $2, $4) AS table_allowed, ' +
+          'has_column_privilege($1, $2, $3, $4) AS column_allowed',
+          runtimeRole, name, column, privilege,
+        )
+        assert.equal(effective.table_allowed, false)
+        assert.equal(effective.column_allowed, true)
+        const gate = runGate()
+        assert.notEqual(gate.status, 0,
+          `Column-only ${privilege} on protected ${table}.${column} escaped attestation`)
+        assert.match(gate.stderr, message)
+      } finally {
+        await owner.$executeRawUnsafe(
+          `REVOKE ${privilege} ("${column}") ON TABLE ${name} FROM "${runtimeRole}"`)
+      }
+      assert.equal(runGate().status, 0)
+    }
+  })
+
+  it('rejects each missing sensitive credential or session table', async () => {
+    assert.equal(runGate().status, 0)
+    for (const table of sensitiveTables) {
+      const hidden = `synthetic_hidden_${table}`
+      await owner.$executeRawUnsafe(`ALTER TABLE public."${table}" RENAME TO "${hidden}"`)
+      try {
+        const gate = runGate()
+        assert.notEqual(gate.status, 0, `Missing sensitive ${table} table escaped attestation`)
+        assert.match(gate.stderr, /GATE_RUNTIME:/)
+      } finally {
+        await owner.$executeRawUnsafe(`ALTER TABLE public."${hidden}" RENAME TO "${table}"`)
+      }
+      assert.equal(runGate().status, 0)
+    }
+  })
+
+  it('rejects disabled RLS on portal sessions', async () => {
+    assert.equal(runGate().status, 0)
+    await owner.$executeRawUnsafe('ALTER TABLE public."CompanyClientPortalSession" DISABLE ROW LEVEL SECURITY')
+    try {
+      const gate = runGate()
+      assert.notEqual(gate.status, 0, 'Disabled portal RLS must fail closed')
+      assert.match(gate.stderr, /GATE_RUNTIME:/)
+    } finally {
+      await owner.$executeRawUnsafe('ALTER TABLE public."CompanyClientPortalSession" ENABLE ROW LEVEL SECURITY')
+    }
+    assert.equal(runGate().status, 0)
+  })
+
+  it('rejects an additional permissive portal policy while default deny remains', async () => {
+    assert.equal(runGate().status, 0)
+    await owner.$executeRawUnsafe(`GRANT SELECT ON TABLE public."CompanyClientPortalSession" TO "${runtimeRole}"`)
+    await owner.$executeRawUnsafe(`CREATE POLICY synthetic_portal_leak ON public."CompanyClientPortalSession"
+      FOR SELECT TO "${runtimeRole}" USING ("id" IS NOT NULL)`)
+    try {
+      const effective = await owner.$queryRawUnsafe<Array<{ allowed: boolean }>>(
+        'SELECT has_table_privilege($1, $2, $3) AS allowed',
+        runtimeRole, 'public."CompanyClientPortalSession"', 'SELECT')
+      assert.equal(effective[0].allowed, true)
+      const gate = runGate()
+      assert.notEqual(gate.status, 0, 'Additional permissive portal policy escaped attestation')
+      assert.match(gate.stderr, /GATE_RUNTIME:/)
+    } finally {
+      await owner.$executeRawUnsafe('DROP POLICY synthetic_portal_leak ON public."CompanyClientPortalSession"')
+      await owner.$executeRawUnsafe(`REVOKE SELECT ON TABLE public."CompanyClientPortalSession" FROM "${runtimeRole}"`)
+    }
+    assert.equal(runGate().status, 0)
+  })
+
+  it('rejects foreign role inherited ACL grants', async () => {
+    const parent = `acl_group_${suffix}`
+    await owner.$executeRawUnsafe(`CREATE ROLE "${parent}" NOLOGIN`)
+    try {
+      await owner.$executeRawUnsafe(`GRANT "${parent}" TO "${strangerRole}" WITH INHERIT TRUE`)
+      await owner.$executeRawUnsafe(`GRANT SELECT ON TABLE public."CompanyClientPortalSession" TO "${parent}"`)
+      try {
+        const effective = await owner.$queryRawUnsafe<Array<{ allowed: boolean }>>(
+          'SELECT has_table_privilege($1, $2, $3) AS allowed',
+          strangerRole, 'public."CompanyClientPortalSession"', 'SELECT')
+        assert.equal(effective[0].allowed, true)
+        const gate = runGate()
+        assert.notEqual(gate.status, 0, 'Inherited foreign role grant must fail closed')
+        assert.match(gate.stderr, /GATE_RUNTIME:/)
+      } finally {
+        await owner.$executeRawUnsafe(`REVOKE SELECT ON TABLE public."CompanyClientPortalSession" FROM "${parent}"`)
+        await owner.$executeRawUnsafe(`REVOKE "${parent}" FROM "${strangerRole}"`)
+      }
+    } finally {
+      await owner.$executeRawUnsafe(`DROP ROLE "${parent}"`)
+    }
+    assert.equal(runGate().status, 0)
+  })
+
+  it('documents owner/superuser RLS bypass versus restricted runtime', async () => {
+    const ownerStatus = await owner.$queryRawUnsafe<Array<{ active: boolean }>>(
+      'SELECT row_security_active($1::regclass) AS active',
+      'public."CompanyClientPortalSession"')
+    assert.equal(ownerStatus[0].active, false,
+      'Migration owner/superuser should bypass RLS without FORCE')
+    const runtime = spawnSync('psql', [runtimeUrl.toString(), '-X', '-At',
+      '--set=ON_ERROR_STOP=1', '-c',
+      'SELECT row_security_active(\'public."CompanyClientPortalSession"\'::regclass)'],
+    { encoding: 'utf8', timeout: 10_000 })
+    assert.equal(runtime.status, 0, runtime.stderr)
+    assert.equal(runtime.stdout.trim(), 't',
+      'Restricted runtime must be covered by portal RLS')
+    assert.equal(runGate().status, 0)
+  })
+
+  it('accepts least-privilege runtime ACL without DELETE on portal and payment config', async () => {
+    const protectedNames = ['CompanyClientPortalSession', 'PaymentPlatformConfig'] as const
+    for (const table of protectedNames) {
+      const name = `public."${table}"`
+      await owner.$executeRawUnsafe(
+        `GRANT SELECT, INSERT, UPDATE ON TABLE ${name} TO "${runtimeRole}"`)
+      try {
+        for (const privilege of ['SELECT', 'INSERT', 'UPDATE'] as const) {
+          const rows = await owner.$queryRawUnsafe<Array<{ allowed: boolean }>>(
+            'SELECT has_table_privilege($1, $2, $3) AS allowed',
+            runtimeRole, name, privilege)
+          assert.equal(rows[0].allowed, true, `${table} must permit ${privilege}`)
+        }
+        const deleteRows = await owner.$queryRawUnsafe<Array<{ allowed: boolean }>>(
+          'SELECT has_table_privilege($1, $2, $3) AS allowed',
+          runtimeRole, name, 'DELETE')
+        assert.equal(deleteRows[0].allowed, false,
+          `${table} must deny DELETE`)
+        const gate = runGate()
+        assert.equal(gate.status, 0, gate.stderr)
+      } finally {
+        await owner.$executeRawUnsafe(
+          `REVOKE SELECT, INSERT, UPDATE ON TABLE ${name} FROM "${runtimeRole}"`)
+      }
+      assert.equal(runGate().status, 0)
+    }
+  })
+
+  it('runs synthetic payment configuration DML without DELETE privilege', async () => {
+    const table = 'public."PaymentPlatformConfig"'
+    const provider = 'SYNTHETIC_' + suffix
+    await owner.$executeRawUnsafe('GRANT SELECT, INSERT, UPDATE ON TABLE ' + table + ' TO "' + runtimeRole + '"')
+    const query = (sql: string) => spawnSync('psql', [runtimeUrl.toString(), '-X',
+      '--set=ON_ERROR_STOP=1', '-At', '-c', sql], { encoding: 'utf8', timeout: 10_000 })
+    try {
+      const created = query(`INSERT INTO ${table} ("id","provider","clientId","clientSecretEncrypted","webhookSecretEncrypted","configuredAt","updatedAt")
+        VALUES ('${provider}','${provider}','initial','synthetic-a','synthetic-b',now(),now())`)
+      assert.equal(created.status, 0, created.stderr)
+      const changed = query(`UPDATE ${table} SET "clientId"='updated' WHERE "provider"='${provider}'`)
+      assert.equal(changed.status, 0, changed.stderr)
+      const read = query(`SELECT "clientId" FROM ${table} WHERE "provider"='${provider}'`)
+      assert.equal(read.status, 0, read.stderr)
+      assert.equal(read.stdout.trim(), 'updated')
+      const forbidden = query(`DELETE FROM ${table} WHERE "provider"='${provider}'`)
+      assert.notEqual(forbidden.status, 0)
+      assert.match(forbidden.stderr, /permission denied/i)
+      assert.equal(runGate().status, 0)
+    } finally {
+      await owner.paymentPlatformConfig.deleteMany({ where: { provider } })
+      await owner.$executeRawUnsafe('REVOKE SELECT, INSERT, UPDATE ON TABLE ' + table + ' FROM "' + runtimeRole + '"')
+    }
+  })
+
+  it('proves default deny portal RLS blocks runtime from reading synthetic sessions', async () => {
+    const table = 'public."CompanyClientPortalSession"'
+    await owner.$executeRawUnsafe('GRANT SELECT ON TABLE ' + table + ' TO "' + runtimeRole + '"')
+    try {
+      const result = spawnSync('psql', [runtimeUrl.toString(), '-X',
+        '--set=ON_ERROR_STOP=1', '-At', '-c',
+        'SELECT count(*) FROM public."CompanyClientPortalSession"'],
+      { encoding: 'utf8', timeout: 10_000 })
+      assert.equal(result.status, 0, result.stderr)
+      assert.equal(result.stdout.trim(), '0')
+      assert.equal(runGate().status, 0)
+    } finally {
+      await owner.$executeRawUnsafe('REVOKE SELECT ON TABLE ' + table + ' FROM "' + runtimeRole + '"')
+    }
+  })
+
+  it('documents blocked portal login with an entirely synthetic company and reservation', async () => {
+    const id = 'fixture_' + suffix
+    const companyId = 'co_' + suffix
+    const clientId = 'cl_' + suffix
+    const tripId = 'tr_' + suffix
+    const reservationId = 'rs_' + suffix
+    const userId = 'usr_' + suffix
+    await owner.user.create({ data: { id: userId, email: id + '@example.invalid',
+      passwordHash: 'synthetic-unusable', role: 'CREATOR' } })
+    try {
+      await owner.company.create({ data: { id: companyId, slug: 'fixture-' + suffix,
+        tradeName: 'Synthetic', contactEmail: id + '@example.invalid',
+        responsibleName: 'Synthetic', responsibleEmail: id + '@example.invalid',
+        status: 'ACTIVE', createdById: userId } })
+      await owner.client.create({ data: { id: clientId, companyId, fullName: 'Synthetic Client',
+        email: 'client-' + suffix + '@example.invalid' } })
+      await owner.trip.create({ data: { id: tripId, companyId, title: 'Synthetic',
+        origin: 'Test', destination: 'Test', departureDate: new Date(Date.now() + 86400000),
+        status: 'ACTIVE' } })
+      await owner.reservation.create({ data: { id: reservationId, companyId, clientId, tripId,
+        accessCodeHash: 'synthetic-hash', companyPortalCodeExpiresAt: new Date(Date.now()+3600000) } })
+      await owner.$executeRawUnsafe(
+        'GRANT SELECT, INSERT, UPDATE ON TABLE public."CompanyClientPortalSession" TO "' + runtimeRole + '"')
+      try {
+        const sql = `INSERT INTO public."CompanyClientPortalSession"
+          ("id","tokenHash","companyId","clientId","reservationId","credentialVersion","expiresAt")
+          VALUES ('${id}','${'b'.repeat(64)}','${companyId}','${clientId}',
+            '${reservationId}','synthetic-version',NOW()+INTERVAL '30 minutes')`
+        const attempt = spawnSync('psql', [runtimeUrl.toString(), '-X',
+          '--set=ON_ERROR_STOP=1', '-c', sql], { encoding: 'utf8', timeout: 10000 })
+        assert.notEqual(attempt.status, 0, 'Default-deny RLS must block portal session creation')
+        assert.match(attempt.stderr, /row-level security|violates row-level security policy/i)
+        const count = await owner.companyClientPortalSession.count({ where: { reservationId } })
+        assert.equal(count, 0, 'Denied login must not persist a session')
+        assert.equal(runGate().status, 0)
+      } finally {
+        await owner.$executeRawUnsafe(
+          'REVOKE SELECT, INSERT, UPDATE ON TABLE public."CompanyClientPortalSession" FROM "' + runtimeRole + '"')
+      }
+    } finally {
+      await owner.companyClientPortalSession.deleteMany({ where: { reservationId } })
+      await owner.reservation.deleteMany({ where: { id: reservationId } })
+      await owner.trip.deleteMany({ where: { id: tripId } })
+      await owner.client.deleteMany({ where: { id: clientId } })
+      await owner.company.deleteMany({ where: { id: companyId } })
+      await owner.user.deleteMany({ where: { id: userId } })
+    }
+  })
+
+  it('keeps two synthetic tenant portal sessions invisible to restricted runtime', async () => {
+    const tag = 'tenants_' + suffix
+    const actor = await owner.user.create({ data: {
+      id: 'actor_' + tag, email: tag + '@example.invalid',
+      passwordHash: 'synthetic-unusable', role: 'CREATOR',
+    } })
+    const companyIds: string[] = []
+    try {
+      for (const tenant of ['a', 'b']) {
+        const key = tag + '_' + tenant
+        const company = await owner.company.create({ data: {
+          id: 'company_' + key, slug: 'test-' + key,
+          tradeName: 'Synthetic ' + tenant, contactEmail: key + '@example.invalid',
+          responsibleName: 'Synthetic', responsibleEmail: key + '@example.invalid',
+          status: 'ACTIVE', createdById: actor.id,
+        } })
+        companyIds.push(company.id)
+        const client = await owner.client.create({ data: {
+          id: 'client_' + key, companyId: company.id,
+          fullName: 'Synthetic', email: 'client_' + key + '@example.invalid',
+        } })
+        const trip = await owner.trip.create({ data: {
+          id: 'trip_' + key, companyId: company.id, title: 'Synthetic',
+          origin: 'Test', destination: 'Test',
+          departureDate: new Date(Date.now() + 86_400_000), status: 'ACTIVE',
+        } })
+        const reservation = await owner.reservation.create({ data: {
+          id: 'reservation_' + key, companyId: company.id, clientId: client.id, tripId: trip.id,
+        } })
+        await owner.companyClientPortalSession.create({ data: {
+          id: 'session_' + key, tokenHash: 'token_' + key,
+          companyId: company.id, clientId: client.id, reservationId: reservation.id,
+          credentialVersion: 'synthetic', expiresAt: new Date(Date.now() + 3_600_000),
+        } })
+      }
+      await owner.$executeRawUnsafe(
+        'GRANT SELECT, UPDATE ON TABLE public."CompanyClientPortalSession" TO "' + runtimeRole + '"')
+      try {
+        const query = (sql: string) => spawnSync('psql', [runtimeUrl.toString(), '-X',
+          '--set=ON_ERROR_STOP=1', '-At', '-c', sql], { encoding: 'utf8', timeout: 10_000 })
+        const visible = query('SELECT count(*) FROM public."CompanyClientPortalSession"')
+        assert.equal(visible.status, 0, visible.stderr)
+        assert.equal(visible.stdout.trim(), '0', 'Neither tenant may be exposed')
+        const mutation = query(
+          'UPDATE public."CompanyClientPortalSession" SET "revokedAt" = NOW() WHERE "id" LIKE ' +
+          "'session_" + tag + "%'")
+        assert.equal(mutation.status, 0, mutation.stderr)
+        assert.match(mutation.stdout, /UPDATE 0/)
+        const unchanged = await owner.companyClientPortalSession.count({
+          where: { companyId: { in: companyIds }, revokedAt: null },
+        })
+        assert.equal(unchanged, 2, 'Restricted runtime must not revoke foreign sessions')
+        assert.equal(runGate().status, 0)
+      } finally {
+        await owner.$executeRawUnsafe(
+          'REVOKE SELECT, UPDATE ON TABLE public."CompanyClientPortalSession" FROM "' + runtimeRole + '"')
+      }
+    } finally {
+      await owner.companyClientPortalSession.deleteMany({ where: { companyId: { in: companyIds } } })
+      await owner.reservation.deleteMany({ where: { companyId: { in: companyIds } } })
+      await owner.trip.deleteMany({ where: { companyId: { in: companyIds } } })
+      await owner.client.deleteMany({ where: { companyId: { in: companyIds } } })
+      await owner.company.deleteMany({ where: { id: { in: companyIds } } })
+      await owner.user.delete({ where: { id: actor.id } })
+    }
+  })
+
+  it('validates portal fixtures and lifecycle while pinpointing restricted SQL bootstrap denial', async () => {
+    const marker = 'service_' + suffix
+    const accessCode = 'ONLY-SYNTHETIC-ACCESS'
+    const codeHash = await argon2.hash(accessCode)
+    const actorId = 'creator_' + marker
+    const companies: string[] = []
+    await owner.user.create({ data: {
+      id: actorId, email: marker + '@example.invalid',
+      passwordHash: 'synthetic-unusable', role: 'CREATOR',
+    } })
+    const restricted = new PrismaClient({ datasources: { db: { url: runtimeUrl.toString() } } })
+    try {
+      for (const tenant of ['a', 'b']) {
+        const id = marker + '_' + tenant
+        const companyId = 'company_' + id
+        companies.push(companyId)
+        await owner.company.create({ data: {
+          id: companyId, slug: 'svc-' + suffix + '-' + tenant,
+          tradeName: 'Synthetic ' + tenant, contactEmail: id + '@example.invalid',
+          responsibleName: 'Synthetic', responsibleEmail: id + '@example.invalid',
+          status: 'ACTIVE', createdById: actorId,
+        } })
+        await owner.client.create({ data: {
+          id: 'client_' + id, companyId, fullName: 'Synthetic Client',
+          email: 'client_' + id + '@example.invalid',
+        } })
+        await owner.trip.create({ data: {
+          id: 'trip_' + id, companyId, title: 'Synthetic',
+          origin: 'Test', destination: 'Test',
+          departureDate: new Date(Date.now() + 86_400_000), status: 'ACTIVE',
+        } })
+        await owner.reservation.create({ data: {
+          id: 'reservation_' + id, companyId, clientId: 'client_' + id,
+          tripId: 'trip_' + id, accessCodeHash: codeHash,
+          companyPortalCodeExpiresAt: new Date(Date.now() + 3_600_000),
+        } })
+      }
+      const config = new ConfigService({
+        COMPANY_FOUNDATION_ENABLED: 'true',
+        COMPANY_CLIENT_PORTAL_ENABLED: 'true',
+      })
+      const service = new CompanyClientPortalService(
+        restricted as unknown as PrismaService, config,
+      )
+      // Positive control proves the same valid input reaches a working service
+      // under the disposable migration owner. This is NOT runtime acceptance.
+      const control = new CompanyClientPortalService(owner, config)
+      const input = (tenant: string) => ({
+        reservationId: 'reservation_' + marker + '_' + tenant,
+        email: 'client_' + marker + '_' + tenant + '@example.invalid',
+        code: accessCode,
+      })
+      const slug = (tenant: string) => 'svc-' + suffix + '-' + tenant
+      const unauthorized = (error: unknown) => {
+        assert.ok(error instanceof UnauthorizedException)
+        assert.equal(error.getStatus(), 401)
+        return true
+      }
+      await restricted.$connect()
+      for (const tenant of ['a', 'b']) {
+        assert.match(slug(tenant), /^[a-z0-9][a-z0-9-]{1,79}$/)
+        await assert.rejects(service.login(slug(tenant), input(tenant)), (error: unknown) => {
+          assert.ok(error instanceof Prisma.PrismaClientKnownRequestError)
+          assert.equal(error.code, 'P2010')
+          assert.equal(error.meta?.code, '42501')
+          assert.match(String(error.meta?.message), /permission denied for table Company/i)
+          return true
+        }, 'Bootstrap must reach SQL; an input validation error is not an RLS proof')
+        assert.equal(await owner.companyClientPortalSession.count({
+          where: { companyId: 'company_' + marker + '_' + tenant },
+        }), 0, 'SQL-denied login cannot create a customer session')
+        await assert.rejects(control.login(slug(tenant), {
+          ...input(tenant), code: 'WRONG-SYNTHETIC-CODE',
+        }), unauthorized)
+        await assert.rejects(control.login(slug(tenant), {
+          ...input(tenant), email: 'wrong@example.invalid',
+        }), unauthorized)
+        assert.equal(await owner.companyClientPortalSession.count({
+          where: { companyId: 'company_' + marker + '_' + tenant },
+        }), 0, 'Incorrect credentials cannot create a session')
+      }
+      const a = await control.login(slug('a'), input('a'))
+      const b = await control.login(slug('b'), input('b'))
+      assert.equal((await control.portal(slug('a'), a.accessToken)).company.slug, slug('a'))
+      assert.equal((await control.portal(slug('b'), b.accessToken)).company.slug, slug('b'))
+      await assert.rejects(control.portal(slug('b'), a.accessToken), unauthorized)
+      await assert.rejects(control.login(slug('b'), input('a')), unauthorized)
+      await assert.rejects(control.logout(slug('b'), a.accessToken), unauthorized)
+      // With SELECT explicitly granted, default-deny RLS still hides both
+      // valid sessions from the restricted service. Test access AND logout.
+      await owner.$executeRawUnsafe(
+        'GRANT SELECT ON TABLE public."CompanyClientPortalSession" TO "' + runtimeRole + '"')
+      try {
+        for (const [tenant, session] of [['a', a], ['b', b]] as const) {
+          await assert.rejects(service.portal(slug(tenant), session.accessToken), unauthorized)
+          await assert.rejects(service.logout(slug(tenant), session.accessToken), unauthorized)
+        }
+        assert.equal(await owner.companyClientPortalSession.count({
+          where: { companyId: { in: companies }, revokedAt: null },
+        }), 2, 'Restricted logout must not mutate either control session')
+      } finally {
+        await owner.$executeRawUnsafe(
+          'REVOKE SELECT ON TABLE public."CompanyClientPortalSession" FROM "' + runtimeRole + '"')
+      }
+      const rotated = await control.login(slug('a'), input('a'))
+      await assert.rejects(control.portal(slug('a'), a.accessToken), unauthorized)
+      assert.equal(await owner.companyClientPortalSession.count({
+        where: { companyId: companies[0], revokedAt: null },
+      }), 1, 'Rotation must leave one active session')
+      await owner.companyClientPortalSession.updateMany({
+        where: { companyId: companies[0], revokedAt: null },
+        data: { expiresAt: new Date(Date.now() - 60_000) },
+      })
+      await assert.rejects(control.portal(slug('a'), rotated.accessToken), unauthorized)
+      const fresh = await control.login(slug('a'), input('a'))
+      await owner.reservation.update({
+        where: { id: input('a').reservationId },
+        data: { accessCodeHash: await argon2.hash(accessCode) },
+      })
+      await assert.rejects(control.portal(slug('a'), fresh.accessToken), unauthorized)
+      const concurrent = await Promise.all([
+        control.login(slug('a'), input('a')),
+        control.login(slug('a'), input('a')),
+      ])
+      assert.equal(await owner.companyClientPortalSession.count({
+        where: { companyId: companies[0], revokedAt: null },
+      }), 1, 'Concurrent logins must serialize to one active session')
+      const accepted = await Promise.allSettled(concurrent.map(session =>
+        control.portal(slug('a'), session.accessToken)))
+      assert.equal(accepted.filter(result => result.status === 'fulfilled').length, 1)
+      const activeIndex = accepted.findIndex(result => result.status === 'fulfilled')
+      for (const result of accepted) {
+        if (result.status === 'rejected') unauthorized(result.reason)
+      }
+      assert.deepEqual(await control.logout(slug('a'), concurrent[activeIndex].accessToken),
+        { loggedOut: true })
+      await assert.rejects(control.portal(slug('a'), concurrent[activeIndex].accessToken), unauthorized)
+      await assert.rejects(control.portal(slug('a'), fresh.accessToken), unauthorized)
+      assert.equal((await control.portal(slug('b'), b.accessToken)).company.slug, slug('b'),
+        'A rotation, expiry and logout must not invalidate B')
+      assert.deepEqual(await control.logout(slug('b'), b.accessToken), { loggedOut: true })
+      assert.equal(runGate().status, 0)
+    } finally {
+      await restricted.$disconnect()
+      await owner.companyClientPortalSession.deleteMany({ where: { companyId: { in: companies } } })
+      await owner.reservation.deleteMany({ where: { companyId: { in: companies } } })
+      await owner.trip.deleteMany({ where: { companyId: { in: companies } } })
+      await owner.client.deleteMany({ where: { companyId: { in: companies } } })
+      await owner.company.deleteMany({ where: { id: { in: companies } } })
+      await owner.user.deleteMany({ where: { id: actorId } })
+    }
+  })
+
+})

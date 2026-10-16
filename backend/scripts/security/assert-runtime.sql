@@ -12,6 +12,10 @@ DECLARE
     'SeatAssignment', 'PurchaseOrder', 'Quote', 'QuoteItem', 'ReservationService', 'FinancePlan',
     'Installment', 'TravelDocument', 'ManualPayment', 'ClientCreditTransaction'
   ];
+  sensitive_tables TEXT[] := ARRAY[
+    'CompanyClientPortalSession', 'EmailOAuthState', 'PaymentOAuthState',
+    'EmailProviderConnection', 'PaymentProviderConnection', 'PaymentPlatformConfig'
+  ];
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_roles r
@@ -44,18 +48,18 @@ BEGIN
       WHERE n.nspname = 'public' AND c.relkind IN ('r','p')
         AND (has_table_privilege(current_user, c.oid, 'TRUNCATE')
           OR has_table_privilege(current_user, c.oid, 'TRIGGER')
-          OR has_table_privilege(current_user, c.oid, 'REFERENCES'))
+          OR has_any_column_privilege(current_user, c.oid, 'REFERENCES'))
     ) THEN
     RAISE EXCEPTION 'GATE_RUNTIME: runtime possui DDL, ownership ou privilegios elevados';
   END IF;
 
-  IF has_table_privilege(current_user, 'public."AuthAuditEvent"', 'UPDATE')
+  IF has_any_column_privilege(current_user, 'public."AuthAuditEvent"', 'UPDATE')
     OR has_table_privilege(current_user, 'public."AuthAuditEvent"', 'DELETE')
     OR has_table_privilege(current_user, 'public."AuthAuditEvent"', 'TRUNCATE')
     -- Runtime uses applied migrations but must never forge migration records.
-    OR has_table_privilege(current_user, 'public."_prisma_migrations"', 'INSERT')
-    OR has_table_privilege(current_user, 'public."_prisma_migrations"', 'SELECT')
-    OR has_table_privilege(current_user, 'public."_prisma_migrations"', 'UPDATE')
+    OR has_any_column_privilege(current_user, 'public."_prisma_migrations"', 'INSERT')
+    OR has_any_column_privilege(current_user, 'public."_prisma_migrations"', 'SELECT')
+    OR has_any_column_privilege(current_user, 'public."_prisma_migrations"', 'UPDATE')
     OR has_table_privilege(current_user, 'public."_prisma_migrations"', 'DELETE') THEN
     RAISE EXCEPTION 'GATE_RUNTIME: auditoria ou migrations acessiveis indevidamente';
   END IF;
@@ -354,6 +358,91 @@ BEGIN
     RAISE EXCEPTION 'GATE_RUNTIME: expressao RLS aprovada foi alterada';
   END IF;
 
+  -- An ACL inventory over existing relations silently skips a missing table.
+  -- Require the complete reviewed credential inventory before checking grants.
+  IF (
+    SELECT count(*) FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+      AND c.relkind IN ('r','p')
+      AND c.relname = ANY(sensitive_tables)
+  ) <> cardinality(sensitive_tables) THEN
+    RAISE EXCEPTION 'GATE_RUNTIME: tabela de credenciais sensivel ausente';
+  END IF;
+
+  -- The client portal stores bearer token hashes. It must exist and retain
+  -- RLS and the reviewed default-deny policy even if ACLs look restrictive.
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+      AND c.relname = 'CompanyClientPortalSession'
+      AND c.relkind IN ('r','p')
+      AND c.relrowsecurity
+  ) OR NOT EXISTS (
+    SELECT 1 FROM pg_policies p
+    WHERE p.schemaname = 'public'
+      AND p.tablename = 'CompanyClientPortalSession'
+      AND p.policyname = 'api_only_company_client_portal_session'
+      AND p.cmd = 'ALL'
+      AND p.roles = ARRAY['public']::name[]
+      AND lower(regexp_replace(coalesce(p.qual, ''), '[[:space:]()]', '', 'g')) = 'false'
+      AND lower(regexp_replace(coalesce(p.with_check, ''), '[[:space:]()]', '', 'g')) = 'false'
+  ) THEN
+    RAISE EXCEPTION 'GATE_RUNTIME: protecao RLS do portal ausente ou alterada';
+  END IF;
+
+  -- A reviewed deny policy does not constrain a second PERMISSIVE policy:
+  -- PostgreSQL OR-combines them. Reject unreviewed permissive portal policies
+  -- applicable to this runtime or PUBLIC, even without literal USING(true).
+  IF EXISTS (
+    SELECT 1 FROM pg_policies p
+    WHERE p.schemaname = 'public'
+      AND p.tablename = 'CompanyClientPortalSession'
+      AND p.permissive = 'PERMISSIVE'
+      AND ('public' = ANY(p.roles) OR current_user = ANY(p.roles))
+      AND NOT (
+        p.policyname = 'api_only_company_client_portal_session'
+        AND p.cmd = 'ALL'
+        AND p.roles = ARRAY['public']::name[]
+        AND lower(regexp_replace(coalesce(p.qual, ''), '[[:space:]()]', '', 'g')) = 'false'
+        AND lower(regexp_replace(coalesce(p.with_check, ''), '[[:space:]()]', '', 'g')) = 'false'
+      )
+  ) THEN
+    RAISE EXCEPTION 'GATE_RUNTIME: politica permissiva do portal nao revisada';
+  END IF;
+
+  -- Secrets and portal/OAuth tokens are not tenant-operational tables.
+  -- Fail closed if PUBLIC or any role besides the table owner and this
+  -- attested runtime LOGIN has explicit read/write access. This reads the
+  -- table and column ACL representations, including table default ACLs.
+  -- Column-only grants live in pg_attribute.attacl, not pg_class.relacl.
+  -- Retain legitimate runtime grants; do not modify grants here.
+  IF EXISTS (
+    SELECT 1 FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    CROSS JOIN LATERAL (
+      SELECT entry.grantee, entry.privilege_type
+      FROM aclexplode(COALESCE(c.relacl, acldefault('r', c.relowner))) entry
+      UNION ALL
+      SELECT entry.grantee, entry.privilege_type
+      FROM pg_attribute attribute
+      CROSS JOIN LATERAL aclexplode(attribute.attacl) entry
+      WHERE attribute.attrelid = c.oid
+        AND attribute.attnum > 0 AND NOT attribute.attisdropped
+    ) acl
+    WHERE n.nspname = 'public'
+      AND c.relkind IN ('r','p')
+      AND c.relname = ANY(sensitive_tables)
+      AND acl.privilege_type IN ('SELECT', 'INSERT', 'UPDATE', 'DELETE')
+      AND acl.grantee <> c.relowner
+      AND acl.grantee <> (
+        SELECT oid FROM pg_roles WHERE rolname = current_user
+      )
+  ) THEN
+    RAISE EXCEPTION 'GATE_RUNTIME: ACL sensivel concedida a papel nao autorizado';
+  END IF;
+
   -- The runtime must not modify persisted authorization directly. All
   -- mutations to company identity/session/membership require a separately
   -- reviewed path; these privileges can bypass API-level tenancy guards.
@@ -362,11 +451,11 @@ BEGIN
     SELECT 1 FROM (VALUES
       ('User'), ('AuthSession'), ('Company'), ('CompanyMembership')
     ) AS protected(table_name)
-    WHERE has_table_privilege(current_user,
+    WHERE has_any_column_privilege(current_user,
       format('public.%I', protected.table_name), 'UPDATE')
       OR has_table_privilege(current_user,
         format('public.%I', protected.table_name), 'DELETE')
-  ) OR has_table_privilege(current_user, 'public."CompanyMembership"', 'INSERT') THEN
+  ) OR has_any_column_privilege(current_user, 'public."CompanyMembership"', 'INSERT') THEN
     RAISE EXCEPTION 'GATE_RUNTIME: escrita direta em identidade ou vinculos de tenant';
   END IF;
 END
