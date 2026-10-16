@@ -344,4 +344,14 @@ describe('experimental signed portal capability: actual restricted PostgreSQL LO
     assert.notEqual(rejected.status, 0, 'Prototype must not self-approve new authority in the release gate')
     assert.match(rejected.stderr, /GATE_RUNTIME:/)
   })
+  it('keeps tenant integrity enforced even with a shadow temporary Reservation table', async () => {
+    await assert.rejects(owner.$transaction(async tx => {
+      await tx.$executeRawUnsafe('CREATE TEMP TABLE "Reservation" ("id" text, "companyId" text, "clientId" text, "tripId" text) ON COMMIT DROP')
+      await tx.$executeRawUnsafe('SET LOCAL search_path = pg_catalog')
+      await tx.$executeRaw`UPDATE public."Reservation" SET "companyId" = ${companies[1]}
+        WHERE "id" = ${reservation('a')}`
+    }), (error: any) => error.code === 'P2010' && error.meta?.code === '23514')
+    const stored = await owner.reservation.findUniqueOrThrow({ where: { id: reservation('a') } })
+    assert.equal(stored.companyId, companies[0], 'Failed scope mutation must roll back')
+  })
 })
