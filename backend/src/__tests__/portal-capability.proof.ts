@@ -245,6 +245,21 @@ describe('experimental signed portal capability: actual restricted PostgreSQL LO
     await assert.rejects(service.login(slug('a'), input('a')), unauthorized)
     assert.equal(await owner.companyClientPortalSession.count({ where: { reservationId: reservation('a') } }), 0)
   })
+  it('counts incorrect email toward lockout and refuses a signed verdict for mismatched email', async () => {
+    for (let i = 0; i < 4; i++) {
+      await assert.rejects(service.login(slug('a'), { ...input('a'), email: email('b') }), unauthorized)
+    }
+    const request = signed({ op: 'lookup', nonce: randomBytes(32).toString('hex'), slug: slug('a'),
+      reservationId: reservation('a'), email: email('b') })
+    const challenge = (await lookup(request))!
+    assert.ok(challenge)
+    // Even a buggy trusted signer cannot override the DB's bound email match.
+    assert.equal(await complete(signed({ op: 'complete', challenge: challenge.challenge, valid: true })), null)
+    const stored = await owner.reservation.findUniqueOrThrow({ where: { id: reservation('a') } })
+    assert.equal(stored.companyPortalFailedAttempts, 5)
+    assert.ok(stored.companyPortalLockedUntil! > new Date())
+    await assert.rejects(service.login(slug('a'), input('a')), unauthorized)
+  })
   it('rejects forged, tampered, wrong-key and expired proofs', async () => {
     const request = signed({ op: 'lookup', nonce: randomBytes(32).toString('hex'), slug: slug('a'),
       reservationId: reservation('a'), email: email('a') })

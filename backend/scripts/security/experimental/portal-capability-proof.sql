@@ -29,6 +29,7 @@ CREATE TABLE synth_portal_boundary.challenge (
   client_id text NOT NULL,
   trip_id text NOT NULL,
   email text NOT NULL,
+  email_matches boolean NOT NULL,
   credential_version text NOT NULL,
   expires_at timestamptz NOT NULL,
   used_at timestamptz
@@ -165,14 +166,15 @@ BEGIN
   body := payload::jsonb;
   IF body->>'op' IS DISTINCT FROM 'lookup' OR NOT coalesce(body->>'nonce' ~ '^[0-9a-f]{64}$', false) THEN RETURN NULL; END IF;
   ctx := synth_portal_boundary.scope(body->>'slug', body->>'reservationId');
-  IF ctx IS NULL OR ctx->>'email' IS DISTINCT FROM body->>'email'
-    OR (ctx->>'lockedUntil')::timestamptz > clock_timestamp() THEN RETURN NULL; END IF;
-  INSERT INTO synth_portal_boundary.challenge(id, company_id, reservation_id, client_id, trip_id, email, credential_version, expires_at)
+  IF ctx IS NULL OR (ctx->>'lockedUntil')::timestamptz > clock_timestamp() THEN RETURN NULL; END IF;
+  INSERT INTO synth_portal_boundary.challenge(id, company_id, reservation_id, client_id, trip_id, email, email_matches, credential_version, expires_at)
     VALUES (body->>'nonce', ctx->>'companyId', ctx->>'reservationId', ctx->>'clientId', ctx->>'tripId', ctx->>'email',
+      coalesce(ctx->>'email' = body->>'email', false),
       encode(sha256(convert_to(ctx->>'codeHash', 'UTF8')), 'hex'), to_timestamp((body->>'expires')::double precision))
     ON CONFLICT DO NOTHING;
   IF NOT FOUND THEN RETURN NULL; END IF;
-  RETURN jsonb_build_object('challenge', body->>'nonce', 'codeHash', ctx->>'codeHash');
+  RETURN jsonb_build_object('challenge', body->>'nonce', 'codeHash', ctx->>'codeHash',
+    'emailMatches', coalesce(ctx->>'email' = body->>'email', false));
 END $$;
 
 CREATE FUNCTION synth_portal_boundary.complete(payload text, signature text) RETURNS jsonb
@@ -196,7 +198,7 @@ BEGIN
     OR ch.credential_version <> encode(sha256(convert_to(ctx->>'codeHash', 'UTF8')), 'hex')
     OR (ctx->>'lockedUntil')::timestamptz > now_at THEN RETURN NULL; END IF;
   UPDATE synth_portal_boundary.challenge SET used_at = now_at WHERE id = ch.id;
-  IF NOT (body->>'valid')::boolean THEN
+  IF NOT (body->>'valid')::boolean OR NOT ch.email_matches THEN
     attempts := CASE WHEN ctx->>'lockedUntil' IS NOT NULL THEN 1 ELSE (ctx->>'failedAttempts')::integer + 1 END;
     UPDATE public."Reservation" SET "companyPortalFailedAttempts" = attempts,
       "companyPortalLockedUntil" = CASE WHEN attempts >= 5 THEN now_at + interval '15 minutes' ELSE NULL END

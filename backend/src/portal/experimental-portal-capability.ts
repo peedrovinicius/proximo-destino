@@ -24,11 +24,16 @@ export class ExperimentalPortalCapability {
       input.email.length > 320 || !input.code.trim() || input.code.length > 128) this.denied()
     const request = this.proof({ op: 'lookup', nonce: randomBytes(32).toString('hex'),
       slug, reservationId: input.reservationId, email: input.email.trim().toLowerCase() })
-    const [lookup] = await this.db.$queryRaw<Array<{ result: { challenge: string; codeHash: string } | null }>>`
+    const [lookup] = await this.db.$queryRaw<Array<{ result: { challenge: string; codeHash: string; emailMatches: boolean } | null }>>`
       SELECT synth_portal_boundary.lookup(${request.payload}, ${request.signature}) AS result`
     if (!lookup?.result) this.denied()
     let valid = false
-    try { valid = await argon2.verify(lookup.result.codeHash, input.code.trim().toUpperCase()) }
+    try {
+      // Always verify Argon2 before applying the email match, as the existing
+      // portal does. Wrong email is a counted failed attempt, not an early exit.
+      const codeValid = await argon2.verify(lookup.result.codeHash, input.code.trim().toUpperCase())
+      valid = codeValid && lookup.result.emailMatches === true
+    }
     catch { /* Malformed stored credentials must fail closed. */ }
     const completion = this.proof({ op: 'complete', challenge: lookup.result.challenge, valid })
     const [completed] = await this.db.$queryRaw<Array<{
