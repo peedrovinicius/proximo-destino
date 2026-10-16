@@ -1,6 +1,6 @@
 # PR #67 — Portal RLS under a restricted runtime (design gate)
 
-Status: **BLOCKED — design only, not an approved database change**. This file records a reproduced incompatibility and the acceptance tests required before introducing privileged SQL. It must not be used as a deployment or privilege-grant script.
+Status: **BLOCKED FOR RELEASE — isolated CI prototype, not an approved production authorization change**. This file records a reproduced incompatibility and the acceptance tests required before introducing privileged SQL. It must not be used as a deployment or privilege-grant script.
 
 ## Confirmed evidence
 
@@ -36,7 +36,7 @@ No changes to `main`, production, real database, credentials, deployment or comp
 
 **Verified limitation:** the customer portal begins with an unauthenticated code/email submission, while the existing tenant helper proves *staff* membership via `AuthSession`. Assigning `app.company_id`, `app.user_id` or `app.session_id` is not an authentication primitive and cannot securely bridge the bootstrap. Furthermore the portal login queries four operational tables whose RLS is scoped to staff membership. Making just the session table writable is neither sufficient nor safe.
 
-**Candidate boundary — not yet implemented:**
+**Historical candidate boundary — production integration remains unimplemented:**
 
 - An internal portal-authentication component owns a narrow, audited transaction that looks up the company/reservation/client/trip relationship, verifies normalized email and Argon2-hashed code, enforces expiration/lockout, rotates prior sessions, inserts a single token hash and audit events; input is never accepted as proof merely because a tenant ID matches.
 - Subsequent customer operations are limited to the verified reservation and company bound to an unrevoked, unexpired bearer-token hash and current access-code version. Revocation, logout and concurrent logins must serialize on the reservation/session row.
@@ -68,3 +68,12 @@ The gate now inventories both pg_class.relacl and pg_attribute.attacl for the si
 The disposable suite covers 54 sensitive-column grant combinations (six tables, three privileges, unrelated LOGIN/PUBLIC/authorized runtime), five forbidden identity/membership column writes, and five column-only audit/migration/REFERENCES permissions. Each temporary grant is revoked in finally and followed by a clean baseline gate. No application privilege is granted by the gate, and no RLS policy or SQL definer is added.
 
 **Portal release status is unchanged:** these ACL corrections do not implement customer credential bootstrap or functional login/read/logout under the restricted runtime. Keep the PR in draft and the portal authorization gate blocked.
+
+
+## Current experiment status (2026-10-16)
+
+An isolated implementation now exists in [experimental-portal-capability.md](experimental-portal-capability.md). It is a separate CI-only adapter, not the original controller/service. At ecd64523a3f9f133061f4d639125e3734aea5704, disposable workflow [38886833103](https://github.com/peedrovinicius/proximo-destino/actions/runs/38886833103) passed 19 ACL tests and 14 functional capability tests: actual restricted LOGIN login/read/logout for both synthetic companies, isolation, revocation, concurrent logins, signed-proof rejection, challenge single use and direct SQL denial. The subsequent test extension covers credential expiration during a real lock wait and temporary-table shadowing of integrity checks.
+
+The new boundary authenticates backend Argon2 decisions using a distinct synthetic HMAC key and short-lived, row-bound, single-use challenges. An unsigned caller boolean does not suffice. The non-login definer remains under RLS with scoped policies, column-only authority and no table ownership; API SQL cannot read its key or base tables. The existing release gate deliberately rejects the prototype's unreviewed definers. No privileged authorization migration or gate allowlist is introduced. A separate invoker-only integrity-trigger migration repairs the reproduced unqualified-table failure under a pinned search path.
+
+**Delivery remains blocked:** independently review the authority, signing-key provisioning/rotation, challenge retention, HTTP/API contracts/rate limits, gate fingerprints and integration/rollback before connecting the adapter to routes or activating any company. A passing experimental functional test is not a deployed or production-approved portal.
