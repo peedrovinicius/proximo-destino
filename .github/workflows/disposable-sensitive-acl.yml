@@ -56,3 +56,5 @@ jobs:
         run: npm run build
       - name: Run synthetic ACL regression
         run: node --test --test-concurrency=1 dist/__tests__/runtime-gate-sensitive-acl.spec.js
+      - name: Run experimental portal capability proof
+        run: node --test --test-concurrency=1 dist/__tests__/portal-capability.proof.js
