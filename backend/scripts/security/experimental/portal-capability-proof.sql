@@ -153,7 +153,7 @@ BEGIN
   RETURN jsonb_build_object('companyId', co."id", 'slug', co."slug", 'tradeName', co."tradeName",
     'reservationId', r."id", 'clientId', cl."id", 'tripId', tr."id", 'email', lower(btrim(cl."email")),
     'codeHash', r."accessCodeHash", 'failedAttempts', r."companyPortalFailedAttempts",
-    'lockedUntil', r."companyPortalLockedUntil");
+    'lockedUntil', r."companyPortalLockedUntil", 'codeExpiresAt', r."companyPortalCodeExpiresAt");
 END $$;
 
 CREATE FUNCTION synth_portal_boundary.lookup(payload text, signature text) RETURNS jsonb
@@ -189,7 +189,8 @@ BEGIN
   SELECT "slug" INTO company_slug FROM public."Company" WHERE "id" = ch.company_id;
   ctx := synth_portal_boundary.scope(company_slug, ch.reservation_id);
   now_at := clock_timestamp();
-  IF ctx IS NULL OR ch.expires_at <= now_at OR ctx->>'companyId' <> ch.company_id
+  IF ctx IS NULL OR ch.expires_at <= now_at OR (body->>'expires')::numeric <= extract(epoch FROM now_at)
+    OR (ctx->>'codeExpiresAt')::timestamptz <= now_at OR ctx->>'companyId' <> ch.company_id
     OR ctx->>'clientId' <> ch.client_id OR ctx->>'tripId' <> ch.trip_id
     OR ctx->>'email' IS DISTINCT FROM ch.email
     OR ch.credential_version <> encode(sha256(convert_to(ctx->>'codeHash', 'UTF8')), 'hex')
@@ -234,6 +235,7 @@ BEGIN
   SELECT "id", "companyId", "clientId", "reservationId", "credentialVersion", "expiresAt", "revokedAt" INTO s
     FROM public."CompanyClientPortalSession" WHERE "id" = s."id" AND "tokenHash" = digest FOR UPDATE;
   IF NOT FOUND OR s."revokedAt" IS NOT NULL OR s."expiresAt" <= clock_timestamp()
+    OR (ctx->>'codeExpiresAt')::timestamptz <= clock_timestamp()
     OR s."companyId" <> ctx->>'companyId' OR s."clientId" <> ctx->>'clientId'
     OR s."reservationId" <> ctx->>'reservationId'
     OR s."credentialVersion" <> encode(sha256(convert_to(ctx->>'codeHash', 'UTF8')), 'hex') THEN RETURN NULL; END IF;

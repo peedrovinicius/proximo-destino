@@ -288,6 +288,40 @@ describe('experimental signed portal capability: actual restricted PostgreSQL LO
     if (results[0].status === 'rejected') unauthorized(results[0].reason)
     await assert.rejects(service.portal(slug('a'), session.accessToken), unauthorized)
   })
+  it('rechecks credential expiry after waiting for a session row lock', async () => {
+    const session = await service.login(slug('a'), input('a'))
+    const expiresAt = new Date(Date.now() + 1500)
+    await owner.reservation.update({ where: { id: reservation('a') }, data: { companyPortalCodeExpiresAt: expiresAt } })
+    let release!: () => void
+    let held!: () => void
+    const locked = new Promise<void>(resolve => { held = resolve })
+    const unlock = new Promise<void>(resolve => { release = resolve })
+    const blocker = owner.$transaction(async tx => {
+      await tx.$queryRaw`SELECT "id" FROM public."CompanyClientPortalSession"
+        WHERE "reservationId" = ${reservation('a')} AND "revokedAt" IS NULL FOR UPDATE`
+      held()
+      await unlock
+    }, { timeout: 5000 })
+    await locked
+    const pending = service.portal(slug('a'), session.accessToken).then(
+      value => ({ value, error: null }), error => ({ value: null, error }),
+    )
+    try {
+      let waiting = false
+      for (let attempt = 0; attempt < 20 && !waiting; attempt++) {
+        const [row] = await owner.$queryRaw<Array<{ waiting: boolean }>>`
+          SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE usename = ${role}
+            AND wait_event_type = 'Lock' AND state = 'active') AS waiting`
+        waiting = row.waiting
+        if (!waiting) await new Promise(resolve => setTimeout(resolve, 25))
+      }
+      assert.equal(waiting, true, 'The real runtime query must actually wait for the locked session')
+      await new Promise(resolve => setTimeout(resolve, Math.max(0, expiresAt.getTime() - Date.now() + 50)))
+    } finally { release(); await blocker }
+    const result = await pending
+    assert.equal(result.value, null)
+    unauthorized(result.error)
+  })
   it('ignores caller-forged tenant settings and keeps direct DML denied', async () => {
     const session = await service.login(slug('a'), input('a'))
     await runtime.$transaction(async tx => {

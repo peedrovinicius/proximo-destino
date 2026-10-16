@@ -21,3 +21,9 @@ RLS remains active. Additional fixture policies apply exclusively to the non-log
 The existing runtime gate must REJECT this unreviewed authority while installed. It is intentionally not extended with allowlists or fingerprints for the prototype. Before integration, review the complete function authority, key lifecycle, independent security checks, challenge retention/cleanup, all application contracts, HTTP rate limiting, audit compatibility, rollout/rollback and the exact policy/function fingerprints. Verify the definer's identity/privileges and absence of extra policy/EXECUTE grants in the eventual gate. Keep PR #67 draft; no merge, main, deploy, company activation or real resources.
 
 The SQL fixture lives under scripts/security/experimental and is invoked only by the dedicated test harness after validating NODE_ENV=test, loopback database host and the dedicated database name. The production migration chain never executes it. Tests use the real existing operational/session tables with synthetic rows, then remove the schema, policies, grants, roles and synthetic data.
+
+## Confirmed compatibility repair
+
+The disposable experiment reproduced SQLSTATE 42P01 in check_reservation_company_scope when invoked under the fixed pg_catalog search path. Migration 202610161030_qualify_company_scope_triggers schema-qualifies the two existing integrity-trigger bodies and pins their search_path. They remain SECURITY INVOKER and retain their existing locks and null-safe relationship checks; no integrity trigger is disabled. Existing tenant policies also require explicit EXECUTE on the two reviewed staff helpers for the non-login definer; this grant exists solely in the disposable fixture.
+
+The CI experiment additionally rechecks access-code expiration after acquiring locks, including a real blocked runtime query released after credential expiry. No stale authorization may survive that wait.
