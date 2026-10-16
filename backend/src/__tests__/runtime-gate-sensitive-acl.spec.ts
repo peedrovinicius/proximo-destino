@@ -162,6 +162,93 @@ describe('sensitive PostgreSQL ACLs: unrelated synthetic LOGIN', () => {
     }
   })
 
+  const sensitiveColumns = [
+    ['CompanyClientPortalSession', 'tokenHash'],
+    ['EmailOAuthState', 'codeVerifierEncrypted'],
+    ['PaymentOAuthState', 'stateHash'],
+    ['EmailProviderConnection', 'accessTokenEncrypted'],
+    ['PaymentProviderConnection', 'accessTokenEncrypted'],
+    ['PaymentPlatformConfig', 'clientSecretEncrypted'],
+  ] as const
+
+  for (const recipient of ['stranger', 'PUBLIC', 'runtime'] as const) {
+    it(`attests column-only sensitive ACLs for ${recipient}`, async () => {
+      const grantee = recipient === 'PUBLIC' ? 'PUBLIC'
+        : '"' + (recipient === 'runtime' ? runtimeRole : strangerRole) + '"'
+      const role = recipient === 'runtime' ? runtimeRole : strangerRole
+      assert.equal(runGate().status, 0)
+      for (const [table, column] of sensitiveColumns) {
+        for (const privilege of ['SELECT', 'INSERT', 'UPDATE'] as const) {
+          const name = 'public."' + table + '"'
+          await owner.$executeRawUnsafe(
+            `GRANT ${privilege} ("${column}") ON TABLE ${name} TO ${grantee}`)
+          try {
+            const [effective] = await owner.$queryRawUnsafe<
+              Array<{ table_allowed: boolean; column_allowed: boolean }>
+            >(
+              'SELECT has_table_privilege($1, $2, $4) AS table_allowed, ' +
+              'has_column_privilege($1, $2, $3, $4) AS column_allowed',
+              role, name, column, privilege,
+            )
+            assert.equal(effective.table_allowed, false,
+              'Fixture must expose a column-only grant, not a table grant')
+            assert.equal(effective.column_allowed, true,
+              'PostgreSQL must apply the explicit or PUBLIC column grant')
+            const gate = runGate()
+            if (recipient === 'runtime') {
+              assert.equal(gate.status, 0, gate.stderr)
+            } else {
+              assert.notEqual(gate.status, 0,
+                `Unexpected ${recipient} ${privilege} on ${table}.${column} escaped attestation`)
+              assert.match(gate.stderr, /GATE_RUNTIME: ACL sensivel/)
+            }
+          } finally {
+            await owner.$executeRawUnsafe(
+              `REVOKE ${privilege} ("${column}") ON TABLE ${name} FROM ${grantee}`)
+          }
+          const restored = runGate()
+          assert.equal(restored.status, 0, restored.stderr)
+        }
+      }
+    })
+  }
+
+  it('rejects column-only runtime writes to persisted identity and membership', async () => {
+    const forbidden = [
+      ['User', 'role', 'UPDATE'],
+      ['AuthSession', 'revokedAt', 'UPDATE'],
+      ['Company', 'status', 'UPDATE'],
+      ['CompanyMembership', 'role', 'UPDATE'],
+      ['CompanyMembership', 'userId', 'INSERT'],
+    ] as const
+    assert.equal(runGate().status, 0)
+    for (const [table, column, privilege] of forbidden) {
+      const name = 'public."' + table + '"'
+      await owner.$executeRawUnsafe(
+        `GRANT ${privilege} ("${column}") ON TABLE ${name} TO "${runtimeRole}"`)
+      try {
+        const [effective] = await owner.$queryRawUnsafe<
+          Array<{ table_allowed: boolean; column_allowed: boolean }>
+        >(
+          'SELECT has_table_privilege($1, $2, $4) AS table_allowed, ' +
+          'has_column_privilege($1, $2, $3, $4) AS column_allowed',
+          runtimeRole, name, column, privilege,
+        )
+        assert.equal(effective.table_allowed, false)
+        assert.equal(effective.column_allowed, true)
+        const gate = runGate()
+        assert.notEqual(gate.status, 0,
+          `Column-only identity ${privilege} on ${table}.${column} escaped attestation`)
+        assert.match(gate.stderr, /GATE_RUNTIME: escrita direta em identidade/)
+      } finally {
+        await owner.$executeRawUnsafe(
+          `REVOKE ${privilege} ("${column}") ON TABLE ${name} FROM "${runtimeRole}"`)
+      }
+      const restored = runGate()
+      assert.equal(restored.status, 0, restored.stderr)
+    }
+  })
+
   it('rejects each missing sensitive credential or session table', async () => {
     assert.equal(runGate().status, 0)
     for (const table of sensitiveTables) {
