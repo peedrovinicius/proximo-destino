@@ -249,6 +249,41 @@ describe('sensitive PostgreSQL ACLs: unrelated synthetic LOGIN', () => {
     }
   })
 
+  it('rejects column-only runtime access to audit, migrations and foreign-key authority', async () => {
+    const forbidden = [
+      ['AuthAuditEvent', 'metadata', 'UPDATE', /GATE_RUNTIME: auditoria ou migrations/],
+      ['_prisma_migrations', 'checksum', 'SELECT', /GATE_RUNTIME: auditoria ou migrations/],
+      ['_prisma_migrations', 'id', 'INSERT', /GATE_RUNTIME: auditoria ou migrations/],
+      ['_prisma_migrations', 'checksum', 'UPDATE', /GATE_RUNTIME: auditoria ou migrations/],
+      ['Client', 'id', 'REFERENCES', /GATE_RUNTIME: runtime possui DDL/],
+    ] as const
+    for (const [table, column, privilege, message] of forbidden) {
+      assert.equal(runGate().status, 0)
+      const name = 'public."' + table + '"'
+      await owner.$executeRawUnsafe(
+        `GRANT ${privilege} ("${column}") ON TABLE ${name} TO "${runtimeRole}"`)
+      try {
+        const [effective] = await owner.$queryRawUnsafe<
+          Array<{ table_allowed: boolean; column_allowed: boolean }>
+        >(
+          'SELECT has_table_privilege($1, $2, $4) AS table_allowed, ' +
+          'has_column_privilege($1, $2, $3, $4) AS column_allowed',
+          runtimeRole, name, column, privilege,
+        )
+        assert.equal(effective.table_allowed, false)
+        assert.equal(effective.column_allowed, true)
+        const gate = runGate()
+        assert.notEqual(gate.status, 0,
+          `Column-only ${privilege} on protected ${table}.${column} escaped attestation`)
+        assert.match(gate.stderr, message)
+      } finally {
+        await owner.$executeRawUnsafe(
+          `REVOKE ${privilege} ("${column}") ON TABLE ${name} FROM "${runtimeRole}"`)
+      }
+      assert.equal(runGate().status, 0)
+    }
+  })
+
   it('rejects each missing sensitive credential or session table', async () => {
     assert.equal(runGate().status, 0)
     for (const table of sensitiveTables) {

@@ -48,18 +48,18 @@ BEGIN
       WHERE n.nspname = 'public' AND c.relkind IN ('r','p')
         AND (has_table_privilege(current_user, c.oid, 'TRUNCATE')
           OR has_table_privilege(current_user, c.oid, 'TRIGGER')
-          OR has_table_privilege(current_user, c.oid, 'REFERENCES'))
+          OR has_any_column_privilege(current_user, c.oid, 'REFERENCES'))
     ) THEN
     RAISE EXCEPTION 'GATE_RUNTIME: runtime possui DDL, ownership ou privilegios elevados';
   END IF;
 
-  IF has_table_privilege(current_user, 'public."AuthAuditEvent"', 'UPDATE')
+  IF has_any_column_privilege(current_user, 'public."AuthAuditEvent"', 'UPDATE')
     OR has_table_privilege(current_user, 'public."AuthAuditEvent"', 'DELETE')
     OR has_table_privilege(current_user, 'public."AuthAuditEvent"', 'TRUNCATE')
     -- Runtime uses applied migrations but must never forge migration records.
-    OR has_table_privilege(current_user, 'public."_prisma_migrations"', 'INSERT')
-    OR has_table_privilege(current_user, 'public."_prisma_migrations"', 'SELECT')
-    OR has_table_privilege(current_user, 'public."_prisma_migrations"', 'UPDATE')
+    OR has_any_column_privilege(current_user, 'public."_prisma_migrations"', 'INSERT')
+    OR has_any_column_privilege(current_user, 'public."_prisma_migrations"', 'SELECT')
+    OR has_any_column_privilege(current_user, 'public."_prisma_migrations"', 'UPDATE')
     OR has_table_privilege(current_user, 'public."_prisma_migrations"', 'DELETE') THEN
     RAISE EXCEPTION 'GATE_RUNTIME: auditoria ou migrations acessiveis indevidamente';
   END IF;
@@ -415,13 +415,21 @@ BEGIN
   -- Secrets and portal/OAuth tokens are not tenant-operational tables.
   -- Fail closed if PUBLIC or any role besides the table owner and this
   -- attested runtime LOGIN has explicit read/write access. This reads the
-  -- effective ACL representation, including PostgreSQL default ACLs.
+  -- table and column ACL representations, including table default ACLs.
+  -- Column-only grants live in pg_attribute.attacl, not pg_class.relacl.
   -- Retain legitimate runtime grants; do not modify grants here.
   IF EXISTS (
     SELECT 1 FROM pg_class c
     JOIN pg_namespace n ON n.oid = c.relnamespace
-    CROSS JOIN LATERAL aclexplode(
-      COALESCE(c.relacl, acldefault('r', c.relowner))
+    CROSS JOIN LATERAL (
+      SELECT entry.grantee, entry.privilege_type
+      FROM aclexplode(COALESCE(c.relacl, acldefault('r', c.relowner))) entry
+      UNION ALL
+      SELECT entry.grantee, entry.privilege_type
+      FROM pg_attribute attribute
+      CROSS JOIN LATERAL aclexplode(attribute.attacl) entry
+      WHERE attribute.attrelid = c.oid
+        AND attribute.attnum > 0 AND NOT attribute.attisdropped
     ) acl
     WHERE n.nspname = 'public'
       AND c.relkind IN ('r','p')
@@ -443,11 +451,11 @@ BEGIN
     SELECT 1 FROM (VALUES
       ('User'), ('AuthSession'), ('Company'), ('CompanyMembership')
     ) AS protected(table_name)
-    WHERE has_table_privilege(current_user,
+    WHERE has_any_column_privilege(current_user,
       format('public.%I', protected.table_name), 'UPDATE')
       OR has_table_privilege(current_user,
         format('public.%I', protected.table_name), 'DELETE')
-  ) OR has_table_privilege(current_user, 'public."CompanyMembership"', 'INSERT') THEN
+  ) OR has_any_column_privilege(current_user, 'public."CompanyMembership"', 'INSERT') THEN
     RAISE EXCEPTION 'GATE_RUNTIME: escrita direta em identidade ou vinculos de tenant';
   END IF;
 END

@@ -57,3 +57,14 @@ The same two-company fixtures are exercised as a positive control with the dispo
 The restricted connection must reach the Company SQL query and fail with the exact permission error. With only portal-table SELECT temporarily granted in the disposable database, its portal read and logout must return 401 for both otherwise valid control tokens, leave both sessions unchanged and keep the runtime gate passing. No production grants or policies are changed.
 
 **Remaining release blocker:** successful customer login/read/logout through a reviewed restricted authorization boundary is still unimplemented. Company `FOR SHARE` and the staff-scoped operational RLS path must be addressed together with portal session bootstrap. Do not mark this gate complete, approve merge or activate companies based on the passing owner controls or expected-denial tests.
+
+
+## Column-level privilege attestation (2026-10-16)
+
+The RED proof at 4449a7abcc9fb5e37bdf48e78940bf65ba442ed2, workflow [38884434106](https://github.com/peedrovinicius/proximo-destino/actions/runs/38884434106), rejected three new assertions: column-only SELECT on portal tokenHash granted to an unrelated LOGIN or PUBLIC, and runtime column-only UPDATE on User.role. In each case PostgreSQL reported the column privilege while the table-level privilege was false, and the old gate incorrectly returned success. These are disposable privilege-attestation counterexamples, not evidence of production grants or a demonstrated production data leak; RLS remains a separate protection.
+
+The gate now inventories both pg_class.relacl and pg_attribute.attacl for the six sensitive tables, retaining the existing owner/runtime allowlist. Protected runtime UPDATE/INSERT/SELECT and REFERENCES checks use has_any_column_privilege, which also recognizes table-level grants. DELETE, TRUNCATE and TRIGGER retain table checks because those privileges are not column-scoped.
+
+The disposable suite covers 54 sensitive-column grant combinations (six tables, three privileges, unrelated LOGIN/PUBLIC/authorized runtime), five forbidden identity/membership column writes, and five column-only audit/migration/REFERENCES permissions. Each temporary grant is revoked in finally and followed by a clean baseline gate. No application privilege is granted by the gate, and no RLS policy or SQL definer is added.
+
+**Portal release status is unchanged:** these ACL corrections do not implement customer credential bootstrap or functional login/read/logout under the restricted runtime. Keep the PR in draft and the portal authorization gate blocked.
