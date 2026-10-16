@@ -14,6 +14,10 @@ CREATE SCHEMA synth_portal_boundary;
 REVOKE ALL ON SCHEMA synth_portal_boundary FROM PUBLIC;
 GRANT USAGE ON SCHEMA public, synth_portal_boundary TO synth_portal_boundary;
 GRANT USAGE ON SCHEMA synth_portal_boundary TO :"runtime_role";
+-- Existing PERMISSIVE policies are still evaluated alongside the scoped
+-- definer policies, and reference these already-reviewed staff helpers.
+GRANT EXECUTE ON FUNCTION public.company_tenant_authorized(text),
+  public.company_write_authorized(text,text,text,text) TO synth_portal_boundary;
 CREATE TABLE synth_portal_boundary.signing_key (
   singleton boolean PRIMARY KEY CHECK (singleton),
   key bytea NOT NULL CHECK (octet_length(key) = 32)

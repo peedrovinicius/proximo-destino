@@ -141,6 +141,24 @@ describe('experimental signed portal capability: actual restricted PostgreSQL LO
       FROM pg_roles r WHERE r.rolname = current_user`
     assert.equal(row.login, role); assert.equal(row.superuser, false); assert.equal(row.bypass, false)
     assert.equal(Number(row.memberships), 0)
+    const [definer] = await runtime.$queryRaw<Array<{
+      login: boolean; superuser: boolean; bypass: boolean; owns_tables: bigint; can_create: boolean
+    }>>`SELECT r.rolcanlogin AS login, r.rolsuper AS superuser, r.rolbypassrls AS bypass,
+      (SELECT count(*) FROM pg_class WHERE relowner = r.oid AND relkind IN ('r','p')) AS owns_tables,
+      has_schema_privilege(r.oid, 'synth_portal_boundary', 'CREATE') AS can_create
+      FROM pg_roles r WHERE r.rolname = 'synth_portal_boundary'`
+    assert.equal(definer.login, false); assert.equal(definer.superuser, false)
+    assert.equal(definer.bypass, false); assert.equal(Number(definer.owns_tables), 0)
+    assert.equal(definer.can_create, false)
+    const routines = await runtime.$queryRaw<Array<{ prosecdef: boolean; proconfig: string[]; source: string }>>`
+      SELECT p.prosecdef, p.proconfig, p.prosrc AS source FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'synth_portal_boundary'`
+    assert.equal(routines.filter(fn => fn.prosecdef).length, 3)
+    for (const fn of routines) {
+      assert.deepEqual(fn.proconfig, ['search_path=pg_catalog'])
+      assert.equal(/EXECUTE\s/i.test(fn.source), false, 'No dynamic SQL')
+    }
     for (const table of ['Company', 'Reservation', 'Client', 'Trip', 'CompanyClientPortalSession']) {
       await assert.rejects(runtime.$queryRawUnsafe(`SELECT * FROM public."${table}" LIMIT 1`),
         (error: any) => error.code === 'P2010' && error.meta?.code === '42501')
@@ -238,6 +256,29 @@ describe('experimental signed portal capability: actual restricted PostgreSQL LO
     const stale = (await lookup())!
     await owner.reservation.update({ where: { id: reservation('a') }, data: { accessCodeHash: await argon2.hash(code) } })
     assert.equal(await complete(signed({ op: 'complete', challenge: stale.challenge, valid: true })), null)
+  })
+  it('rejects an unsigned verdict, duplicate lookup and expired challenge', async () => {
+    const request = signed({ op: 'lookup', nonce: randomBytes(32).toString('hex'), slug: slug('a'),
+      reservationId: reservation('a'), email: email('a') })
+    const challenge = (await lookup(request))!
+    assert.ok(challenge)
+    assert.equal(await lookup(request), null, 'Lookup proof cannot be replayed')
+    const verdict = signed({ op: 'complete', challenge: challenge.challenge, valid: true })
+    assert.equal(await complete({ ...verdict, signature: '0'.repeat(64) }), null,
+      'A caller boolean without the backend signature is not authentication')
+    await owner.$executeRaw`UPDATE synth_portal_boundary.challenge SET expires_at = now() - interval '1 minute'
+      WHERE id = ${challenge.challenge}`
+    assert.equal(await complete(verdict), null)
+    assert.equal(await owner.companyClientPortalSession.count({ where: { reservationId: reservation('a') } }), 0)
+  })
+  it('serializes logout against reads and rejects all later token reuse', async () => {
+    const session = await service.login(slug('a'), input('a'))
+    const results = await Promise.allSettled([
+      service.portal(slug('a'), session.accessToken), service.logout(slug('a'), session.accessToken),
+    ])
+    assert.equal(results[1].status, 'fulfilled')
+    if (results[0].status === 'rejected') unauthorized(results[0].reason)
+    await assert.rejects(service.portal(slug('a'), session.accessToken), unauthorized)
   })
   it('ignores caller-forged tenant settings and keeps direct DML denied', async () => {
     const session = await service.login(slug('a'), input('a'))
