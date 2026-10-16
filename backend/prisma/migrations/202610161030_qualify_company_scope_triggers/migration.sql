@@ -3,7 +3,7 @@
 -- check_reservation_company_scope to fail with 42P01 on unqualified tables.
 -- Keep invoker authority, row locks and null-safe tenant constraints intact.
 CREATE OR REPLACE FUNCTION public."check_reservation_company_scope"() RETURNS trigger
-LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog AS $
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog AS $$
 DECLARE current_company TEXT; client_company TEXT; trip_company TEXT; client_id TEXT; trip_id TEXT;
 BEGIN
   SELECT "companyId", "clientId", "tripId" INTO current_company, client_id, trip_id
@@ -17,7 +17,7 @@ BEGIN
   RETURN NULL;
 END $$;
 CREATE OR REPLACE FUNCTION public."check_parent_company_scope"() RETURNS trigger
-LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog AS $
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog AS $$
 DECLARE current_company TEXT;
 BEGIN
   IF TG_TABLE_NAME = 'Client' THEN
