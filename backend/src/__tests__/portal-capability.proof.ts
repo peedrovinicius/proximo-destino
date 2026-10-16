@@ -159,6 +159,13 @@ describe('experimental signed portal capability: actual restricted PostgreSQL LO
       assert.deepEqual(fn.proconfig, ['search_path=pg_catalog'])
       assert.equal(/EXECUTE\s/i.test(fn.source), false, 'No dynamic SQL')
     }
+    const policies = await runtime.$queryRaw<Array<{ roles: string[]; qual: string | null; with_check: string | null }>>`
+      SELECT roles, qual, with_check FROM pg_policies WHERE policyname LIKE 'synth_portal_%'`
+    assert.equal(policies.length, 7)
+    for (const policy of policies) {
+      assert.deepEqual(policy.roles, ['synth_portal_boundary'])
+      assert.notEqual(policy.qual, 'true'); assert.notEqual(policy.with_check, 'true')
+    }
     for (const table of ['Company', 'Reservation', 'Client', 'Trip', 'CompanyClientPortalSession']) {
       await assert.rejects(runtime.$queryRawUnsafe(`SELECT * FROM public."${table}" LIMIT 1`),
         (error: any) => error.code === 'P2010' && error.meta?.code === '42501')
@@ -262,6 +269,7 @@ describe('experimental signed portal capability: actual restricted PostgreSQL LO
       reservationId: reservation('a'), email: email('a') })
     const challenge = (await lookup(request))!
     assert.ok(challenge)
+    assert.equal(await complete(request), null, 'Lookup signature cannot authorize completion')
     assert.equal(await lookup(request), null, 'Lookup proof cannot be replayed')
     const verdict = signed({ op: 'complete', challenge: challenge.challenge, valid: true })
     assert.equal(await complete({ ...verdict, signature: '0'.repeat(64) }), null,

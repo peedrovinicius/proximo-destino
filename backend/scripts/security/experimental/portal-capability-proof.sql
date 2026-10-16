@@ -101,6 +101,9 @@ BEGIN
   PERFORM set_config('synth_portal.company', '', true), set_config('synth_portal.reservation', '', true),
     set_config('synth_portal.client', '', true), set_config('synth_portal.trip', '', true),
     set_config('synth_portal.token_hash', '', true), set_config('synth_portal.mode', '', true);
+  -- Do not inherit caller-provided staff context into existing tenant policies.
+  PERFORM set_config('app.company_id', '', true), set_config('app.user_id', '', true),
+    set_config('app.session_id', '', true);
 END $$;
 
 CREATE FUNCTION synth_portal_boundary.valid_proof(payload text, signature text) RETURNS boolean
