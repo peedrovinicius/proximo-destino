@@ -18,7 +18,7 @@
     "prisma:deploy:isolated": "node scripts/migrate-isolated.mjs"
   },
   "dependencies": {
-    "@nestjs/common": "^11.0.0",
+    "@nestjs/common": "^12.1.2",
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.0.0",
     "@nestjs/jwt": "^11.0.0",
