@@ -4,12 +4,15 @@ Sistema web para operação de agência de turismo, cobrindo a jornada desde a d
 
 ## Estado atual
 
-A aplicação está implantada em produção com frontend e API separados, PostgreSQL persistente e controles de autenticação administrativa.
+**Implantação verificada em 03/11/2026:** o frontend possui uma publicação estática no Render, mas o backend utilizado anteriormente no Railway não tem implantação ativa confirmada. Portanto, a demonstração **não deve ser considerada operacional de ponta a ponta**: autenticação, reservas, pagamentos e demais fluxos dependentes da API não estão disponíveis ou validados na infraestrutura pública atual.
 
-- Site: https://proximo-destino-web-production.up.railway.app
-- API: https://proximo-destino-api-production.up.railway.app
-- Health: `GET /api/v1/health`
-- Readiness: `GET /api/v1/readiness`
+- [Prévia da interface (Render)](https://proximo-destino.onrender.com) — **não representa demonstração funcional do sistema completo**
+- API: **temporariamente indisponível**; o endpoint antigo do Railway não deve ser divulgado como ativo
+- Endpoints para validação após restaurar a API: `GET /api/v1/health` e `GET /api/v1/readiness` (inclui teste do banco)
+- O monitoramento de produção continua ativo e registra falhas enquanto a API não estiver pronta
+- O backup externo automático exige ativação e configuração explícitas; execuções marcadas como `skipped` **não** representam pontos de restauração
+
+**Importante:** não utilize dados reais de clientes ou pagamentos na prévia estática enquanto a API, as permissões e o backup não forem validados.
 
 O catálogo público exibe somente viagens com status `ACTIVE` ou `SCHEDULED`. Dados operacionais, comerciais e financeiros ficam fora da superfície pública.
 
