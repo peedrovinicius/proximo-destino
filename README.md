@@ -14,7 +14,7 @@ Sistema web para operação de agência de turismo, cobrindo a jornada desde a d
 
 **Importante:** não utilize dados reais de clientes ou pagamentos na prévia estática enquanto a API, as permissões e o backup não forem validados.
 
-O catálogo público exibe somente viagens com status `ACTIVE` ou `SCHEDULED`. Dados operacionais, comerciais e financeiros ficam fora da superfície pública.
+Quando a API está disponível, o catálogo público exibe somente viagens com status `ACTIVE` ou `SCHEDULED`. Dados operacionais, comerciais e financeiros não devem ser expostos na superfície pública.
 
 ## Fluxo operacional
 
@@ -123,17 +123,17 @@ Prisma
 PostgreSQL 18 / Neon
 ```
 
-Produção:
+Infraestrutura (situação verificada em 03/11/2026):
 
-- frontend: Railway;
-- API: Railway;
-- banco: Neon PostgreSQL;
-- migrations: Prisma;
-- pipeline: GitHub Actions + pre-deploy do Railway.
+- frontend: Render (prévia estática publicada, sem garantia de integração funcional);
+- API: Railway (implantação histórica encerrada; recuperação pendente);
+- banco: Neon PostgreSQL (branch `production` arquivada; disponibilidade operacional ainda não validada);
+- migrations: Prisma (scripts versionados no repositório);
+- pipeline: GitHub Actions (CI e monitoramento); o pre-deploy do Railway é histórico.
 
 ## Segurança
 
-Controles já implementados:
+Controles implementados no código, ainda sem validação integral em produção:
 
 - RBAC para `ADMIN`, `AGENT`, `FINANCE` e `CLIENT`;
 - MFA obrigatório para administrador;
@@ -143,7 +143,7 @@ Controles já implementados:
 - bloqueio após tentativas inválidas;
 - CORS restrito à origem oficial;
 - proteção de origem em operações mutáveis;
-- Helmet, CSP e HSTS em produção;
+- Helmet, CSP e HSTS configurados no backend;
 - rate limiting;
 - request ID;
 - respostas de erro padronizadas;
