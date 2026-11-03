@@ -19,7 +19,13 @@ export class MfaService {
 
   async beginSetup(userId: string, email: string) {
     const prepared = await this.prepareSetup(email)
-    await this.prisma.user.update({ where: { id: userId }, data: { mfaPendingSecretEncrypted: prepared.encrypted } })
+    // A stale setup challenge must never replace an enrolled MFA secret.
+    // UPDATE's predicate is rechecked after PostgreSQL row-lock waits.
+    const claimed = await this.prisma.user.updateMany({
+      where: { id: userId, isActive: true, mfaEnabled: false, role: { in: ['ADMIN', 'CREATOR'] } },
+      data: { mfaPendingSecretEncrypted: prepared.encrypted },
+    })
+    if (claimed.count !== 1) throw new UnauthorizedException('Configuração de MFA indisponível')
     return prepared.response
   }
 
@@ -43,10 +49,11 @@ export class MfaService {
   async confirmSetup(userId: string, code: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { mfaPendingSecretEncrypted: true },
+      select: { isActive: true, role: true, mfaEnabled: true, mfaPendingSecretEncrypted: true },
     })
 
-    if (!user?.mfaPendingSecretEncrypted) {
+    if (!user?.isActive || user.mfaEnabled ||
+      (user.role !== 'ADMIN' && user.role !== 'CREATOR') || !user.mfaPendingSecretEncrypted) {
       throw new UnauthorizedException('Configuração de MFA expirada')
     }
 
@@ -55,24 +62,33 @@ export class MfaService {
       throw new UnauthorizedException('Código inválido')
     }
 
+    // Compute Argon2 hashes before holding a database row lock.
     const recoveryCodes = Array.from({ length: 10 }, () => this.recoveryCode())
     const codeHashes = await Promise.all(recoveryCodes.map((value) => argon2.hash(value)))
 
-    await this.prisma.$transaction([
-      this.prisma.mfaRecoveryCode.deleteMany({ where: { userId } }),
-      this.prisma.user.update({
-        where: { id: userId },
+    await this.prisma.$transaction(async tx => {
+      // This compare-and-set is the authorization boundary. Two concurrent
+      // confirmations of the same challenge cannot both enroll or replace the
+      // authenticator, and reset/role/secret changes invalidate an old setup.
+      const claimed = await tx.user.updateMany({
+        where: {
+          id: userId, isActive: true, mfaEnabled: false,
+          role: { in: ['ADMIN', 'CREATOR'] },
+          mfaPendingSecretEncrypted: user.mfaPendingSecretEncrypted,
+        },
         data: {
           mfaEnabled: true,
           mfaSecretEncrypted: this.encrypt(secret),
           mfaPendingSecretEncrypted: null,
           mfaEnrolledAt: new Date(),
         },
-      }),
-      this.prisma.mfaRecoveryCode.createMany({
+      })
+      if (claimed.count !== 1) throw new UnauthorizedException('Configuração de MFA expirada')
+      await tx.mfaRecoveryCode.deleteMany({ where: { userId } })
+      await tx.mfaRecoveryCode.createMany({
         data: codeHashes.map((codeHash) => ({ userId, codeHash })),
-      }),
-    ])
+      })
+    })
 
     return recoveryCodes
   }
