@@ -4,14 +4,17 @@ Sistema web para operação de agência de turismo, cobrindo a jornada desde a d
 
 ## Estado atual
 
-A aplicação está implantada em produção com frontend e API separados, PostgreSQL persistente e controles de autenticação administrativa.
+**Implantação verificada em 03/11/2026:** o frontend possui uma publicação estática no Render, mas o backend utilizado anteriormente no Railway não tem implantação ativa confirmada. Portanto, a demonstração **não deve ser considerada operacional de ponta a ponta**: autenticação, reservas, pagamentos e demais fluxos dependentes da API não estão disponíveis ou validados na infraestrutura pública atual.
 
-- Site: https://proximo-destino-web-production.up.railway.app
-- API: https://proximo-destino-api-production.up.railway.app
-- Health: `GET /api/v1/health`
-- Readiness: `GET /api/v1/readiness`
+- [Prévia da interface (Render)](https://proximo-destino.onrender.com) — **não representa demonstração funcional do sistema completo**
+- API: **temporariamente indisponível**; o endpoint antigo do Railway não deve ser divulgado como ativo
+- Endpoints para validação após restaurar a API: `GET /api/v1/health` e `GET /api/v1/readiness` (inclui teste do banco)
+- O monitoramento de produção continua ativo e registra falhas enquanto a API não estiver pronta
+- O backup externo automático exige ativação e configuração explícitas; execuções marcadas como `skipped` **não** representam pontos de restauração
 
-O catálogo público exibe somente viagens com status `ACTIVE` ou `SCHEDULED`. Dados operacionais, comerciais e financeiros ficam fora da superfície pública.
+**Importante:** não utilize dados reais de clientes ou pagamentos na prévia estática enquanto a API, as permissões e o backup não forem validados.
+
+Quando a API está disponível, o catálogo público exibe somente viagens com status `ACTIVE` ou `SCHEDULED`. Dados operacionais, comerciais e financeiros não devem ser expostos na superfície pública.
 
 ## Fluxo operacional
 
@@ -120,17 +123,17 @@ Prisma
 PostgreSQL 18 / Neon
 ```
 
-Produção:
+Infraestrutura (situação verificada em 03/11/2026):
 
-- frontend: Railway;
-- API: Railway;
-- banco: Neon PostgreSQL;
-- migrations: Prisma;
-- pipeline: GitHub Actions + pre-deploy do Railway.
+- frontend: Render (prévia estática publicada, sem garantia de integração funcional);
+- API: Railway (implantação histórica encerrada; recuperação pendente);
+- banco: Neon PostgreSQL (branch `production` arquivada; disponibilidade operacional ainda não validada);
+- migrations: Prisma (scripts versionados no repositório);
+- pipeline: GitHub Actions (CI e monitoramento); o pre-deploy do Railway é histórico.
 
 ## Segurança
 
-Controles já implementados:
+Controles implementados no código, ainda sem validação integral em produção:
 
 - RBAC para `ADMIN`, `AGENT`, `FINANCE` e `CLIENT`;
 - MFA obrigatório para administrador;
@@ -140,7 +143,7 @@ Controles já implementados:
 - bloqueio após tentativas inválidas;
 - CORS restrito à origem oficial;
 - proteção de origem em operações mutáveis;
-- Helmet, CSP e HSTS em produção;
+- Helmet, CSP e HSTS configurados no backend;
 - rate limiting;
 - request ID;
 - respostas de erro padronizadas;
