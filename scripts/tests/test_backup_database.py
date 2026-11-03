@@ -66,8 +66,11 @@ GRANT SELECT ON ALL TABLES IN SCHEMA public TO backup_ci;
             ('CREATE TABLE public.future_table (id integer)', 'DROP TABLE public.future_table'),
             ('CREATE MATERIALIZED VIEW public.future_view AS SELECT 1::integer AS id',
              'DROP MATERIALIZED VIEW public.future_view'),
-            ('ALTER TABLE public.protected_rows OWNER TO backup_ci',
-             'ALTER TABLE public.protected_rows OWNER TO postgres'),
+            ('CREATE TABLE public.owned_future (id integer); '
+             'ALTER TABLE public.owned_future OWNER TO backup_ci; '
+             'REVOKE ALL ON TABLE public.owned_future FROM backup_ci; '
+             'GRANT SELECT ON TABLE public.owned_future TO backup_ci',
+             'DROP TABLE public.owned_future'),
             ('CREATE POLICY restrictive_backup ON public.protected_rows AS RESTRICTIVE '
              'FOR SELECT TO backup_ci USING (false)',
              'DROP POLICY restrictive_backup ON public.protected_rows'),
