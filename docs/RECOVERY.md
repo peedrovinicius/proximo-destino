@@ -112,8 +112,10 @@ O script `scripts/backup-external.py` usa PostgreSQL 18, conexão direta com TLS
 transação somente leitura e `pg_dump --format=custom --enable-row-security`. Antes
 e depois do dump, verifica que o papel não tem privilégios administrativos,
 membership, escrita, criação de objetos ou execução de funções SECURITY DEFINER
-da aplicação. Exige SELECT em todas as tabelas e sequências e política de leitura
-irrestrita para cada tabela com RLS, sem política restritiva aplicável. Uma tabela
+da aplicação. Exige SELECT em todas as tabelas, views materializadas e sequências e política de leitura
+irrestrita para cada tabela com RLS, sem política restritiva aplicável. O papel
+também não pode ser proprietário de tabelas: a propriedade permite alterações
+estruturais mesmo sem privilégio CREATE no schema. Uma tabela
 nova sem esses acessos impede o envio; revisar os grants e políticas após migrations.
 Não conceder `neon_superuser` nem BYPASSRLS ao usuário do backup. As verificações
 não substituem o ensaio de restauração nem garantem ausência de alterações DDL

@@ -64,6 +64,10 @@ GRANT SELECT ON ALL TABLES IN SCHEMA public TO backup_ci;
     def test_future_table_or_restrictive_policy_or_membership_refuses_backup(self):
         cases = [
             ('CREATE TABLE public.future_table (id integer)', 'DROP TABLE public.future_table'),
+            ('CREATE MATERIALIZED VIEW public.future_view AS SELECT 1::integer AS id',
+             'DROP MATERIALIZED VIEW public.future_view'),
+            ('ALTER TABLE public.protected_rows OWNER TO backup_ci',
+             'ALTER TABLE public.protected_rows OWNER TO postgres'),
             ('CREATE POLICY restrictive_backup ON public.protected_rows AS RESTRICTIVE '
              'FOR SELECT TO backup_ci USING (false)',
              'DROP POLICY restrictive_backup ON public.protected_rows'),

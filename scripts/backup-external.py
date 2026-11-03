@@ -25,7 +25,7 @@ ACCESS_CHECK = """
 WITH role AS (SELECT * FROM pg_roles WHERE rolname=current_user),
 tables AS (
  SELECT c.* FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
- WHERE c.relkind IN ('r','p') AND n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'
+ WHERE c.relkind IN ('r','p','m') AND n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'
 )
 SELECT NOT (r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication)
  AND NOT EXISTS (SELECT 1 FROM pg_auth_members WHERE member=r.oid)
@@ -33,7 +33,8 @@ SELECT NOT (r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR 
  AND EXISTS (SELECT 1 FROM tables)
  AND NOT EXISTS (
   SELECT 1 FROM tables t WHERE
-   NOT has_table_privilege(t.oid,'SELECT')
+   t.relowner=r.oid -- A table owner can change/drop it even without schema CREATE.
+   OR NOT has_table_privilege(t.oid,'SELECT')
    OR has_table_privilege(t.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
    OR (t.relrowsecurity AND (
     NOT EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid=t.oid
