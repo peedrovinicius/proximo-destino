@@ -6,10 +6,12 @@ import { PaymentsModule } from '../payments/payments.module'
 import { ClientPortalGuard } from './client-portal.guard'
 import { PortalController } from './portal.controller'
 import { PortalService } from './portal.service'
+import { CompanyClientPortalService } from './company-client-portal.service'
+import { CompanyClientPortalController } from './company-client-portal.controller'
 
 @Module({
   imports: [JwtModule.register({}), DocumentsModule, PaymentsModule, NotificationsModule],
-  controllers: [PortalController],
-  providers: [PortalService, ClientPortalGuard],
+  controllers: [PortalController, CompanyClientPortalController],
+  providers: [PortalService, ClientPortalGuard, CompanyClientPortalService],
 })
 export class PortalModule {}

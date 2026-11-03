@@ -19,6 +19,64 @@ class BackupError(Exception):
     pass
 
 
+# --enable-row-security must never silently turn a full backup into a partial one.
+# Require explicit unrestricted SELECT policies and refuse privileged credentials.
+ACCESS_CHECK = """
+WITH role AS (SELECT * FROM pg_roles WHERE rolname=current_user),
+tables AS (
+ SELECT c.* FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+ WHERE c.relkind IN ('r','p') AND n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'
+)
+SELECT NOT (r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication)
+ AND NOT EXISTS (SELECT 1 FROM pg_auth_members WHERE member=r.oid)
+ AND NOT has_database_privilege(current_database(),'CREATE')
+ AND EXISTS (SELECT 1 FROM tables)
+ AND NOT EXISTS (
+  SELECT 1 FROM tables t WHERE
+   NOT has_table_privilege(t.oid,'SELECT')
+   OR has_table_privilege(t.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+   OR (t.relrowsecurity AND (
+    NOT EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid=t.oid
+      AND p.polpermissive AND p.polcmd IN ('r','*')
+      AND (r.oid=ANY(p.polroles) OR 0=ANY(p.polroles))
+      AND pg_get_expr(p.polqual,p.polrelid)='true')
+    OR EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid=t.oid
+      AND NOT p.polpermissive AND p.polcmd IN ('r','*')
+      AND (r.oid=ANY(p.polroles) OR 0=ANY(p.polroles)))
+   ))
+ )
+ AND NOT EXISTS (
+  SELECT 1 FROM pg_namespace n WHERE n.nspname !~ '^pg_'
+   AND n.nspname <> 'information_schema' AND has_schema_privilege(n.oid,'CREATE')
+ )
+ AND NOT EXISTS (
+  SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+  WHERE c.relkind='S' AND n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'
+   AND (NOT has_sequence_privilege(c.oid,'SELECT')
+        OR has_sequence_privilege(c.oid,'USAGE,UPDATE'))
+ )
+ AND NOT EXISTS (
+  SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE p.prosecdef AND n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'
+   AND has_function_privilege(p.oid,'EXECUTE')
+ )
+FROM role r;
+"""
+
+
+def verify_database_access(pg):
+    try:
+        result = subprocess.run(
+            ['psql', '--no-psqlrc', '--no-password', '--tuples-only', '--no-align',
+             '--set=ON_ERROR_STOP=1', '--command', ACCESS_CHECK],
+            env=pg, check=True, timeout=60, stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL, text=True)
+    except (OSError, subprocess.SubprocessError):
+        raise BackupError('Database access verification failed; upload refused') from None
+    if result.stdout.strip() != 't':
+        raise BackupError('Database role is privileged or full read access is missing; upload refused')
+
+
 def configuration(env):
     required = ('BACKUP_DATABASE_URL', 'BACKUP_AGE_RECIPIENT', 'BACKUP_S3_BUCKET',
                 'BACKUP_S3_ENDPOINT', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY',
@@ -72,6 +130,7 @@ def digest(path):
 
 def run_backup(env):
     pg, aws, common = configuration(env)
+    verify_database_access(pg)
     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     key = f'proximo-destino/{stamp}-{uuid4().hex}.dump.age'
     with tempfile.TemporaryDirectory(prefix='proximo-backup-') as temp:
@@ -82,7 +141,7 @@ def run_backup(env):
         try:
             # The custom archive (including grants/policies) is never written in cleartext.
             dump = subprocess.Popen(['pg_dump', '--format=custom', '--no-password',
-                                     '--lock-wait-timeout=60s'], env=pg,
+                                     '--enable-row-security', '--lock-wait-timeout=60s'], env=pg,
                                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
             encrypt = subprocess.Popen(['age', '--recipient', env['BACKUP_AGE_RECIPIENT'],
                                         '--output', str(encrypted)], env=common,
@@ -92,6 +151,7 @@ def run_backup(env):
             dump_code = dump.wait(timeout=30)
             if encrypt_code or dump_code:
                 raise BackupError('Dump or encryption failed; upload refused')
+            verify_database_access(pg)
             if not encrypted.exists() or encrypted.stat().st_size < 100:
                 raise BackupError('Encrypted archive is empty')
             with encrypted.open('rb') as stream:

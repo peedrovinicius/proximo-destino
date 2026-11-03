@@ -1,6 +1,8 @@
 import { Type } from 'class-transformer'
 import {
   IsDate,
+  IsArray,
+  ArrayMaxSize,
   IsEmail,
   IsOptional,
   IsString,
@@ -60,6 +62,8 @@ export class CreateClientDto {
   notes?: string
 
   @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(80)
   @ValidateNested({ each: true })
   @Type(() => CreateCompanionDto)
   companions?: CreateCompanionDto[]

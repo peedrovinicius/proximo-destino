@@ -1,3 +1,5 @@
+import { ChangePasswordDialog } from './ChangePasswordDialog'
+import { ReservationAccessDialog } from './ReservationAccessDialog'
 import {
   ArrowLeft,
   Bell,
@@ -24,6 +26,7 @@ import {
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Brand } from '../../components/Brand'
 import { FinanceWorkspace, QuotesWorkspace } from './CommercialWorkspace'
+import { CompanyFinanceDiscrepancyReport } from './CompanyFinanceDiscrepancyReport'
 import { AdminSeatMapDialog } from './AdminSeatMap'
 import { ReservationPassengersDialog } from './ReservationPassengersDialog'
 import { ReservationCancelDialog } from './ReservationCancelDialog'
@@ -63,6 +66,7 @@ type AdminDashboardProps = {
   accessToken: string
   onExitToSite: () => void
   onLogout: () => void
+  onPasswordChanged?: () => void
 }
 
 type Tab =
@@ -124,6 +128,7 @@ export function AdminDashboard({
   accessToken,
   onExitToSite,
   onLogout,
+  onPasswordChanged,
 }: AdminDashboardProps) {
   const [tab, setTab] = useState<Tab>(() => tabFromLocation())
   const [dashboard, setDashboard] = useState<DashboardData | null>(null)
@@ -136,6 +141,7 @@ export function AdminDashboard({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
+  const [changingPassword, setChangingPassword] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [notificationFeed, setNotificationFeed] =
     useState<AdminNotificationFeed | null>(null)
@@ -630,6 +636,7 @@ export function AdminDashboard({
                   Voltar ao site
                   <small>Sem encerrar a sessão</small>
                 </button>
+                <button type="button" role="menuitem" onClick={() => { setAccountMenuOpen(false); setChangingPassword(true) }}>Alterar minha senha</button>
                 {isAdmin ? (
                   <button
                     type="button"
@@ -811,6 +818,7 @@ export function AdminDashboard({
           <PaymentSettings accessToken={accessToken} />
         ) : null}
       </main>
+      {changingPassword ? <ChangePasswordDialog token={accessToken} onClose={() => setChangingPassword(false)} onChanged={onPasswordChanged || onLogout} /> : null}
     </div>
   )
 }
@@ -1063,7 +1071,7 @@ function PaymentsWorkspace({ accessToken }: { accessToken: string }) {
         <div>
           <span className="eyebrow">Financeiro integrado</span>
           <h2>Pagamentos</h2>
-          <p>PIX, cartão, dinheiro, transferência e boleto em uma única visão.</p>
+          <p>{data?.summaryOnly ? 'Resumo somente leitura dos pedidos online e recebimentos manuais da própria empresa. Não inclui saldos de crédito ou parcelas em aberto; detalhes e alterações permanecem bloqueados.' : 'PIX, cartão, dinheiro, transferência e boleto em uma única visão.'}</p>
         </div>
         <button type="button" onClick={() => void load()} disabled={loading}>
           {loading ? 'Atualizando...' : 'Atualizar'}
@@ -1072,13 +1080,13 @@ function PaymentsWorkspace({ accessToken }: { accessToken: string }) {
 
       {error ? <div className="admin-error" role="alert">{error}</div> : null}
 
+      {error && data?.summaryOnly ? <p role="status">Os valores abaixo são do último resumo carregado e não foram atualizados. Tente novamente antes de utilizá-los.</p> : null}
       <div className="admin-payment-metrics">
         <article>
           <small>Recebido</small>
           <strong>{money.format((summary?.paidCents ?? 0) / 100)}</strong>
           <span>
-            {summary?.paidOrders ?? 0} online ·{' '}
-            {summary?.manualReceivedCount ?? 0} manual(is)
+            {summary?.paidOrders ?? 0} online · {summary?.manualReceivedCount ?? 0} manual(is)
           </span>
         </article>
         <article>
@@ -1095,12 +1103,14 @@ function PaymentsWorkspace({ accessToken }: { accessToken: string }) {
           <small>Estornado</small>
           <strong>{money.format((summary?.refundedCents ?? 0) / 100)}</strong>
           <span>
-            {summary?.refundedOrders ?? 0} online ·{' '}
-            {summary?.manualReversedCount ?? 0} manual(is)
+            {summary?.refundedOrders ?? 0} online · {summary?.manualReversedCount ?? 0} manual(is)
           </span>
         </article>
       </div>
 
+      {data?.summaryOnly ? <CompanyFinanceDiscrepancyReport accessToken={accessToken} /> : null}
+
+      {!data?.summaryOnly ? <>
       <div className="admin-payment-filters">
         <label>
           <span>Buscar</span>
@@ -1326,6 +1336,7 @@ function PaymentsWorkspace({ accessToken }: { accessToken: string }) {
         )}
       </article>
 
+      </> : null}
     </section>
   )
 }
@@ -2570,6 +2581,7 @@ function ReservationsView({
   const [cancelReservationId, setCancelReservationId] = useState<string | null>(null)
   const [bonusReservationId, setBonusReservationId] = useState<string | null>(null)
   const [financeReservationId, setFinanceReservationId] = useState<string | null>(null)
+  const [accessReservation, setAccessReservation] = useState<AdminReservation | null>(null)
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -2622,7 +2634,7 @@ function ReservationsView({
                   {reservation.trip.title} · {date.format(new Date(reservation.trip.departureDate))}
                   {' · '}
                   {reservation.passengerCount} passageiro{reservation.passengerCount === 1 ? '' : 's'}
-                  {reservation.seatAssignments.length
+                  {reservation.seatAssignments?.length
                     ? ' · Assentos ' + reservation.seatAssignments.map((seat) => seat.seatNumber).join(', ')
                     : ''}
                   {reservation.client.bonusBalanceCents > 0
@@ -2640,6 +2652,9 @@ function ReservationsView({
                 ) : null}
               </div>
               <div className="admin-reservation-actions">
+                {roleFromToken(accessToken) === 'ADMIN' && reservation.companyPortalAccess ? (
+                  <button type="button" onClick={() => setAccessReservation(reservation)}>Acesso ao portal</button>
+                ) : null}
                 {canChangeStatus ? (
                   <select
                     value={reservation.status}
@@ -2725,6 +2740,9 @@ function ReservationsView({
           )) : <p className="admin-empty">Nenhuma reserva cadastrada ainda.</p>}
         </div>
       </article>
+
+      {accessReservation ? <ReservationAccessDialog key={accessReservation.id} token={accessToken}
+        reservation={accessReservation} onClose={() => setAccessReservation(null)} /> : null}
 
       {passengersReservationId ? (
         <ReservationPassengersDialog

@@ -30,7 +30,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   }
 
   private async backfillSensitiveDocuments() {
-    if (!sensitiveDataConfigured()) return
+    // Backfill is an operational migration task, never a default API startup task.
+    // A restricted runtime role must not need historical PII rewrite privileges.
+    if (process.env.PII_BACKFILL_ON_STARTUP !== 'true' || !sensitiveDataConfigured()) return
 
     const clients = await this.client.findMany({
       where: {

@@ -109,13 +109,32 @@ credenciais ou chaves para o proprietário. Execução ignorada não significa b
 bem-sucedido; confirmar o job executado e o objeto verificado antes de operar.
 
 O script `scripts/backup-external.py` usa PostgreSQL 18, conexão direta com TLS,
-transação somente leitura e `pg_dump --format=custom`. O dump passa direto para
+transação somente leitura e `pg_dump --format=custom --enable-row-security`. Antes
+e depois do dump, verifica que o papel não tem privilégios administrativos,
+membership, escrita, criação de objetos ou execução de funções SECURITY DEFINER
+da aplicação. Exige SELECT em todas as tabelas e sequências e política de leitura
+irrestrita para cada tabela com RLS, sem política restritiva aplicável. Uma tabela
+nova sem esses acessos impede o envio; revisar os grants e políticas após migrations.
+Não conceder `neon_superuser` nem BYPASSRLS ao usuário do backup. As verificações
+não substituem o ensaio de restauração nem garantem ausência de alterações DDL
+concorrentes: evitar migrations durante a geração do ponto de recuperação.
+O dump passa direto para
 `age`; apenas o arquivo criptografado é gravado em diretório temporário restrito.
 Erros de dump ou criptografia impedem upload. Após enviar para S3 compatível,
 baixa os bytes criptografados e compara SHA-256. Apaga os arquivos locais ao
 terminar. Não publica artifacts, não registra erros brutos com dados de conexão,
 não restaura produção nem apaga backups remotos. Falhas após upload podem deixar
 um objeto criptografado sem confirmação; não tratá-lo como ponto validado.
+
+Em 2026-10-07, `pd_backup` de produção foi recriado por SQL, sem login e sem
+privilégios administrativos. Recebeu SELECT nas 28 tabelas existentes e nas
+sequências, com 12 políticas `pd_backup_full_read` exclusivas de SELECT. Um teste
+em snapshot REPEATABLE READ confirmou contagens iguais às do proprietário em
+todas as tabelas e recusa de DELETE. O mesmo verificador do exportador retornou
+verdadeiro com SET ROLE. Nenhum dado foi exportado nesse teste. O login permanece
+desativado; senha, secret do environment, envio real e restore real ainda pendentes.
+Não recriar esse papel pelo painel/API do Neon: isso volta a conceder privilégios
+administrativos. Políticas de backup devem acompanhar novas tabelas com RLS.
 
 ### Configuração e custódia
 

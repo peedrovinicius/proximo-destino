@@ -18,13 +18,15 @@ export class MfaService {
   ) {}
 
   async beginSetup(userId: string, email: string) {
+    const prepared = await this.prepareSetup(email)
+    await this.prisma.user.update({ where: { id: userId }, data: { mfaPendingSecretEncrypted: prepared.encrypted } })
+    return prepared.response
+  }
+
+  /** Pure preparation so onboarding can persist setup inside its own authorization transaction. */
+  async prepareSetup(email: string) {
     const secret = this.base32Encode(randomBytes(20))
     const encrypted = this.encrypt(secret)
-
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { mfaPendingSecretEncrypted: encrypted },
-    })
 
     const issuer = 'Próximo Destino'
     const label = encodeURIComponent(`${issuer}:${email}`)
@@ -35,7 +37,7 @@ export class MfaService {
       width: 240,
     })
 
-    return { manualKey: secret, otpauthUrl: uri, qrDataUrl }
+    return { encrypted, response: { manualKey: secret, otpauthUrl: uri, qrDataUrl } }
   }
 
   async confirmSetup(userId: string, code: string) {
@@ -73,6 +75,14 @@ export class MfaService {
     ])
 
     return recoveryCodes
+  }
+
+  async prepareConfirmation(encrypted: string, code: string) {
+    const secret = this.decrypt(encrypted)
+    if (!this.verifyTotp(secret, code)) throw new UnauthorizedException('Código inválido')
+    const recoveryCodes = Array.from({ length: 10 }, () => this.recoveryCode())
+    const codeHashes = await Promise.all(recoveryCodes.map(value => argon2.hash(value)))
+    return { encryptedSecret: this.encrypt(secret), recoveryCodes, codeHashes }
   }
 
   async verify(userId: string, rawCode: string) {

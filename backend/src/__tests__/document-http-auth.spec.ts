@@ -11,6 +11,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard'
 import { MfaService } from '../auth/mfa.service'
 import { RolesGuard } from '../auth/roles.guard'
 import { SessionService } from '../auth/session.service'
+import { CompanyScopeService } from '../tenancy/company-scope.service'
 import { AdminDocumentsController } from '../documents/documents.controller'
 import { DocumentsService } from '../documents/documents.service'
 import { PrismaService } from '../prisma/prisma.service'
@@ -62,13 +63,21 @@ describe('autorização HTTP dos documentos e configurações de provedores', ()
     (!query.where.reservation || query.where.reservation.clientId === 'client-a'),
   )
   const prisma = {
+    reservation: {
+      findFirst: async ({ where }: { where: { id: string; clientId: string; companyId: null; client: { companyId: null }; trip: { companyId: null } } }) =>
+        ((where.clientId === 'client-a' && ['reservation', 'other-reservation'].includes(where.id)) ||
+          (where.clientId === 'client-b' && where.id === 'reservation-b')) && where.companyId === null &&
+        where.client.companyId === null && where.trip.companyId === null ? { id: where.id } : null,
+    },
     user: {
       findUnique: async ({ where }: { where: { id: string } }) =>
         roles[where.id]
-          ? { id: where.id, email: where.id + '@example.com', role: roles[where.id], isActive: true }
+          ? { id: where.id, email: where.id + '@example.com', role: roles[where.id], isActive: true,
+            companyManaged: false, companyMemberships: [] }
           : null,
     },
     authSession: {
+      findUnique: async () => ({ companyId: null }),
       count: async ({ where }: { where: { id: string; userId: string } }) =>
         where.id === 'session-' + where.userId && !revoked.has(where.id) ? 1 : 0,
     },
@@ -87,9 +96,11 @@ describe('autorização HTTP dos documentos e configurações de provedores', ()
       controllers: [AdminDocumentsController, PortalController, PaymentConnectionAdminController, EmailAutomationController],
       providers: [
         JwtAuthGuard, RolesGuard,
+        { provide: CompanyScopeService, useValue: new CompanyScopeService(prisma) },
         ClientPortalGuard,
         { provide: JwtService, useValue: jwt },
         { provide: ConfigService, useValue: config },
+        { provide: PrismaService, useValue: prisma },
         { provide: PortalService, useValue: {} },
         { provide: PaymentConnectionService, useValue: providerMock },
         { provide: EmailAutomationService, useValue: providerMock },
@@ -227,7 +238,7 @@ describe('autorização HTTP dos documentos e configurações de provedores', ()
   }
 
   it('nega PDF pertencente a outro cliente', async () => {
-    assert.equal((await clientPdf('client-b', 'reservation')).status, 404)
+    assert.equal((await clientPdf('client-b', 'reservation-b')).status, 404)
   })
 
   it('nega PDF de outra reserva mesmo para o mesmo cliente', async () => {

@@ -12,6 +12,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "admin:create": "node scripts/create-admin.mjs",
+    "creator:create": "node scripts/create-creator.mjs",
     "admin:recover": "node scripts/recover-admin.mjs",
     "test:unit": "node --test --test-concurrency=1 dist/__tests__/*.spec.js",
     "test": "npm run build && npm run test:unit",

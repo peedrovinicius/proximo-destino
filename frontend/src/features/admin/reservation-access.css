@@ -1,0 +1,12 @@
+.reservation-access-dialog { width: min(540px, calc(100vw - 32px)); box-sizing: border-box; max-height: calc(100dvh - 32px); overflow: auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 16px; color: #0f172a; background: white; }
+.reservation-access-dialog::backdrop { background: rgb(15 23 42 / 50%); }
+.reservation-access-dialog h2 { margin-top: 0; }
+.reservation-access-dialog label, .reservation-access-dialog fieldset { display: grid; gap: 10px; min-width: 0; }
+.reservation-access-dialog fieldset { padding: 12px 0; border: 0; }
+.reservation-access-dialog input, .reservation-access-dialog button { width: 100%; box-sizing: border-box; min-height: 44px; padding: 10px; border: 1px solid #94a3b8; border-radius: 8px; color: #0f172a; background: white; }
+.reservation-access-dialog .reservation-access-confirmation { grid-template-columns: 24px 1fr; align-items: center; }
+.reservation-access-confirmation input { min-height: 24px; }
+.reservation-access-result { padding: 12px; background: #eff6ff; border-radius: 8px; }
+.reservation-access-result input { font-family: monospace; }
+.reservation-access-dialog :focus-visible { outline: 3px solid #2563eb; outline-offset: 3px; }
+.reservation-access-dialog [role="alert"] { color: #991b1b; }

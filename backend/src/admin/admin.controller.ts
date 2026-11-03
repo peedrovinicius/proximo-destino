@@ -2,13 +2,19 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Param,
   Patch,
   Post,
   Query,
   Req,
   UseGuards,
+  ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common'
+import { Equals, IsBoolean } from 'class-validator'
+import { Throttle } from '@nestjs/throttler'
+import { CompanyReservationAccessService } from '../tenancy/company-reservation-access.service'
 import { JwtAuthGuard, type AuthenticatedRequest } from '../auth/jwt-auth.guard'
 import {
   ADMIN_ONLY_ROLES,
@@ -19,6 +25,9 @@ import {
 import { Roles } from '../auth/roles.decorator'
 import { RolesGuard } from '../auth/roles.guard'
 import { AdminService } from './admin.service'
+import { CompanyDataService } from '../tenancy/company-data.service'
+import { CompanyRead, CompanyWrite } from '../tenancy/company-access.decorator'
+import { CompanyReservationsService } from '../tenancy/company-reservations.service'
 import {
   ApplyReservationBonusDto,
   CancelReservationDto,
@@ -31,22 +40,47 @@ import {
   UpdateReservationStatusDto,
 } from './dto/reservation.dto'
 
+export class CompanyPortalCodeIssueDto {
+  @IsBoolean() @Equals(true) confirmedPrivateDelivery!: boolean
+}
+
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(...STAFF_ROLES)
 export class AdminController {
-  constructor(private readonly admin: AdminService) {}
+  constructor(private readonly admin: AdminService, private readonly scoped: CompanyDataService,
+    private readonly scopedReservations: CompanyReservationsService,
+    private readonly reservationAccess: CompanyReservationAccessService) {}
+
+  @Post('reservations/:id/company-portal-code')
+  @CompanyWrite() @Roles(...ADMIN_ONLY_ROLES) @Header('Cache-Control', 'no-store')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  issueCompanyPortalCode(@Param('id') id: string, @Body() _body: CompanyPortalCodeIssueDto, @Req() request: AuthenticatedRequest) {
+    if (!request.companyScope) throw new ForbiddenException('Sessão de empresa obrigatória')
+    return this.reservationAccess.issue(request.user.id, request.user.sessionId, id)
+  }
+
+  @Post('reservations/:id/company-portal-code/revoke')
+  @CompanyWrite() @Roles(...ADMIN_ONLY_ROLES) @Header('Cache-Control', 'no-store')
+  revokeCompanyPortalCode(@Param('id') id: string, @Req() request: AuthenticatedRequest) {
+    if (!request.companyScope) throw new ForbiddenException('Sessão de empresa obrigatória')
+    return this.reservationAccess.revoke(request.user.id, request.user.sessionId, id)
+  }
 
   @Get('dashboard')
+  @CompanyRead()
   dashboard(@Req() request: AuthenticatedRequest) {
+    if (request.companyScope) return this.scoped.dashboard(request.user.id, request.user.sessionId)
     return this.admin.dashboard(request.user.role)
   }
 
   @Get('search')
+  @CompanyRead()
   search(
     @Query('q') query = '',
     @Req() request: AuthenticatedRequest,
   ) {
+    if (request.companyScope) return this.scoped.search(request.user.id, request.user.sessionId, (request.query.q ?? '') as string)
     return this.admin.search(query, request.user.role)
   }
 
@@ -63,39 +97,63 @@ export class AdminController {
   }
 
   @Get('reservations')
+  @CompanyRead()
   reservations(@Req() request: AuthenticatedRequest) {
+    if (request.companyScope) return this.scoped.reservations(request.user.id, request.user.sessionId)
     return this.admin.listReservations(request.user.role)
   }
 
-  @Get('payments/orders')
+  @Get('payments/reconciliation/report')
+  @Header('Cache-Control', 'no-store')
+  @CompanyRead()
   @Roles(...FINANCE_ROLES)
-  payments() {
+  financeDiscrepancyReport(@Req() request: AuthenticatedRequest, @Query('after') after?: string) {
+    if (!request.companyScope) throw new ForbiddenException('Sessão de empresa obrigatória')
+    // Reject unknown or bracket-style query keys instead of silently ignoring them.
+    if (Object.keys(request.query).some(key => key !== 'after')) {
+      throw new BadRequestException('Parâmetros do relatório inválidos')
+    }
+    return this.scoped.financeDiscrepancyReport(request.user.id, request.user.sessionId, after)
+  }
+
+  @Get('payments/orders')
+  @Header('Cache-Control', 'no-store')
+  @CompanyRead()
+  @Roles(...FINANCE_ROLES)
+  payments(@Req() request: AuthenticatedRequest) {
+    if (request.companyScope) return this.scoped.paymentsSummary(request.user.id, request.user.sessionId)
     return this.admin.paymentsDashboard()
   }
 
 
   @Post('reservations')
+  @CompanyWrite()
   @Roles(...OPERATIONS_ROLES)
   createReservation(
     @Body() body: CreateReservationDto,
     @Req() request: AuthenticatedRequest,
   ) {
+    if (request.companyScope) return this.scopedReservations.create(request.user.id, request.user.sessionId, body)
     return this.admin.createReservation(body, request.user.id)
   }
 
   @Get('reservations/:id/passengers')
+  @CompanyRead()
   @Roles(...ADMIN_ONLY_ROLES)
-  reservationPassengers(@Param('id') id: string) {
+  reservationPassengers(@Param('id') id: string, @Req() request: AuthenticatedRequest) {
+    if (request.companyScope) return this.scopedReservations.passengers(request.user.id, request.user.sessionId, id)
     return this.admin.reservationPassengers(id)
   }
 
   @Patch('reservations/:id/passengers')
+  @CompanyWrite()
   @Roles(...ADMIN_ONLY_ROLES)
   updateReservationPassengers(
     @Param('id') id: string,
     @Body() body: UpdateReservationPassengersDto,
     @Req() request: AuthenticatedRequest,
   ) {
+    if (request.companyScope) return this.scopedReservations.updatePassengers(request.user.id, request.user.sessionId, id, body)
     return this.admin.updateReservationPassengers(
       id,
       body,
@@ -118,12 +176,14 @@ export class AdminController {
   }
 
   @Post('reservations/:id/cancel')
+  @CompanyWrite()
   @Roles(...ADMIN_ONLY_ROLES)
   cancelReservation(
     @Param('id') id: string,
     @Body() body: CancelReservationDto,
     @Req() request: AuthenticatedRequest,
   ) {
+    if (request.companyScope) return this.scopedReservations.cancelDraft(request.user.id, request.user.sessionId, id, body)
     return this.admin.cancelReservation(
       id,
       body.creditAsBonus ?? false,
@@ -162,9 +222,23 @@ export class AdminController {
   }
 
   @Get('reservations/:id/finance')
+  @Header('Cache-Control', 'no-store')
+  @CompanyRead()
   @Roles(...FINANCE_ROLES)
-  reservationFinance(@Param('id') id: string) {
+  reservationFinance(@Param('id') id: string, @Req() request: AuthenticatedRequest) {
+    if (request.companyScope) {
+      return this.scoped.reservationFinanceSummary(request.user.id, request.user.sessionId, id)
+    }
     return this.admin.reservationFinance(id)
+  }
+
+  @Get('reservations/:id/finance/reconcile/preview')
+  @Header('Cache-Control', 'no-store')
+  @CompanyRead()
+  @Roles(...FINANCE_ROLES)
+  reconciliationPreflight(@Param('id') id: string, @Req() request: AuthenticatedRequest) {
+    if (!request.companyScope) throw new ForbiddenException('Sessão de empresa obrigatória')
+    return this.scoped.reconciliationPreflight(request.user.id, request.user.sessionId, id)
   }
 
   @Post('reservations/:id/finance/reconcile')

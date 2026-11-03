@@ -24,6 +24,11 @@ type Props = {
 }
 
 const eventLabels: Record<string, string> = {
+  OPS_COMPANY_TRIP_CREATED: 'Rascunho de viagem criado',
+  OPS_COMPANY_TRIP_UPDATED: 'Configuração do rascunho alterada',
+  OPS_COMPANY_DRAFT_SEAT_ASSIGN: 'Poltrona preparatória atribuída',
+  OPS_COMPANY_DRAFT_SEAT_MOVE: 'Poltrona preparatória alterada',
+  OPS_COMPANY_DRAFT_SEAT_RELEASE: 'Poltrona preparatória liberada',
   OPS_SEAT_CLIENT_ASSIGNED: 'Cliente cadastrado na poltrona',
   OPS_SEAT_BLOCKED: 'Poltrona bloqueada',
   OPS_SEAT_RELEASED: 'Poltrona liberada',
@@ -57,6 +62,12 @@ function metaText(
   const reservation = typeof metadata.reservationId === 'string'
     ? 'Reserva #' + metadata.reservationId.slice(-8).toUpperCase()
     : ''
+
+  if (eventType === 'OPS_COMPANY_DRAFT_SEAT_MOVE') {
+    const target = typeof metadata.targetSeat === 'number' ? 'Poltrona ' + metadata.targetSeat : ''
+    return [seat, target].filter(Boolean).join(' → ')
+  }
+  if (eventType === 'OPS_COMPANY_DRAFT_SEAT_ASSIGN' || eventType === 'OPS_COMPANY_DRAFT_SEAT_RELEASE') return seat
 
   if (eventType === 'OPS_SEAT_CLIENT_ASSIGNED') {
     return [seat, reservation].filter(Boolean).join(' · ')
@@ -176,7 +187,7 @@ export function TripAuditDialog({
       >
         <header className="trip-audit-header">
           <div>
-            <span>Rastreabilidade operacional</span>
+            <span>{data?.preparatory ? 'Histórico preparatório da empresa' : 'Rastreabilidade operacional'}</span>
             <h2 id="trip-audit-title">{data?.trip.title ?? 'Auditoria da viagem'}</h2>
             {data ? (
               <small>
@@ -196,11 +207,12 @@ export function TripAuditDialog({
         <div className="trip-audit-note">
           <History size={16} />
           <span>
-            Registro somente leitura das ações críticas feitas pelo Admin nesta viagem.
+            {data?.preparatory ? 'Somente leitura: criação e configuração do rascunho e assentos preparatórios. Sem identidade ou contato do operador.' : 'Registro somente leitura das ações críticas feitas pelo Admin nesta viagem.'}
           </span>
         </div>
 
         {error ? <div className="admin-error" role="alert">{error}</div> : null}
+        {data?.hasMore ? <p role="status">Exibindo os {data.limit ?? 100} eventos mais recentes; há registros anteriores não exibidos.</p> : null}
 
         <div className="trip-audit-list">
           {loading ? (
@@ -220,7 +232,7 @@ export function TripAuditDialog({
                     </strong>
                     {details ? <span>{details}</span> : null}
                     <small>
-                      {event.user?.email ?? 'Usuário não disponível'}
+                      {data?.preparatory ? 'Ação administrativa da empresa' : event.user?.email ?? 'Usuário não disponível'}
                       {' · '}
                       {new Intl.DateTimeFormat('pt-BR', {
                         dateStyle: 'short',
@@ -230,7 +242,7 @@ export function TripAuditDialog({
                   </div>
 
                   <span className="trip-audit-event-code">
-                    {event.user?.role ?? 'SISTEMA'}
+                    {data?.preparatory ? 'EMPRESA' : event.user?.role ?? 'SISTEMA'}
                   </span>
                 </article>
               )
@@ -238,9 +250,9 @@ export function TripAuditDialog({
           ) : (
             <div className="trip-audit-empty">
               <Clock3 size={20} />
-              <strong>Nenhuma ação operacional registrada ainda</strong>
+              <strong>{data?.preparatory ? 'Nenhuma ação preparatória registrada ainda' : 'Nenhuma ação operacional registrada ainda'}</strong>
               <span>
-                Novos bloqueios, cadastros em poltrona, embarques e encerramentos aparecerão aqui.
+                {data?.preparatory ? 'Criação e configuração deste rascunho e mudanças de poltrona preparatória aparecerão aqui.' : 'Novos bloqueios, cadastros em poltrona, embarques e encerramentos aparecerão aqui.'}
               </span>
             </div>
           )}

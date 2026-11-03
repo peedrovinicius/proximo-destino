@@ -7,6 +7,10 @@ import { HomePage } from './features/home/HomePage'
 import { InstitutionalPage } from './features/home/InstitutionalPage'
 import type { InstitutionalPageKey } from './components/PublicFooter'
 import { logoutAdmin, refreshAdminSession } from './lib/adminAuth'
+import { AcceptCompanyInvite } from './features/creator/AcceptCompanyInvite'
+import { CreatorWorkspace } from './features/creator/CreatorWorkspace'
+import { CompanyCatalogPage } from './features/home/CompanyCatalogPage'
+import { CompanyClientPortal } from './features/client/CompanyClientPortal'
 
 type Screen =
   | 'home'
@@ -15,6 +19,10 @@ type Screen =
   | 'client'
   | 'admin-login'
   | 'admin'
+  | 'creator'
+  | 'company-invite'
+  | 'company'
+  | 'company-client'
 
 const screens = new Set<Screen>([
   'home',
@@ -23,6 +31,10 @@ const screens = new Set<Screen>([
   'client',
   'admin-login',
   'admin',
+  'creator',
+  'company-invite',
+  'company',
+  'company-client',
 ])
 
 const institutionalPages = new Set<InstitutionalPageKey>([
@@ -89,6 +101,7 @@ function updateLocation(
 
 function App() {
   const [screen, setScreen] = useState<Screen>(() => screenFromLocation())
+  const [companySlug, setCompanySlug] = useState(() => new URLSearchParams(window.location.search).get('company') || '')
   const [adminAccessToken, setAdminAccessToken] = useState<string | null>(null)
   const [clientAccessToken, setClientAccessToken] = useState<string | null>(null)
   const [institutionalPage, setInstitutionalPage] =
@@ -118,6 +131,7 @@ function App() {
     setRestoringAdmin(true)
     try {
       const result = await refreshAdminSession()
+      if (result.user.role === 'CREATOR') { setAdminAccessToken(null); navigate('creator'); return }
       setAdminAccessToken(result.accessToken)
       navigate('admin')
     } catch {
@@ -130,6 +144,7 @@ function App() {
   useEffect(() => {
     function onPopState() {
       setScreen(screenFromLocation())
+      setCompanySlug(new URLSearchParams(window.location.search).get('company') || '')
       setInstitutionalPage(institutionalFromLocation())
     }
 
@@ -147,6 +162,9 @@ function App() {
       setRestoringAdmin(true)
       void refreshAdminSession()
         .then((result) => {
+          if (result.user.role === 'CREATOR') {
+            setScreen('creator'); updateLocation('creator', { replace: true }); return
+          }
           setAdminAccessToken(result.accessToken)
           setScreen('admin')
           const url = new URL(window.location.href)
@@ -164,10 +182,13 @@ function App() {
       return
     }
 
-    if (requestedScreen === 'admin' && !adminAccessToken) {
+    if (requestedScreen === 'admin') {
       setRestoringAdmin(true)
       void refreshAdminSession()
         .then((result) => {
+          if (result.user.role === 'CREATOR') {
+            setScreen('creator'); updateLocation('creator', { replace: true }); return
+          }
           setAdminAccessToken(result.accessToken)
           setScreen('admin')
         })
@@ -190,7 +211,10 @@ function App() {
       refreshing = true
       try {
         const result = await refreshAdminSession()
-        if (active) setAdminAccessToken(result.accessToken)
+        if (active) {
+          if (result.user.role === 'CREATOR') { setAdminAccessToken(null); navigate('creator', { replace: true }) }
+          else setAdminAccessToken(result.accessToken)
+        }
       } catch {
         // Falha transitória não encerra a sessão na interface.
         // O próximo ciclo ou retorno à aba tentará novamente.
@@ -222,7 +246,7 @@ function App() {
       document.removeEventListener('visibilitychange', onVisible)
       window.removeEventListener('focus', onFocus)
     }
-  }, [adminAccessToken])
+  }, [adminAccessToken, navigate])
 
   useEffect(() => {
     const status = new URLSearchParams(window.location.search).get(
@@ -251,6 +275,9 @@ function App() {
     }
   }, [])
 
+  if (screen === 'company-client') return <CompanyClientPortal key={companySlug} slug={companySlug} onBack={() => navigate('company')} />
+  if (screen === 'company') return <CompanyCatalogPage key={companySlug} slug={companySlug} onClientAccess={() => navigate('company-client')} />
+
   if (screen === 'home') {
     return (
       <HomePage
@@ -263,6 +290,12 @@ function App() {
         }
       />
     )
+  }
+
+  if (screen === 'company-invite') return <AcceptCompanyInvite onBack={() => navigate('home')} />
+
+  if (screen === 'creator') {
+    return <CreatorWorkspace onBack={() => navigate('home')} />
   }
 
   if (screen === 'institutional') {
@@ -332,6 +365,7 @@ function App() {
       <AdminDashboard
         accessToken={adminAccessToken}
         onExitToSite={() => navigate('home')}
+        onPasswordChanged={() => { setAdminAccessToken(null); navigate('admin', { replace: true }) }}
         onLogout={() => {
           void logoutAdmin(adminAccessToken)
           setAdminAccessToken(null)

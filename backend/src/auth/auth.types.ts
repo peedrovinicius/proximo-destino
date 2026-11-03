@@ -1,6 +1,7 @@
 import { UserRole } from '@prisma/client'
 
 export type AccessTokenPayload = {
+  authVersion?: number
   sub: string
   email: string
   role: UserRole
@@ -9,6 +10,7 @@ export type AccessTokenPayload = {
 }
 
 export type RefreshTokenPayload = {
+  authVersion?: number
   sub: string
   sid: string
   type: 'refresh'
@@ -16,12 +18,15 @@ export type RefreshTokenPayload = {
 }
 
 export type MfaChallengePayload = {
+  authVersion?: number
   sub: string
   mode: 'setup' | 'verify'
   type: 'mfa_challenge'
 }
 
 export type AuthenticatedUser = {
+  companyId?: string | null
+  requiresCompanyScope?: boolean
   id: string
   email: string
   role: UserRole

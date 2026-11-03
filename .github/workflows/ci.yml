@@ -135,10 +135,28 @@ jobs:
   backup-encryption:
     name: Backup encryption and failure handling
     runs-on: ubuntu-latest
+    container: postgres:18
     timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: backup_test
+        options: >-
+          --health-cmd "pg_isready -U postgres -d backup_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_BACKUP_POSTGRES: '1'
+      PGHOST: postgres
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: backup_test
     steps:
       - uses: actions/checkout@v6
       - name: Install age
-        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends age
+        run: apt-get update -qq && apt-get install -y --no-install-recommends age python3
       - name: Test encrypted roundtrip, storage verification and failures
         run: python3 -m unittest discover -s scripts/tests -p 'test_backup_*.py' -v

@@ -76,6 +76,7 @@ export type AdminTrip = {
 }
 
 export type AdminReservation = {
+  companyPortalAccess?: { canIssue: boolean }
   id: string
   status: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED'
   passengerCount: number
@@ -316,6 +317,7 @@ export type AdminPurchaseOrder = {
 
 export type AdminSeatMap = {
   enabled: boolean
+  preparatory?: boolean
   trip: {
     id: string
     title: string
@@ -338,7 +340,7 @@ export type AdminSeatMap = {
       id: string
       sequence: number
       fullName: string | null
-      document: string | null
+      document?: string | null
     } | null
     source: 'ONLINE_PURCHASE' | 'PUBLIC_RESERVATION' | 'ADMIN_RESERVATION'
     reservation: {
@@ -395,6 +397,9 @@ export type AdminAuditTrail = {
 }
 
 export type AdminOperationalAudit = {
+  preparatory?: boolean
+  limit?: number
+  hasMore?: boolean
   trip: {
     id: string
     title: string
@@ -496,6 +501,8 @@ export type AdminManualPayment = {
 }
 
 export type AdminPaymentsDashboard = {
+  summaryOnly?: boolean
+  coverage?: 'ONLINE_AND_MANUAL_PAYMENTS'
   summary: {
     totalOrders: number
     paidOrders: number
@@ -513,6 +520,34 @@ export type AdminPaymentsDashboard = {
   }
   orders: AdminPurchaseOrder[]
   manualPayments: AdminManualPayment[]
+}
+
+export type CompanyFinanceDiscrepancyIssue =
+  | 'ORDER_AMOUNT_MISMATCH'
+  | 'REFUND_STATUS_MISMATCH'
+  | 'PASSENGER_COUNT_MISMATCH'
+  | 'PROVIDER_REFERENCE_MISSING'
+  | 'INVALID_MANUAL_AMOUNT'
+  | 'MANUAL_ASSOCIATION_MISMATCH'
+  | 'MIXED_PAYMENT_CHANNELS_REVIEW'
+
+export type CompanyFinanceDiscrepancyReportPage = {
+  reportOnly: true
+  pageScoped: true
+  providerContacted: false
+  dataModified: false
+  paymentsEnabled: false
+  pageSize: 50
+  scannedReservations: number
+  flaggedReservations: number
+  issueCount: number
+  nextCursor: string | null
+  divergences: Array<{
+    reservationId: string
+    issues: CompanyFinanceDiscrepancyIssue[]
+    online: { status: string; totalCents: number; refundedCents: number } | null
+    manual: { receivedCount: number; receivedCents: number; reversedCents: number }
+  }>
 }
 
 export type AdminReservationFinance = {
@@ -800,6 +835,13 @@ export function adminTripImageUrl(trip: Pick<AdminTrip, 'id' | 'imageUrl' | 'has
 }
 
 export const adminApi = {
+  issueCompanyPortalCode: (token: string, id: string) =>
+    adminFetch<{ reservationId: string; code: string; expiresAt: string; delivery: 'MANUAL_PRIVATE' }>(
+      token, `/admin/reservations/${encodeURIComponent(id)}/company-portal-code`,
+      { method: 'POST', body: JSON.stringify({ confirmedPrivateDelivery: true }) }),
+  revokeCompanyPortalCode: (token: string, id: string) =>
+    adminFetch<{ revoked: true }>(token,
+      `/admin/reservations/${encodeURIComponent(id)}/company-portal-code/revoke`, { method: 'POST' }),
   securityPosture: (token: string) =>
     adminFetch<SecurityPosture>(
       token,
@@ -1004,6 +1046,10 @@ export const adminApi = {
       `/admin/trips/${encodeURIComponent(tripId)}/seats`,
     ),
 
+  releaseDraftSeat: (token: string, tripId: string, seatNumber: number) =>
+    adminFetch<AdminSeatMap>(token,
+      `/admin/trips/${encodeURIComponent(tripId)}/seats/${seatNumber}/assignment`, { method: 'DELETE' }),
+
   setSeatBlocked: (
     token: string,
     tripId: string,
@@ -1058,6 +1104,12 @@ export const adminApi = {
 
   purchaseOrders: (token: string) =>
     adminFetch<AdminPaymentsDashboard>(token, '/admin/payments/orders'),
+
+  companyFinanceDiscrepancies: (token: string, after?: string, signal?: AbortSignal) =>
+    adminFetch<CompanyFinanceDiscrepancyReportPage>(
+      token, `/admin/payments/reconciliation/report${after ? `?after=${encodeURIComponent(after)}` : ''}`,
+      { method: 'GET', cache: 'no-store', signal },
+    ),
 
   paymentConnection: (token: string) =>
     adminFetch<PaymentConnectionStatus>(token, '/admin/payments/mercado-pago'),
